@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -34,7 +35,7 @@ namespace TruthCardGame.Tests
         {
             public readonly List<IEnumerator> Routines = new List<IEnumerator>();
 
-            public void Start(IEnumerator routine)
+            public void StartRoutine(IEnumerator routine)
             {
                 Routines.Add(routine);
                 routine.MoveNext();

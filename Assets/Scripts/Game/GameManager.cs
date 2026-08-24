@@ -63,7 +63,7 @@ namespace TruthCardGame
             SceneManager.LoadScene("MainMenu");
         }
 
-        public void Start(IEnumerator routine)
+        public void StartRoutine(IEnumerator routine)
         {
             StartCoroutine(routine);
         }

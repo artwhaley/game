@@ -1,13 +1,15 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace TruthCardGame
 {
     /// <summary>Abstracts the coroutine host so the executor stays testable without a scene.</summary>
+    /// Note: not named Start so implementations can still use Unity's Start() message.
     public interface ICoroutineRunner
     {
-        void Start(IEnumerator routine);
+        void StartRoutine(IEnumerator routine);
     }
 
     /// <summary>
@@ -93,7 +95,7 @@ namespace TruthCardGame
                 }
                 else
                 {
-                    _runner.Start(action.Execute(context));
+                    _runner.StartRoutine(action.Execute(context));
                 }
             }
         }
