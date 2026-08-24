@@ -26,3 +26,4 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
 - **Phase A** — Card action core: abstract `CardAction` ScriptableObject (blocking/continuous + `Execute(GameContext)`), `GameContext`, `Player`, `PlayerStats`, and the `TruthCardGame` assembly.
 - **Phase B** — Seed actions: `DebugAction` (log + configurable delay) and `StatIncreaseAction` (instant stat boost), both `[CreateAssetMenu]`-authorable.
 - **Phase C** — Cards: `Card` ScriptableObject (title, tags, action list) and `CardDeck` (card pool + distinct-tag helper for the setup screen).
+- **Phase D** — Executor: `CardExecutor` draws a random card matching must-include/must-exclude tags and runs its actions (blocking awaited, continuous dispatched). EditMode tests cover filtering, sequencing, and stat application.
