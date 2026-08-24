@@ -10,6 +10,13 @@
 [Uu]ser[Ss]ettings/
 [Mm]emoryCaptures/
 [Rr]ecordings/
+Crashes/
+sysinfo.txt
+[Aa]ssets/AssetStoreTools*/
+[Aa]ssets/Plugins/Editor/JetBrains*/
+
+# Blender backup files (written next to every saved .blend)
+*.blend1
 
 # Never ignore Asset meta data
 !/[Aa]ssets/**/*.meta

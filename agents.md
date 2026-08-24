@@ -3,7 +3,9 @@
 Operating rules for AI agents and collaborators working in this repository.
 This is a Unity 6 game project (editor version 6000.5.9f1), built incrementally from a skeleton.
 
-**Current state:** project skeleton only — no game code yet. Unity 6000.5.9f1 being installed by the developer (via Unity Hub). Git repo initialized; remote is `https://github.com/artwhaley/game.git`. Unity CLI notes in [`unity-cli.md`](unity-cli.md).
+Git repo initialized; remote is `https://github.com/artwhaley/game.git`. Unity CLI notes in [`unity-cli.md`](unity-cli.md).
+
+Current project status lives in [`README.md`](README.md) — read it first, keep it current (rule 6). This file holds only rules intended to stand for the life of the project; status snapshots belong in the README, never here.
 
 ## Overriding principle: incremental and intentional construction
 
@@ -20,6 +22,8 @@ Never fill in negative space with "app-shaped bullshit" just because it feels li
 7. **Fix root causes.** NEVER implement workarounds or band-aid solutions — ALWAYS fix the root cause.
 8. **Development environment, not production.** Because we build incrementally, tests and schema may become outdated. Data isn't sacred. Don't complicate new code to protect old tests — keep the testing harness fitted to the current app state. Same for schema: no backwards-compatibility concerns, old files don't matter.
 9. **Flag missing dependencies.** If something required is missing (an install, a package, a tool), flag it — but assume it may be on its way and continue where possible.
+10. **Fail noisy.** Never invent fallback behavior that masks a problem. If something breaks, let it break loudly and report exactly what failed and why. Silent recovery is worse than a crash.
+11. **Report verification honestly.** If a change couldn't be verified (editor closed, headless limits, whatever the reason), say so plainly — never report "done" for an unverified change.
 
 ## Unity-specific essentials
 
@@ -29,14 +33,15 @@ Never fill in negative space with "app-shaped bullshit" just because it feels li
 - **Verify in the editor.** Unity code and scenes behave differently than they read. Confirm behavior in the actual editor, not just by inspection.
 - **Scenes are YAML.** Edit scenes deliberately, in the editor, with small intentional changes — avoid sprawling manual scene edits.
 - **Binary assets go through Git LFS** (patterns in `.gitattributes`). Don't commit heavy files straight into history.
-- **First open generates files.** Opening this folder in Unity (Hub or CLI) for the first time makes Unity create `ProjectSettings` defaults and `Packages/manifest.json`. That's expected, not a problem.
+- **Generated folders aren't source.** `Library/`, `Temp/`, `Logs/` and friends regenerate locally from what's in git. Missing or stale ones are normal, not corruption.
 
 ## Git conventions
 
-- Commit with clear, concise messages focused on *why*; keep commits small.
+- **Save the whole project state on every commit.** Commit everything that should be committed — don't be surgical, don't cherry-pick files, don't stage only "your" changes. If the working tree changed, the next commit saves it. This is a single-branch, single-developer flow; there is no multi-branch or multi-developer cleverness. Just save the state when it changes.
+- Commit after each accepted feature/change — clear, concise messages focused on *why*.
 - Don't push to the remote unless asked.
-- Don't stage or commit files you didn't create or change.
 - `.meta` files are always committed; binary assets via LFS.
+- Check `.gitattributes` before committing a new binary type — adding an LFS pattern after the fact doesn't fix blobs already in history.
 
 ## Unity CLI
 
@@ -44,6 +49,7 @@ Never fill in negative space with "app-shaped bullshit" just because it feels li
 - The CLI is **experimental** (as of Aug 2026) — verify commands with `unity --help` before relying on them.
 - Opening this project: `unity open .` from the project root (uses the pinned 6000.5.9f1).
 - Driving a *running* Editor requires the separate Unity Pipeline package — not installed; ask before adding (rule 4).
+- Scene/content generation runs inside the editor: menu bar **TruthCardGame → Build Scenes** (also creates the sample content). Can't be driven from the CLI without the Unity Pipeline package.
 
 ## When in doubt
 
