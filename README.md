@@ -28,3 +28,4 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
 - **Phase C** — Cards: `Card` ScriptableObject (title, tags, action list) and `CardDeck` (card pool + distinct-tag helper for the setup screen).
 - **Phase D** — Executor: `CardExecutor` draws a random card matching must-include/must-exclude tags and runs its actions (blocking awaited, continuous dispatched). EditMode tests cover filtering, sequencing, and stat application.
 - **Phase E** — Game scene runtime: `SessionConfig` (static tag-filter handoff across scene loads), `GameManager` (player, executor, draw loop), `GamePanel` (card title/status + Draw Next / Main Menu).
+- **Phase F** — Menu & setup: `MenuController` (Start Game / Settings), stub `SettingsDialog`, `GameSetupController` (one toggle per distinct deck tag, ON = allowed / OFF = excluded).
