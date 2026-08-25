@@ -102,3 +102,10 @@ ticket per phase, each with its own acceptance criteria and commit.
   `LengthModifier` (live-read, never baked). Sample content: "Relaxing" and
   "Intense" sessions with phases, each ending in an authored ending phase
   whose tags match an ending card. 15/15 EditMode tests green.
+- **Ticket 5 — SessionDriver core**: plain-C# driver that walks a session's
+  phases. Picks an unscaled base target once per phase; advance check
+  `drawn >= Round(base × live LengthModifier)`, clamped ≥ 1, evaluated on every
+  card completion — a mid-session modifier change takes effect on the next
+  draw (grow extends, shrink can end the phase immediately). Early advance
+  with a warning when no card matches; completion after the last phase.
+  22/22 EditMode tests green.
