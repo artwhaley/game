@@ -77,3 +77,7 @@ Assets → Create → TruthCardGame → Card; give it tags + actions; add it to 
 
 The six-phase execution plan lives in [`Tickets/`](Tickets/README.md) — one
 ticket per phase, each with its own acceptance criteria and commit.
+- **Ticket 1 — Runtime services plumbing**: `GameContext` now carries optional
+  `GameServices` (coroutine runner, `IPromptService`, `ICutscenePlayer`). Pure,
+  package-free interfaces (typed against core PlayableAsset). Seam for cutscenes
+  and choices. 8/8 tests green.

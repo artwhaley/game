@@ -15,6 +15,7 @@ namespace TruthCardGame
         [SerializeField] private string playerName = "Player";
 
         private Player _player;
+        private GameServices _services;
         private CardExecutor _executor;
         private bool _busy;
 
@@ -26,6 +27,7 @@ namespace TruthCardGame
                 return;
             }
             _player = new Player(playerName);
+            _services = new GameServices(runner: this);
             _executor = new CardExecutor(deck, this, SessionConfig.MustIncludeTags, SessionConfig.MustExcludeTags);
         }
 
@@ -52,7 +54,7 @@ namespace TruthCardGame
 
         private IEnumerator RunCard(Card card)
         {
-            var context = new GameContext(_player);
+            var context = new GameContext(_player, _services);
             yield return _executor.ExecuteCard(card, context);
             panel.ShowDone(card);
             _busy = false;

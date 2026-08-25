@@ -9,7 +9,7 @@ only when every acceptance checkbox is checked and the commit is in.
 
 | # | Ticket | Status |
 |---|--------|--------|
-| 1 | Runtime services plumbing | Open |
+| 1 | Runtime services plumbing | Done |
 | 2 | Cutscene action (Timeline) | Open |
 | 3 | Choice action | Open |
 | 4 | Session/Phase data | Open |
