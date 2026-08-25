@@ -160,7 +160,7 @@ namespace TruthCardGame.EditorTools
                 rowLayout.childControlWidth = true;
                 rowLayout.childControlHeight = true;
                 rowLayout.childForceExpandWidth = true;
-                rowLayout.childForceExpandHeight = false;
+                rowLayout.childForceExpandHeight = true;
 
                 var drawNext = CreateButton(row.transform, "Draw Next Card");
                 var menuButton = CreateButton(row.transform, "Main Menu");
