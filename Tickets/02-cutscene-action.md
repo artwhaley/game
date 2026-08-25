@@ -19,8 +19,8 @@ timeline.
   `PlayableDirector`, `CinemachineBrain` on the camera, one virtual camera.
 - PoC timeline asset — hand-authored in the Timeline window (the one
   non-generated asset; committed). Cube stand-in NPC + transform track, virtual
-  camera cut, end-of-timeline signal. Audio track: decided at start (defer VO;
-  likely no audio track in PoC).
+  camera cut, end-of-timeline signal. No audio track — VO + lipsync deferred
+  to a future ticket gated on the NPC character decision.
 - `README.md` — dev-log entry.
 
 ## Design
