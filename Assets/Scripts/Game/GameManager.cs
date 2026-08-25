@@ -40,7 +40,7 @@ namespace TruthCardGame
             }
 
             _player = new Player(playerName);
-            _services = new GameServices(runner: this, cutscene: directorPlayer);
+            _services = new GameServices(runner: this, prompts: this, cutscene: directorPlayer);
             _driver = new SessionDriver(SessionConfig.SelectedSession);
         }
 
