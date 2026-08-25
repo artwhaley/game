@@ -1,0 +1,17 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2de12c76f6713e443a9cfa11b87116da, type: 3}
+  m_Name: SessionLibrary
+  m_EditorClassIdentifier: TruthCardGame::TruthCardGame.SessionLibrary
+  sessions:
+  - {fileID: 11400000, guid: de3593f96d398414687c5cc41f35258a, type: 2}
+  - {fileID: 11400000, guid: a9b098e85aa88da47bd7be19129b718d, type: 2}

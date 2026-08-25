@@ -96,3 +96,9 @@ ticket per phase, each with its own acceptance criteria and commit.
   "Face the Crowd" added. Note: Unity's `CustomYieldInstruction` implements
   `IEnumerator` (MoveNext = keepWaiting), which matters for coroutine drivers.
   15/15 EditMode tests green.
+- **Ticket 4 — Session/Phase data**: `Session` (title + metadata tags + ordered
+  phases), `Phase` (must-include/exclude tags + min/max draw range), and
+  `SessionLibrary`. `SessionConfig` now carries `SelectedSession` +
+  `LengthModifier` (live-read, never baked). Sample content: "Relaxing" and
+  "Intense" sessions with phases, each ending in an authored ending phase
+  whose tags match an ending card. 15/15 EditMode tests green.

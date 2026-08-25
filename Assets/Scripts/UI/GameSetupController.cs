@@ -35,16 +35,8 @@ namespace TruthCardGame
 
         public void StartGame()
         {
-            var excluded = new List<string>();
-            foreach (var toggle in _toggles)
-            {
-                if (!toggle.isOn)
-                {
-                    excluded.Add(toggle.GetComponentInChildren<Text>().text);
-                }
-            }
-            SessionConfig.MustIncludeTags = new List<string>();
-            SessionConfig.MustExcludeTags = excluded;
+            // Ticket 6 replaces the tag toggles with a session picker. Until
+            // then, the Game scene draws from the whole deck (no filters).
             SceneManager.LoadScene("Game");
         }
 

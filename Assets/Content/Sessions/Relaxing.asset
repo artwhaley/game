@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 109ad389655f7cf448752bf911595a72, type: 3}
+  m_Name: Relaxing
+  m_EditorClassIdentifier: TruthCardGame::TruthCardGame.Session
+  title: Relaxing
+  tags:
+  - relaxing
+  phases:
+  - {fileID: 11400000, guid: 1ca23904e8147e246b8cf436007cc62e, type: 2}
+  - {fileID: 11400000, guid: d34028fbd25e11c40bcb3ea7873d093e, type: 2}
+  - {fileID: 11400000, guid: 7d34c8ec72db8e14fb55f2f68b089537, type: 2}

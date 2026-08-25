@@ -31,7 +31,9 @@ namespace TruthCardGame
             }
             _player = new Player(playerName);
             _services = new GameServices(runner: this, cutscene: directorPlayer);
-            _executor = new CardExecutor(deck, this, SessionConfig.MustIncludeTags, SessionConfig.MustExcludeTags);
+            // Ticket 6 replaces this with a SessionDriver that draws per-phase.
+            // Until then, no tag filters: the whole deck is fair game.
+            _executor = new CardExecutor(deck, this);
         }
 
         private void Start()

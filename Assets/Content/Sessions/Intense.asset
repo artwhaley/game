@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 109ad389655f7cf448752bf911595a72, type: 3}
+  m_Name: Intense
+  m_EditorClassIdentifier: TruthCardGame::TruthCardGame.Session
+  title: Intense
+  tags:
+  - intense
+  phases:
+  - {fileID: 11400000, guid: 004d790735dac374fa04ef76b4b8f238, type: 2}
+  - {fileID: 11400000, guid: 73dda2d43fd6e924a8ff866fed9fb547, type: 2}
+  - {fileID: 11400000, guid: 7a61356bdf2ae06408aefb9d78a4bc73, type: 2}
