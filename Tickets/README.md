@@ -10,7 +10,7 @@ only when every acceptance checkbox is checked and the commit is in.
 | # | Ticket | Status |
 |---|--------|--------|
 | 1 | Runtime services plumbing | Done |
-| 2 | Cutscene action (Timeline) | Open |
+| 2 | Cutscene action (Timeline) | In progress |
 | 3 | Choice action | Open |
 | 4 | Session/Phase data | Open |
 | 5 | SessionDriver core | Open |

@@ -12,6 +12,7 @@ namespace TruthCardGame
     {
         [SerializeField] private CardDeck deck;
         [SerializeField] private GamePanel panel;
+        [SerializeField] private DirectorPlayer directorPlayer;
         [SerializeField] private string playerName = "Player";
 
         private Player _player;
@@ -27,7 +28,7 @@ namespace TruthCardGame
                 return;
             }
             _player = new Player(playerName);
-            _services = new GameServices(runner: this);
+            _services = new GameServices(runner: this, cutscene: directorPlayer);
             _executor = new CardExecutor(deck, this, SessionConfig.MustIncludeTags, SessionConfig.MustExcludeTags);
         }
 

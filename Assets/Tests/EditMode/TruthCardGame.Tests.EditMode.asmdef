@@ -3,6 +3,7 @@
     "rootNamespace": "TruthCardGame.Tests",
     "references": [
         "TruthCardGame",
+        "Unity.Timeline",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

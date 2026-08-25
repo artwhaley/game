@@ -45,11 +45,20 @@ namespace TruthCardGame.EditorTools
                 SetInt(action, "amount", 1);
             });
 
+            // PoC cutscene: the timeline asset is authored by hand in the
+            // Timeline window (this builder cannot). Assign it on this action
+            // asset once authored — until then, drawing the card logs an error.
+            var cutscene = GetOrCreateAction<CutsceneAction>(ActionsFolder + "/Cutscene_Intro.asset", action =>
+            {
+                SetBool(action, "isBlocking", true);
+            });
+
             var courageBoost = GetOrCreateCard(CardsFolder + "/CourageBoost.asset", "Courage Boost", new[] { "party", "truth" }, courage);
             var crowdWatches = GetOrCreateCard(CardsFolder + "/TheCrowdWatches.asset", "The Crowd Watches", new[] { "party", "dare" }, blocking);
             var ambientWhispers = GetOrCreateCard(CardsFolder + "/AmbientWhispers.asset", "Ambient Whispers", new[] { "solo", "truth" }, continuous);
             var dareCelebrate = GetOrCreateCard(CardsFolder + "/DareAndCelebrate.asset", "Dare & Celebrate", new[] { "party", "dare" }, courage, blocking);
             var twinWhispers = GetOrCreateCard(CardsFolder + "/TwinWhispers.asset", "Twin Whispers", new[] { "solo" }, continuous, continuous);
+            var cutsceneIntro = GetOrCreateCard(CardsFolder + "/CutsceneIntro.asset", "A Familiar Face", new[] { "cutscene" }, cutscene);
 
             var deck = AssetDatabase.LoadAssetAtPath<CardDeck>(StarterDeckPath);
             if (deck == null)
@@ -57,7 +66,7 @@ namespace TruthCardGame.EditorTools
                 deck = ScriptableObject.CreateInstance<CardDeck>();
                 AssetDatabase.CreateAsset(deck, StarterDeckPath);
             }
-            var cards = new[] { courageBoost, crowdWatches, ambientWhispers, dareCelebrate, twinWhispers };
+            var cards = new[] { courageBoost, crowdWatches, ambientWhispers, dareCelebrate, twinWhispers, cutsceneIntro };
             var so = new SerializedObject(deck);
             var cardsProp = so.FindProperty("cards");
             cardsProp.arraySize = cards.Length;
@@ -69,7 +78,7 @@ namespace TruthCardGame.EditorTools
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log("[TruthCardGame] Sample content ready: 3 actions, 5 cards, starter deck.");
+            Debug.Log("[TruthCardGame] Sample content ready: 4 actions, 6 cards, starter deck.");
         }
 
         // ---------- asset helpers ----------

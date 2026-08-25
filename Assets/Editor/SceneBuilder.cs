@@ -3,8 +3,11 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Playables;
 using UnityEngine.SceneManagement;
+using UnityEngine.Timeline;
 using UnityEngine.UI;
+using Unity.Cinemachine;
 
 namespace TruthCardGame.EditorTools
 {
@@ -124,7 +127,10 @@ namespace TruthCardGame.EditorTools
         {
             CreateScene(GamePath, () =>
             {
-                CreateCamera();
+                CreateGameCameraCinemachine();
+                var vcam = CreateVirtualCamera();
+                var npc = CreateNpcCube();
+                var director = CreateDirector();
                 var canvas = CreateCanvas();
                 CreateEventSystem();
 
@@ -171,8 +177,68 @@ namespace TruthCardGame.EditorTools
                 SetField(manager, "deck", AssetDatabase.LoadAssetAtPath<CardDeck>(SampleContentBuilder.StarterDeckPath));
                 SetField(manager, "panel", panel);
 
+                SetField(manager, "directorPlayer", director.GetComponent<DirectorPlayer>());
+
+                // Aim the virtual camera at the NPC so a camera-cut timeline reads clearly.
+                vcam.LookAt = npc.transform;
+
                 drawNext.interactable = false;
             });
+        }
+
+        /// <summary>Game-scene camera with a CinemachineBrain so a cut to a virtual camera is smooth.</summary>
+        private static Camera CreateGameCameraCinemachine()
+        {
+            var go = new GameObject("Main Camera");
+            go.tag = "MainCamera";
+            var cam = go.AddComponent<Camera>();
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0.08f, 0.08f, 0.12f);
+            cam.nearClipPlane = 0.01f;
+            cam.farClipPlane = 100f;
+            go.AddComponent<AudioListener>();
+            go.AddComponent<CinemachineBrain>();
+            return cam;
+        }
+
+        /// <summary>A Cinemachine camera showing the NPC.</summary>
+        private static CinemachineCamera CreateVirtualCamera()
+        {
+            var go = new GameObject("Cutscene Camera");
+            var vcam = go.AddComponent<CinemachineCamera>();
+            vcam.Priority = 10;
+            // Position it in front of the NPC and aim it back at origin.
+            go.transform.position = new Vector3(0f, 1.5f, -3.5f);
+            go.transform.LookAt(Vector3.zero);
+            return vcam;
+        }
+
+        /// <summary>A primary-colored cube as the stand-in NPC for the PoC timeline.</summary>
+        private static GameObject CreateNpcCube()
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = "Npc";
+            go.transform.position = new Vector3(0f, 0f, 0f);
+            var renderer = go.GetComponent<MeshRenderer>();
+            if (renderer != null)
+            {
+                var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard") ?? Shader.Find("Diffuse");
+                if (shader != null)
+                {
+                    renderer.material = new Material(shader);
+                    renderer.material.color = new Color(0.3f, 0.6f, 1f);
+                }
+            }
+            return go;
+        }
+
+        /// <summary>The cutscene driver object: a PlayableDirector + DirectorPlayer.</summary>
+        private static GameObject CreateDirector()
+        {
+            var go = new GameObject("CutsceneDirector");
+            go.AddComponent<PlayableDirector>();
+            go.AddComponent<DirectorPlayer>();
+            return go;
         }
 
         private static SettingsDialog CreateSettingsDialog(Transform canvas)

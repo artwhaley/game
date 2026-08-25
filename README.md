@@ -81,3 +81,11 @@ ticket per phase, each with its own acceptance criteria and commit.
   `GameServices` (coroutine runner, `IPromptService`, `ICutscenePlayer`). Pure,
   package-free interfaces (typed against core PlayableAsset). Seam for cutscenes
   and choices. 8/8 tests green.
+- **Ticket 2 — Cutscene action**: `CutsceneAction` (plays a `TimelineAsset` via
+  `context.Cutscene`, blocking) + `DirectorPlayer` (PlayableDirector wrapper).
+  Game scene now has a CinemachineBrain camera, a Cinemachine cutscene camera,
+  an NPC cube, and a CutsceneDirector GO wired into GameManager. Added
+  Timeline 1.8.13 + Cinemachine 3.1.7 (the 6000.5-compatible versions — 1.8.1/3.1.3
+  fail to compile against 6000.5's obsolete-API-as-error). Sample cutscene card
+  "A Familiar Face" added; its timeline is authored by hand in the Timeline
+  window. 11/11 EditMode tests green.
