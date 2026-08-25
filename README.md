@@ -72,3 +72,8 @@ Assets → Create → TruthCardGame → Card; give it tags + actions; add it to 
 - **Phase F** — Menu & setup: `MenuController`, stub `SettingsDialog`, `GameSetupController` with tag toggles.
 - **Phase G** — Editor builders: `SceneBuilder` + `SampleContentBuilder` generate scenes and starter content.
 - **First Unity open** — fresh-import manifest lacked uGUI/test-framework (added both); ran builders headless; 8/8 tests pass; generated scenes, content, and ProjectSettings committed.
+
+## Tickets
+
+The six-phase execution plan lives in [`Tickets/`](Tickets/README.md) — one
+ticket per phase, each with its own acceptance criteria and commit.
