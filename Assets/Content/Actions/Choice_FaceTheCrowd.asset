@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f35b0d2f1c7f3534e88f933e02af1ba2, type: 3}
+  m_Name: Choice_FaceTheCrowd
+  m_EditorClassIdentifier: TruthCardGame::TruthCardGame.ChoiceAction
+  isBlocking: 1
+  prompt: The crowd leans in. How do you answer?
+  options:
+  - label: Own it
+    action: {fileID: 11400000, guid: 0704b097f45e26b4b89e5983d80fb595, type: 2}
+  - label: Shrug it off
+    action: {fileID: 11400000, guid: 43ab12b4fdfa4b643b52497947f55524, type: 2}

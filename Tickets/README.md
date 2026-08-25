@@ -11,7 +11,7 @@ only when every acceptance checkbox is checked and the commit is in.
 |---|--------|--------|
 | 1 | Runtime services plumbing | Done |
 | 2 | Cutscene action (Timeline) | In progress |
-| 3 | Choice action | Open |
+| 3 | Choice action | Done |
 | 4 | Session/Phase data | Open |
 | 5 | SessionDriver core | Open |
 | 6 | Screen rework + settings | Open |

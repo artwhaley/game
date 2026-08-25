@@ -1,4 +1,6 @@
+using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -8,7 +10,7 @@ namespace TruthCardGame
     /// Owns one game session: the player, the executor, and the draw loop.
     /// Lives in the Game scene. The UI reports through GamePanel.
     /// </summary>
-    public sealed class GameManager : MonoBehaviour, ICoroutineRunner
+    public sealed class GameManager : MonoBehaviour, ICoroutineRunner, IPromptService
     {
         [SerializeField] private CardDeck deck;
         [SerializeField] private GamePanel panel;
@@ -69,6 +71,19 @@ namespace TruthCardGame
         public void StartRoutine(IEnumerator routine)
         {
             StartCoroutine(routine);
+        }
+
+        // ---------- IPromptService ----------
+
+        public CustomYieldInstruction Ask(string prompt, IReadOnlyList<string> options, Action<int> onChosen)
+        {
+            var handle = new PromptHandle();
+            panel.ShowPrompt(prompt, options, i =>
+            {
+                handle.Resolve();
+                onChosen?.Invoke(i);
+            });
+            return handle;
         }
     }
 }

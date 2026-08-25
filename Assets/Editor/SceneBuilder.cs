@@ -169,11 +169,17 @@ namespace TruthCardGame.EditorTools
                 var panel = panelGo.AddComponent<GamePanel>();
                 var managerGo = new GameObject("GameManager");
                 var manager = managerGo.AddComponent<GameManager>();
+
+                var promptOverlay = CreatePromptOverlay(canvas.transform);
+
                 SetField(panel, "cardTitle", cardTitle);
                 SetField(panel, "status", status);
                 SetField(panel, "drawNextButton", drawNext);
                 SetField(panel, "menuButton", menuButton);
                 SetField(panel, "gameManager", manager);
+                SetField(panel, "promptRoot", promptOverlay.Root);
+                SetField(panel, "promptText", promptOverlay.PromptText);
+                SetField(panel, "promptContainer", promptOverlay.Container);
                 SetField(manager, "deck", AssetDatabase.LoadAssetAtPath<CardDeck>(SampleContentBuilder.StarterDeckPath));
                 SetField(manager, "panel", panel);
 
@@ -184,6 +190,41 @@ namespace TruthCardGame.EditorTools
 
                 drawNext.interactable = false;
             });
+        }
+
+        /// <summary>The choice-prompt overlay for ChoiceAction, inactive until a prompt shows.</summary>
+        private static PromptOverlay CreatePromptOverlay(Transform canvas)
+        {
+            var root = CreatePanel(canvas, "PromptOverlay", new Color(0f, 0f, 0f, 0.72f));
+            Stretch(root.rectTransform);
+            AddVerticalLayout(root.gameObject, 20f, new RectOffset(160, 160, 200, 200));
+
+            var prompt = CreateText(root.transform, "Choose", 44, TextAnchor.MiddleCenter, Color.white);
+            prompt.rectTransform.sizeDelta = new Vector2(0f, 70f);
+
+            var containerGo = new GameObject("Options", typeof(RectTransform));
+            containerGo.transform.SetParent(root.transform, false);
+            var container = containerGo.GetComponent<RectTransform>();
+            AddVerticalLayout(containerGo, 16f, new RectOffset(0, 0, 0, 0));
+            var fitter = containerGo.AddComponent<ContentSizeFitter>();
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            root.gameObject.SetActive(false);
+            return new PromptOverlay(root.gameObject, prompt, container);
+        }
+
+        private sealed class PromptOverlay
+        {
+            public GameObject Root;
+            public Text PromptText;
+            public RectTransform Container;
+
+            public PromptOverlay(GameObject root, Text promptText, RectTransform container)
+            {
+                Root = root;
+                PromptText = promptText;
+                Container = container;
+            }
         }
 
         /// <summary>Game-scene camera with a CinemachineBrain so a cut to a virtual camera is smooth.</summary>

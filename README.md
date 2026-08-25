@@ -89,3 +89,10 @@ ticket per phase, each with its own acceptance criteria and commit.
   fail to compile against 6000.5's obsolete-API-as-error). Sample cutscene card
   "A Familiar Face" added; its timeline is authored by hand in the Timeline
   window. 11/11 EditMode tests green.
+- **Ticket 3 — Choice action**: `ChoiceAction` (prompt + ordered options, each a
+  label + child `CardAction`; blocking by nature). Branches via
+  `IPromptService` (`CustomYieldInstruction`-based, implemented by GameManager
+  through GamePanel's runtime-built prompt overlay). Sample choice card
+  "Face the Crowd" added. Note: Unity's `CustomYieldInstruction` implements
+  `IEnumerator` (MoveNext = keepWaiting), which matters for coroutine drivers.
+  15/15 EditMode tests green.

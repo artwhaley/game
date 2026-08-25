@@ -53,12 +53,23 @@ namespace TruthCardGame.EditorTools
                 SetBool(action, "isBlocking", true);
             });
 
+            // A choice action: ask the player a question, branch on the answer.
+            var choice = GetOrCreateAction<ChoiceAction>(ActionsFolder + "/Choice_FaceTheCrowd.asset", action =>
+            {
+                SetString(action, "prompt", "The crowd leans in. How do you answer?");
+                SetBool(action, "isBlocking", true);
+                // Two options: brave it (courage) or shrug it off (a beat).
+                SetChoiceOption(action, 0, "Own it", courage);
+                SetChoiceOption(action, 1, "Shrug it off", continuous);
+            });
+
             var courageBoost = GetOrCreateCard(CardsFolder + "/CourageBoost.asset", "Courage Boost", new[] { "party", "truth" }, courage);
             var crowdWatches = GetOrCreateCard(CardsFolder + "/TheCrowdWatches.asset", "The Crowd Watches", new[] { "party", "dare" }, blocking);
             var ambientWhispers = GetOrCreateCard(CardsFolder + "/AmbientWhispers.asset", "Ambient Whispers", new[] { "solo", "truth" }, continuous);
             var dareCelebrate = GetOrCreateCard(CardsFolder + "/DareAndCelebrate.asset", "Dare & Celebrate", new[] { "party", "dare" }, courage, blocking);
             var twinWhispers = GetOrCreateCard(CardsFolder + "/TwinWhispers.asset", "Twin Whispers", new[] { "solo" }, continuous, continuous);
             var cutsceneIntro = GetOrCreateCard(CardsFolder + "/CutsceneIntro.asset", "A Familiar Face", new[] { "cutscene" }, cutscene);
+            var crowdChoice = GetOrCreateCard(CardsFolder + "/FaceTheCrowd.asset", "Face the Crowd", new[] { "party", "dare" }, choice);
 
             var deck = AssetDatabase.LoadAssetAtPath<CardDeck>(StarterDeckPath);
             if (deck == null)
@@ -66,7 +77,7 @@ namespace TruthCardGame.EditorTools
                 deck = ScriptableObject.CreateInstance<CardDeck>();
                 AssetDatabase.CreateAsset(deck, StarterDeckPath);
             }
-            var cards = new[] { courageBoost, crowdWatches, ambientWhispers, dareCelebrate, twinWhispers, cutsceneIntro };
+            var cards = new[] { courageBoost, crowdWatches, ambientWhispers, dareCelebrate, twinWhispers, cutsceneIntro, crowdChoice };
             var so = new SerializedObject(deck);
             var cardsProp = so.FindProperty("cards");
             cardsProp.arraySize = cards.Length;
@@ -78,7 +89,7 @@ namespace TruthCardGame.EditorTools
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log("[TruthCardGame] Sample content ready: 4 actions, 6 cards, starter deck.");
+            Debug.Log("[TruthCardGame] Sample content ready: 5 actions, 7 cards, starter deck.");
         }
 
         // ---------- asset helpers ----------
@@ -115,6 +126,17 @@ namespace TruthCardGame.EditorTools
             }
             so.ApplyModifiedPropertiesWithoutUndo();
             return card;
+        }
+
+        private static void SetChoiceOption(UnityEngine.Object target, int index, string label, CardAction action)
+        {
+            var so = new SerializedObject(target);
+            var prop = so.FindProperty("options");
+            prop.arraySize = Math.Max(prop.arraySize, index + 1);
+            var element = prop.GetArrayElementAtIndex(index);
+            element.FindPropertyRelative("label").stringValue = label;
+            element.FindPropertyRelative("action").objectReferenceValue = action;
+            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static void SetString(UnityEngine.Object target, string field, string value)
