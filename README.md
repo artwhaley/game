@@ -8,7 +8,8 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
 - Two action types: console debug (with optional delay) and stat increase.
 - Editor builders generate all scenes + a starter deck — no manual wiring.
 - EditMode tests cover the executor's filtering and sequencing.
-- Unity 6000.5.9f1 (install in progress at time of writing — see Requirements).
+- Verified working: compiles clean, all EditMode tests pass, scenes + starter content generated headlessly on 6000.5.9f1 (2026-08-24).
+- Unity 6000.5.9f1 installed via the Unity CLI (elevated) — see Requirements.
 - Development rules: [`agents.md`](agents.md) · Unity CLI notes: [`unity-cli.md`](unity-cli.md)
 
 ## How it works
@@ -49,15 +50,16 @@ Assets → Create → TruthCardGame → Card; give it tags + actions; add it to 
 
 ## Tests
 
-- EditMode tests in `Assets/Tests/EditMode` — executor filtering, blocking/continuous sequencing, seed actions. Run: Window → General → Test Runner → EditMode.
-- Requires **com.unity.test-framework** (Unity's own framework). If the test assembly reports missing references on first open, add it via Package Manager.
+- EditMode tests in `Assets/Tests/EditMode` — executor filtering, blocking/continuous sequencing, seed actions. Run: Window → General → Test Runner → EditMode, or `unity test . --mode EditMode` from the project root.
+- **com.unity.test-framework** and **com.unity.ugui** are pinned in `Packages/manifest.json` (the fresh-import default manifest lacks uGUI, which broke all UI scripts until added — don't remove it).
 
 ## Requirements & how to open
 
 1. Install Unity 6000.5.9f1 via Unity Hub.
 2. Hub → Add → Add project from disk → this folder, or `unity open .` (see [`unity-cli.md`](unity-cli.md)).
-3. First open generates `ProjectSettings` defaults + `Packages/manifest.json` — expected.
-4. Menu bar **TruthCardGame → Build Scenes**, then press Play in `Assets/Scenes/MainMenu.unity`.
+3. First open already happened — `ProjectSettings` defaults and `Packages/manifest.json` are committed.
+4. Scenes and starter content are committed too; regenerate any time via menu bar **TruthCardGame → Build Scenes**, then press Play in `Assets/Scenes/MainMenu.unity`.
+5. Headless equivalents (no editor GUI): compile check is just `-batchmode -quit`; content builders run via `-executeMethod TruthCardGame.EditorTools.SceneBuilder.BuildAllScenes` / `...SampleContentBuilder.EnsureSampleContent`.
 5. If UI clicks don't respond: Project Settings → Player → Active Input Handling should include **Input Manager (Old)** (or Both).
 
 ## Development log
@@ -69,3 +71,4 @@ Assets → Create → TruthCardGame → Card; give it tags + actions; add it to 
 - **Phase E** — Game scene runtime: `SessionConfig` handoff, `GameManager`, `GamePanel`.
 - **Phase F** — Menu & setup: `MenuController`, stub `SettingsDialog`, `GameSetupController` with tag toggles.
 - **Phase G** — Editor builders: `SceneBuilder` + `SampleContentBuilder` generate scenes and starter content.
+- **First Unity open** — fresh-import manifest lacked uGUI/test-framework (added both); ran builders headless; 8/8 tests pass; generated scenes, content, and ProjectSettings committed.
