@@ -99,13 +99,13 @@ namespace TruthCardGame.EditorTools
                 Stretch(root.rectTransform);
                 AddVerticalLayout(root.gameObject, 20f, new RectOffset(80, 80, 80, 80));
 
-                var title = CreateText(root.transform, "Choose what to draw", 56, TextAnchor.MiddleCenter, Color.white);
+                var title = CreateText(root.transform, "Pick a session", 56, TextAnchor.MiddleCenter, Color.white);
                 title.rectTransform.sizeDelta = new Vector2(0f, 80f);
 
-                var hint = CreateText(root.transform, "Tag ON = allowed · Tag OFF = excluded", 26, TextAnchor.MiddleCenter, new Color(0.75f, 0.75f, 0.75f));
+                var hint = CreateText(root.transform, "Tap a session, then start", 26, TextAnchor.MiddleCenter, new Color(0.75f, 0.75f, 0.75f));
                 hint.rectTransform.sizeDelta = new Vector2(0f, 40f);
 
-                var containerGo = new GameObject("TagList", typeof(RectTransform));
+                var containerGo = new GameObject("SessionList", typeof(RectTransform));
                 containerGo.transform.SetParent(root.transform, false);
                 var container = containerGo.GetComponent<RectTransform>();
                 AddVerticalLayout(containerGo, 12f, new RectOffset(0, 0, 0, 0));
@@ -117,8 +117,8 @@ namespace TruthCardGame.EditorTools
 
                 var controllerGo = new GameObject("GameSetupController");
                 var controller = controllerGo.AddComponent<GameSetupController>();
-                SetField(controller, "deck", AssetDatabase.LoadAssetAtPath<CardDeck>(SampleContentBuilder.StarterDeckPath));
-                SetField(controller, "toggleContainer", container);
+                SetField(controller, "library", AssetDatabase.LoadAssetAtPath<SessionLibrary>(SampleContentBuilder.SessionLibraryPath));
+                SetField(controller, "buttonContainer", container);
                 SetField(controller, "startButton", startButton);
             });
         }
@@ -298,8 +298,36 @@ namespace TruthCardGame.EditorTools
             var title = CreateText(dialog.transform, "Settings", 44, TextAnchor.MiddleCenter, Color.white);
             title.rectTransform.sizeDelta = new Vector2(0f, 60f);
 
-            var body = CreateText(dialog.transform, "Nothing here yet.", 26, TextAnchor.MiddleCenter, new Color(0.75f, 0.75f, 0.75f));
+            var body = CreateText(dialog.transform, "Session length", 26, TextAnchor.MiddleCenter, new Color(0.75f, 0.75f, 0.75f));
             body.rectTransform.sizeDelta = new Vector2(0f, 50f);
+
+            var sliderRow = new GameObject("SliderRow", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+            sliderRow.transform.SetParent(dialog.transform, false);
+            sliderRow.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, 48f);
+
+            var sliderGo = new GameObject("Slider", typeof(RectTransform), typeof(Image), typeof(Slider));
+            sliderGo.transform.SetParent(sliderRow.transform, false);
+            var sliderBg = sliderGo.GetComponent<Image>();
+            sliderBg.sprite = WhiteSprite();
+            sliderBg.color = new Color(0.12f, 0.12f, 0.16f);
+            var slider = sliderGo.GetComponent<Slider>();
+            slider.targetGraphic = sliderBg;
+            sliderGo.GetComponent<RectTransform>().sizeDelta = new Vector2(520f, 24f);
+
+            var fillGo = new GameObject("Fill", typeof(RectTransform), typeof(Image));
+            fillGo.transform.SetParent(sliderGo.transform, false);
+            var fillImg = fillGo.GetComponent<Image>();
+            fillImg.sprite = WhiteSprite();
+            fillImg.color = new Color(0.25f, 0.45f, 0.9f);
+            var fillRt = fillGo.GetComponent<RectTransform>();
+            fillRt.anchorMin = new Vector2(0f, 0f);
+            fillRt.anchorMax = new Vector2(1f, 1f);
+            fillRt.offsetMin = Vector2.zero;
+            fillRt.offsetMax = Vector2.zero;
+            slider.fillRect = fillRt;
+
+            var valueText = CreateText(sliderRow.transform, "1.0x", 28, TextAnchor.MiddleRight, Color.white);
+            valueText.rectTransform.sizeDelta = new Vector2(90f, 48f);
 
             var close = CreateButton(dialog.transform, "Close");
             close.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, 56f);
@@ -308,6 +336,8 @@ namespace TruthCardGame.EditorTools
             var controller = controllerGo.AddComponent<SettingsDialog>();
             SetField(controller, "root", overlay.gameObject);
             SetField(controller, "closeButton", close);
+            SetField(controller, "lengthSlider", slider);
+            SetField(controller, "lengthValue", valueText);
 
             overlay.gameObject.SetActive(false);
             return controller;

@@ -17,7 +17,7 @@ namespace TruthCardGame.EditorTools
         private const string CardsFolder = "Assets/Content/Cards";
         private const string DeckFolder = "Assets/Content/Deck";
         private const string SessionsFolder = "Assets/Content/Sessions";
-        private const string SessionLibraryPath = SessionsFolder + "/SessionLibrary.asset";
+        public const string SessionLibraryPath = SessionsFolder + "/SessionLibrary.asset";
 
         [MenuItem("TruthCardGame/Create Sample Content")]
         public static void EnsureSampleContent()

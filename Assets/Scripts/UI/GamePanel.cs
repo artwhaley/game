@@ -57,6 +57,13 @@ namespace TruthCardGame
             drawNextButton.interactable = false;
         }
 
+        public void ShowSessionComplete()
+        {
+            cardTitle.text = "Session complete";
+            status.text = "Returning to menu…";
+            drawNextButton.interactable = false;
+        }
+
         // ---------- choice prompt ----------
 
         /// <summary>Shows the choice overlay with one button per option. Buttons resolve via onChosen.</summary>

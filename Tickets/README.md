@@ -14,7 +14,7 @@ only when every acceptance checkbox is checked and the commit is in.
 | 3 | Choice action | Done |
 | 4 | Session/Phase data | Done |
 | 5 | SessionDriver core | Done |
-| 6 | Screen rework + settings | Open |
+| 6 | Screen rework + settings | Done |
 
 Status values: Open → In progress → Done (acceptance met, commit landed).
 

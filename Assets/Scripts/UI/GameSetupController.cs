@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -6,80 +5,69 @@ using UnityEngine.UI;
 namespace TruthCardGame
 {
     /// <summary>
-    /// Setup screen: builds one toggle per distinct deck tag (default on).
-    /// Tag ON = cards with that tag are allowed; OFF = cards with that tag are
-    /// excluded this session. Start Game writes the filter to SessionConfig
-    /// and loads the Game scene.
+    /// Setup screen: pick which session (game type) to play. Reads the
+    /// SessionLibrary asset, builds one button per session, and writes the
+    /// selection to SessionConfig before loading the Game scene.
     /// </summary>
     public sealed class GameSetupController : MonoBehaviour
     {
-        [SerializeField] private CardDeck deck;
-        [SerializeField] private RectTransform toggleContainer;
+        [SerializeField] private SessionLibrary library;
+        [SerializeField] private RectTransform buttonContainer;
         [SerializeField] private Button startButton;
 
-        private readonly List<Toggle> _toggles = new List<Toggle>();
+        private Session _selected;
 
         private void Start()
         {
-            if (startButton != null) startButton.onClick.AddListener(StartGame);
-            if (deck == null)
+            if (library == null)
             {
-                Debug.LogError("[TruthCardGame] GameSetupController has no deck assigned. Rebuild with TruthCardGame → Build Scenes.");
+                Debug.LogError("[TruthCardGame] GameSetupController has no session library assigned. Rebuild with TruthCardGame → Build Scenes.");
                 return;
             }
-            foreach (var tag in deck.DistinctTags())
+            foreach (var session in library.Sessions)
             {
-                _toggles.Add(CreateToggle(tag));
+                if (session == null) continue;
+                CreateSessionButton(session);
             }
+            if (startButton != null) startButton.onClick.AddListener(StartGame);
         }
 
         public void StartGame()
         {
-            // Ticket 6 replaces the tag toggles with a session picker. Until
-            // then, the Game scene draws from the whole deck (no filters).
+            if (_selected == null)
+            {
+                Debug.LogWarning("[TruthCardGame] Pick a session first.");
+                return;
+            }
+            SessionConfig.SelectedSession = _selected;
             SceneManager.LoadScene("Game");
         }
 
-        private Toggle CreateToggle(string tag)
+        private void CreateSessionButton(Session session)
         {
-            var go = new GameObject("Toggle_" + tag, typeof(RectTransform), typeof(Image), typeof(Toggle));
-            go.transform.SetParent(toggleContainer, false);
-            go.GetComponent<RectTransform>().sizeDelta = new Vector2(0f, 48f);
-
-            var image = go.GetComponent<Image>();
-            image.sprite = WhiteSprite();
-            image.color = new Color(0.16f, 0.16f, 0.2f);
-
-            var toggle = go.GetComponent<Toggle>();
-            toggle.targetGraphic = image;
+            var go = new GameObject("SessionButton", typeof(RectTransform), typeof(Image), typeof(Button));
+            go.transform.SetParent(buttonContainer, false);
+            var img = go.GetComponent<Image>();
+            img.sprite = WhiteSprite();
+            img.color = new Color(0.25f, 0.45f, 0.9f);
+            var button = go.GetComponent<Button>();
+            button.targetGraphic = img;
+            button.onClick.AddListener(() => _selected = session);
+            var rect = go.GetComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(0f, 64f);
 
             var label = new GameObject("Label", typeof(RectTransform), typeof(Text));
             label.transform.SetParent(go.transform, false);
             var text = label.GetComponent<Text>();
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.text = tag;
-            text.fontSize = 28;
-            text.alignment = TextAnchor.MiddleLeft;
+            text.text = session.Title;
+            text.fontSize = 30;
+            text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.white;
-            text.rectTransform.anchorMin = new Vector2(0f, 0f);
-            text.rectTransform.anchorMax = new Vector2(1f, 1f);
-            text.rectTransform.offsetMin = new Vector2(20f, 0f);
-            text.rectTransform.offsetMax = new Vector2(-120f, 0f);
-
-            var check = new GameObject("Checkmark", typeof(RectTransform), typeof(Image));
-            check.transform.SetParent(go.transform, false);
-            var checkImage = check.GetComponent<Image>();
-            checkImage.sprite = WhiteSprite();
-            checkImage.color = new Color(0.35f, 0.8f, 0.45f);
-            checkImage.rectTransform.anchorMin = new Vector2(1f, 0.5f);
-            checkImage.rectTransform.anchorMax = new Vector2(1f, 0.5f);
-            checkImage.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-            checkImage.rectTransform.sizeDelta = new Vector2(24f, 24f);
-            checkImage.rectTransform.anchoredPosition = new Vector2(-44f, 0f);
-
-            toggle.graphic = checkImage;
-            toggle.isOn = true;
-            return toggle;
+            text.rectTransform.anchorMin = Vector2.zero;
+            text.rectTransform.anchorMax = Vector2.one;
+            text.rectTransform.offsetMin = Vector2.zero;
+            text.rectTransform.offsetMax = Vector2.zero;
         }
 
         private static Sprite _white;

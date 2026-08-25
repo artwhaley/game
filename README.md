@@ -109,3 +109,11 @@ ticket per phase, each with its own acceptance criteria and commit.
   draw (grow extends, shrink can end the phase immediately). Early advance
   with a warning when no card matches; completion after the last phase.
   22/22 EditMode tests green.
+- **Ticket 6 — Screen rework + settings**: setup screen is now a session picker
+  (buttons from SessionLibrary → SessionConfig.SelectedSession). Settings
+  dialog gains a live length-modifier slider (0.5x–3x) writing
+  SessionConfig.LengthModifier. GameManager draws through SessionDriver
+  per-phase: card completes → driver advances → last phase → "Session complete"
+  → back to menu; no matching card → early advance with warning. The old tag
+  toggles are gone. 22/22 EditMode tests green. The full play loop needs a
+  human Play-mode pass in the editor.
