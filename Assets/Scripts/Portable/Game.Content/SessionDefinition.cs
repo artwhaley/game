@@ -9,6 +9,8 @@ namespace TruthCardGame.Content
 
         public string Title { get; set; } = "";
         public List<string> Tags { get; set; } = new List<string>();
-        public List<PhaseDefinition> Phases { get; set; } = new List<PhaseDefinition>();
+
+        /// <summary>Ordered session-owned slots; each slot's candidates reference reusable Phases.</summary>
+        public List<PhaseSlotDefinition> PhaseSlots { get; set; } = new List<PhaseSlotDefinition>();
     }
 }

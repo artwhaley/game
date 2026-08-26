@@ -7,7 +7,10 @@ namespace TruthCardGame.Content
 
         public string Label { get; set; } = "";
 
-        /// <summary>May be null: a chosen option with no child action is a no-op (matching baseline).</summary>
-        public GameActionDefinition Child { get; set; }
+        /// <summary>
+        /// ID of the child Action, or null/empty for a legal no-op option
+        /// (baseline "Cautious" semantics). Never embeds the Action.
+        /// </summary>
+        public string ChildActionId { get; set; }
     }
 }
