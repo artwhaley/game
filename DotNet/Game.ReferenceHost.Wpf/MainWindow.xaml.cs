@@ -13,11 +13,12 @@ using TruthCardGame.Core;
 namespace TruthCardGame.ReferenceHost.Wpf
 {
     /// <summary>
-    /// Thin reference player: loads the SFW JSON fixture, feeds it to the
-    /// portable GameSessionEngine, and mirrors Core state. Every gameplay rule
-    /// (tag matching, draw selection, no-match skipping, action sequencing,
-    /// blocking/background semantics, completion) lives in Game.Core — this
-    /// window only hosts UI services and forwards Draw Next clicks.
+    /// Thin reference player: loads the canonical SQLite content DB, feeds it
+    /// to the portable GameSessionEngine, and mirrors Core state. Every
+    /// gameplay rule (tag matching, draw selection, no-match skipping, action
+    /// sequencing, blocking/background semantics, completion) lives in
+    /// Game.Core — this window only hosts UI services and forwards Draw Next
+    /// clicks. This is the seed of the future WPF authoring workstation.
     /// </summary>
     public partial class MainWindow : Window
     {
