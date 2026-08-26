@@ -8,12 +8,17 @@ what's open, and where it should go next.*
 > §3 now live in portable `Game.Content`/`Game.Core` assemblies under
 > `Assets/Scripts/Portable/`, consumed by Unity (thin host) and a WPF reference
 > player; the coroutine engine, `CardExecutor`, old prompt/cutscene contracts
-> and `SessionDriver` Unity copy were removed. See
-> [`Docs/CoreExtraction/`](Docs/CoreExtraction/) for the factual baseline,
-> extraction map, and parity report, and the README "How it works"/"Tests"
-> sections for current commands. §3.5's test counts predate this milestone;
-> current: 8 EditMode adapter tests + 2 PlayMode smoke tests + 85 portable
-> tests via `dotnet test`. The cutscene timeline assignment (§6.1) remains open.
+> and `SessionDriver` Unity copy were removed. **Sections §3, §3.4, §3.5 and
+> the dev-log/ticket history below describe that pre-extraction architecture
+> and are kept for background only** — current truth: README "How it works",
+> [`Docs/CoreExtraction/FINAL-REPORT.md`](Docs/CoreExtraction/FINAL-REPORT.md),
+> and [`Docs/CoreExtraction/02-parity-report.md`](Docs/CoreExtraction/02-parity-report.md).
+> Current test posture: 8 EditMode conversion tests + 2 PlayMode smoke tests +
+> 87 portable tests via `dotnet test`; human Play-mode passes of both hosts are
+> complete. The cutscene timeline assignment (§6.1) remains open. Note on §3.3:
+> the scene/content builders remain useful bootstrap/editor automation; they
+> are not a standing law that visual Unity work must always be reconstructed
+> from C#.
 
 Companion docs: [`agents.md`](agents.md) (operating rules),
 [`README.md`](README.md) (current status + dev log),

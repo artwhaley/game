@@ -60,40 +60,53 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private async void OnStartSession(object sender, RoutedEventArgs e)
         {
-            if (_document == null || SessionCombo.SelectedItem is not SessionDefinition selected)
+            try
             {
-                Log("No session selected.");
-                return;
+                if (_document == null || SessionCombo.SelectedItem is not SessionDefinition selected)
+                {
+                    Log("No session selected.");
+                    return;
+                }
+
+                CancelSession();
+                _sessionCts = new CancellationTokenSource();
+
+                var services = new CoreServices(
+                    delay: new WpfGameDelay(),
+                    log: new UiGameLog(Log),
+                    prompts: new UiPromptService(this),
+                    cutscene: new UiCutsceneService(this));
+
+                _engine = new GameSessionEngine(
+                    selected,
+                    _document.Deck,
+                    () => _lengthModifier,
+                    phaseRng: new SystemRandomSource(7),
+                    cardRng: new SystemRandomSource(11),
+                    services);
+
+                SubscribeEngine();
+
+                ClearInteractionArea();
+                SessionTitle.Text = selected.Title;
+                PhaseTitle.Text = "—";
+                CardTitle.Text = "—";
+                SetStatus("Starting…");
+                DrawNextButton.IsEnabled = false;
+                Log($"Session started: {selected.Title} (length {_lengthModifier:0.0}x, fixed seeds)");
+
+                await AdvanceAsync();
             }
-
-            CancelSession();
-            _sessionCts = new CancellationTokenSource();
-
-            var services = new CoreServices(
-                delay: new WpfGameDelay(),
-                log: new UiGameLog(Log),
-                prompts: new UiPromptService(this),
-                cutscene: new UiCutsceneService(this));
-
-            _engine = new GameSessionEngine(
-                selected,
-                _document.Deck,
-                () => _lengthModifier,
-                phaseRng: new SystemRandomSource(7),
-                cardRng: new SystemRandomSource(11),
-                services);
-
-            SubscribeEngine();
-
-            ClearInteractionArea();
-            SessionTitle.Text = selected.Title;
-            PhaseTitle.Text = "—";
-            CardTitle.Text = "—";
-            SetStatus("Starting…");
-            DrawNextButton.IsEnabled = false;
-            Log($"Session started: {selected.Title} (length {_lengthModifier:0.0}x, fixed seeds)");
-
-            await AdvanceAsync();
+            catch (OperationCanceledException)
+            {
+                Log("Session start canceled.");
+            }
+            catch (Exception ex)
+            {
+                // Invalid content must surface here, not as a dispatcher crash.
+                SetStatus("Error");
+                Log("ERROR starting session: " + ex.Message);
+            }
         }
 
         private async void OnDrawNext(object sender, RoutedEventArgs e)
@@ -194,11 +207,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
             if (ct.CanBeCanceled)
             {
-                ct.Register(() =>
+                var registration = ct.Register(() =>
                 {
-                    ClearInteractionArea();
+                    RunOnUi(ClearInteractionArea);
                     completion.TrySetCanceled(ct);
                 });
+                completion.Task.ContinueWith(_ => registration.Dispose(), TaskScheduler.Default);
             }
 
             RunOnUi(() =>
@@ -239,11 +253,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
             if (ct.CanBeCanceled)
             {
-                ct.Register(() =>
+                var registration = ct.Register(() =>
                 {
-                    ClearInteractionArea();
+                    RunOnUi(ClearInteractionArea);
                     completion.TrySetCanceled(ct);
                 });
+                completion.Task.ContinueWith(_ => registration.Dispose(), TaskScheduler.Default);
             }
 
             RunOnUi(() =>

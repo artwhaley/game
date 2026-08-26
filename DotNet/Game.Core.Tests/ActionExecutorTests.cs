@@ -89,6 +89,26 @@ namespace TruthCardGame.Core
             Assert.That(log.Entries.Single(e => e.StartsWith("error:")), Does.Contain("boom"));
         }
 
+        [Test]
+        public async Task Drain_Quiesces_WhenBackgroundFaultsAfterSnapshot()
+        {
+            var log = new RecordingLog();
+            var tracker = new BackgroundActionTracker(log);
+
+            // Fault lands well after DrainAsync snapshots the active task:
+            // draining is pure quiescing — the observer already logged it.
+            tracker.Start(Task.Run(async () =>
+            {
+                await Task.Delay(50);
+                throw new InvalidOperationException("late boom");
+            }));
+
+            await tracker.DrainAsync();
+
+            Assert.AreEqual(0, tracker.ActiveCount);
+            Assert.That(log.Entries.Single(e => e.StartsWith("error:")), Does.Contain("late boom"));
+        }
+
         // ---------- debug / stat ----------
 
         [Test]

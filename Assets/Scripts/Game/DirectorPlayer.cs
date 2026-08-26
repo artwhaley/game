@@ -37,13 +37,16 @@ namespace TruthCardGame
                 return;
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
+
             director.Play(asset);
             while (IsPlaying)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    director.Stop();
-                    return;
+                    if (director != null) director.Stop();
+                    // Cancellation must propagate as cancellation — never report success.
+                    cancellationToken.ThrowIfCancellationRequested();
                 }
                 await Task.Yield();
             }

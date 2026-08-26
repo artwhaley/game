@@ -41,8 +41,13 @@ namespace TruthCardGame
 
             _lifetimeCts = new CancellationTokenSource();
             _cutsceneRegistry = new CutsceneBindingRegistry();
-            directorPlayer.Bind(_cutsceneRegistry);
+            if (directorPlayer != null)
+            {
+                directorPlayer.Bind(_cutsceneRegistry);
+            }
 
+            // Cutscene service stays optional (Core has tested missing-service
+            // no-op behavior); scenes without a DirectorPlayer must still run.
             var services = new CoreServices(
                 delay: new UnityGameDelay(),
                 log: new UnityGameLog(),

@@ -278,6 +278,51 @@ namespace TruthCardGame.Core
             Assert.IsFalse(engine.IsBusy);
         }
 
+        /// <summary>Buggy-host simulation: returns normally when cancelled instead of throwing.</summary>
+        private sealed class SwallowingCutsceneService : ICutsceneService
+        {
+            public async Task PlayAsync(string resourceId, CancellationToken cancellationToken)
+            {
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    // swallowed — the defect under test
+                }
+            }
+        }
+
+        [Test]
+        public async Task Cancellation_DuringFinalAction_NeverCommitsCardCompletion()
+        {
+            var log = new RecordingLog();
+            var cts = new CancellationTokenSource();
+            var cutCard = new CardDefinition { Title = "Cut", Tags = { "cs" } };
+            cutCard.Actions.Add(new CutsceneActionDefinition { ResourceId = "cs:x" });
+            var engine = MakeEngine(
+                MakeSession(Phase(1, 1)),
+                Deck(cutCard),
+                log, new FakeDelayService(), cutscenes: new SwallowingCutsceneService());
+
+            var blocked = engine.AdvanceOneCardAsync(cts.Token);
+            await Task.Yield();
+            Assert.IsTrue(engine.IsBusy);
+
+            cts.Cancel();
+
+            // Even though the host service swallowed its cancellation, Core must
+            // refuse to commit the card: OCE propagates, no completion events,
+            // no progression, engine returns to idle and stays usable.
+            Assert.That(async () => await blocked, Throws.InstanceOf<OperationCanceledException>());
+            CollectionAssert.Contains(_eventOrder, "started:Cut");
+            CollectionAssert.DoesNotContain(_eventOrder, "finished:Cut");
+            CollectionAssert.DoesNotContain(_eventOrder, "completed");
+            Assert.IsFalse(engine.IsComplete);
+            Assert.IsFalse(engine.IsBusy);
+        }
+
         [Test]
         public async Task Cancellation_ReleasesBusyState_EngineNotStuck()
         {

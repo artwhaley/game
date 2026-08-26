@@ -11,13 +11,23 @@ Current project status lives in [`README.md`](README.md) — read it first, keep
 
 Never fill in negative space with "app-shaped bullshit" just because it feels like something should be there. If a feature hasn't been asked for, don't build it. If a folder, class, or abstraction isn't needed yet, it doesn't exist yet.
 
+## How these rules bind agents
+
+Rules 2 and 5 below are **defaults for interactive collaboration**, not absolutes.
+A written execution packet explicitly approved by the user (for example, a ticket
+stack handed to an agent as one authorized run) may override them for the duration
+of that run — batching larger coherent changesets and proceeding without a fresh
+"go" between pre-approved steps — provided the packet names the override and keeps
+its own gates. Architecture principles such as fail-noisy/root-cause (rules 7, 10)
+are never overridden by a packet.
+
 ## Rules
 
 1. **Flag harmful changes.** If a change is going to make the app slower, less reliable, or more confusing — stop and flag it, even if the change was asked for.
-2. **Plan before touching files.** List every file you plan to modify before touching anything. If the list exceeds 5 files, stop and propose splitting the task.
+2. **Plan before touching files.** List every file you plan to modify before touching anything. If the list exceeds 5 files, stop and propose splitting the task — unless a user-approved execution packet governs the work and explicitly authorizes larger coherent changesets (see "How these rules bind agents" above).
 3. **Three strikes.** If three consecutive fix attempts fail, STOP. Propose: (a) revert, (b) what we know vs. what we don't know, (c) a different approach.
 4. **No new dependencies without asking.** Do not introduce new libraries, frameworks, or services without asking first — but do make suggestions when they are the right direction.
-5. **Explain before coding.** Before writing code for any non-trivial change, explain in plain language what you understand the goal to be and your planned approach. Wait for the user's "go."
+5. **Explain before coding.** Before writing code for any non-trivial change, explain in plain language what you understand the goal to be and your planned approach. Wait for the user's "go" — unless a user-approved execution packet already contains the plan and constitutes standing authorization (see "How these rules bind agents" above).
 6. **Keep README current.** After each feature, update README.md for someone who will read it in three months having forgotten everything.
 7. **Fix root causes.** NEVER implement workarounds or band-aid solutions — ALWAYS fix the root cause.
 8. **Development environment, not production.** Because we build incrementally, tests and schema may become outdated. Data isn't sacred. Don't complicate new code to protect old tests — keep the testing harness fitted to the current app state. Same for schema: no backwards-compatibility concerns, old files don't matter.

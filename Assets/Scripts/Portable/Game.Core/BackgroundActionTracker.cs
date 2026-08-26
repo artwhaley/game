@@ -61,7 +61,13 @@ namespace TruthCardGame.Core
             }
         }
 
-        /// <summary>Awaits until no background work remains (stable across newly spawned children).</summary>
+        /// <summary>
+        /// Awaits until no background work remains (stable across newly spawned
+        /// children). Quiesce semantics: faults are already observed and logged
+        /// by the tracker, so draining never rethrows them regardless of
+        /// whether a task faulted before or after the drain snapshot. Expected
+        /// cancellation during teardown is likewise silent.
+        /// </summary>
         public async Task DrainAsync()
         {
             while (true)
@@ -73,9 +79,9 @@ namespace TruthCardGame.Core
                 {
                     await Task.WhenAll(snapshot);
                 }
-                catch (OperationCanceledException)
+                catch (Exception)
                 {
-                    // Expected during teardown; completion/faults are handled by the observer.
+                    // Intentional: completion/faults are handled and logged by the observer.
                 }
             }
         }

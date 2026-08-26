@@ -92,15 +92,22 @@ Summary of final runs:
 
 | Suite | Command | Result |
 |---|---|---|
-| Portable automated (engine+serializer) | `dotnet test Game.Workbench.sln` | **85/85 PASS** |
+| Portable automated (engine+serializer) | `dotnet test Game.Workbench.sln` | **87/87 PASS** (incl. cancellation commit-boundary + drain quiesce invariants added by the remediation pass) |
 | Unity EditMode | batch `-runTests -testPlatform EditMode` | **8/8 PASS** |
 | Unity PlayMode smoke | batch `-runTests -testPlatform PlayMode` | **2/2 PASS** |
-| Unity manual sample flow | interactive editor | **NOT RUN — BLOCKED/UNVERIFIED** (headless environment; pre-existing gap at baseline too) |
-| WPF manual play | interactive | **PARTIAL** — builds; launches with fixture; clean exit 0; interactive end-to-end NOT exercised |
+| Unity manual sample flow | interactive editor, MANUAL-TEST-GUIDE §B | **PASS (human)** — full loop verified post-remediation |
+| WPF manual play | interactive, MANUAL-TEST-GUIDE §C | **PASS (human)** — deterministic fixture end-to-end incl. prompt/cutscene/slider/restart |
 | Authored Timeline playback | — | **PRE-EXISTING UNVERIFIED** (baseline open item; adapter semantics unit-proven) |
 
-Per packet rules, because the Unity manual column is UNVERIFIED the milestone
-is **not declared fully complete** — everything automatable is green and honest.
+Post-review remediation pass landed: cancellation commit boundary +
+DirectorPlayer cancellation correctness, abstract `ToDefinition` (fail-noisy
+conversion), optional DirectorPlayer wiring, drain quiesce semantics,
+WPF registration/crash hardening, and root documentation truth-up
+(README/OVERVIEW historical markers; `agents.md` rules 2/5 now overridable
+by an approved execution packet). Deferred follow-ups are ledgered in
+[`DEFERRED.md`](DEFERRED.md). With the human passes complete, every column of
+the parity report is green except authored Timeline playback, which was open
+at baseline and remains a content task.
 
 ## 8. Preserved-but-questionable behavior (intentional, do not fix here)
 
@@ -120,9 +127,8 @@ is **not declared fully complete** — everything automatable is green and hones
 
 ## 9. Known limitations
 
-1. **Unity manual verification blocked** in this environment (headless agent);
-   human Play-mode pass owed (menu → session pick → phased draws → choice
-   overlay → completion beat → menu return).
+1. ~~Unity/WPF manual verification~~ **Resolved**: both human passes completed
+   against [`MANUAL-TEST-GUIDE.md`](MANUAL-TEST-GUIDE.md) after the remediation pass.
 2. Authored Timeline still unassigned/unplayed — carried over unchanged from
    baseline (repo Ticket 2); drawing "A Familiar Face" logs the configured
    missing-resource error until a timeline is authored.
@@ -137,6 +143,9 @@ is **not declared fully complete** — everything automatable is green and hones
 6. JSON is a spike: schemaVersion 1, embedded sessions/deck, cutscene resource
    ids are registry keys in Unity but arbitrary strings elsewhere; stable
    content IDs deliberately deferred to the authoring milestone.
+7. Choice-conversion recursion has no cycle guard yet — an authoring cycle
+   (A→B→A) would overflow during conversion; validator + identity model
+   (DEFERRED.md items 1–3) own that fix deliberately.
 
 ## 10. Next milestone recommendation
 

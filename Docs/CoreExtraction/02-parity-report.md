@@ -53,15 +53,29 @@ Crossroads → The End), prompt answer "Brave", fake cutscene completion.
 Asserts exact card order, exact lifecycle event sequence, prompt labels/order,
 cutscene resource id, final stats (courage 2, brave 5), drained background work.
 
-## Verification columns (Ticket 13 final pass)
+## Verification columns (final, after remediation pass + human verification)
 
 | Mechanic area | Portable automated | Unity automated | Unity manual | WPF manual |
 |---|---|---|---|---|
-| Session progression / selection / actions / engine | **PASS** (77 engine tests + 8 serializer tests) | **PASS** — EditMode 8/8, PlayMode smoke 2/2 (re-run after JSON/WPF work) | **BLOCKED/UNVERIFIED** — batch/headless environment, no interactive GUI session; human Play-mode pass still owed. Same open item existed at baseline per repo README. | **PARTIAL** — WPF app builds; process launches, survives startup with fixture loaded, closes cleanly (exit 0); interactive end-to-end play NOT exercised (headless). |
-| ScriptableObject conversion fidelity | n/a | **PASS** (ContentAdapterTests, 8 tests) | BLOCKED/UNVERIFIED (same reason) | n/a |
-| Host adapters at runtime (scaled-time delay, UnityRandomSource draws, wrapper→definition→engine chain) | n/a | **PASS** (HostSmokeTests, PlayMode, headless batch) | BLOCKED/UNVERIFIED | n/a |
-| JSON schemaVersion 1 round-trip incl. recursive choice/cutscene id/null entries | **PASS** (8 ContentJsonTests) | n/a (Unity does not consume serializer by design) | n/a | PASS-by-fixture-load at startup (full interactive play pending human pass) |
-| Authored Timeline playback | n/a | PRE-EXISTING UNVERIFIED at baseline (AD-25) | PRE-EXISTING UNVERIFIED | n/a |
+| Session progression / selection / actions / engine | **PASS** (87 engine/serializer tests incl. cancellation commit boundary + drain quiesce) | **PASS** — EditMode 8/8, PlayMode smoke 2/2 | **PASS (human)** — MANUAL-TEST-GUIDE sections B1–B9 executed by the user: menu/settings/session picker, automatic first draw, one-card-per-click pacing, choice overlay both branches, cutscene card degrades with expected logged error, live mid-phase slider extend/shrink, completion beat → menu return, clean console. | **PASS (human)** — MANUAL-TEST-GUIDE sections C1–C11 executed by the user: deterministic fixture order Warm Two→Warm One→Crossroads→The End, blocking prompt + cutscene placeholder semantics, background stat logging, live slider mid-phase, restart/cancel safety, clean close. |
+| ScriptableObject conversion fidelity | n/a | **PASS** (ContentAdapterTests, 8 tests; `ToDefinition` now abstract — compiler-enforced participation) | PASS (human pass exercised converted content end-to-end) | n/a |
+| Host adapters at runtime (scaled-time delay, UnityRandomSource draws, wrapper→definition→engine chain) | n/a | **PASS** (HostSmokeTests, PlayMode, headless batch) | PASS (human) | n/a |
+| Cancellation/lifecycle hardening | **PASS** (`Cancellation_DuringFinalAction_NeverCommitsCardCompletion`, `Drain_Quiesces_WhenBackgroundFaultsAfterSnapshot`) | compiles; covered indirectly by human scene-exit checks | PASS (human: session exit/menu return clean) | PASS (human: restart/close during pending waits) |
+| JSON schemaVersion 1 round-trip incl. recursive choice/cutscene id/null entries | **PASS** (8 ContentJsonTests) | n/a (Unity does not consume serializer by design) | n/a | PASS (fixture loads at startup; full play exercised) |
+| Authored Timeline playback | n/a | PRE-EXISTING UNVERIFIED (AD-25) — see DEFERRED.md item 7 | PRE-EXISTING UNVERIFIED | n/a |
+
+### Remediation pass record (post-review, same milestone)
+
+Accepted findings from external review, all landed and gated:
+1. `DirectorPlayer` throws on cancellation (no more success-on-cancel).
+2. `GameSessionEngine` commit boundary between action execution and `CardFinished`/progression (+ invariant test against a cancellation-swallowing host service).
+3. `CardAction.ToDefinition` made abstract (fail noisy over silently vanishing actions).
+4. `GameManager` treats `DirectorPlayer` as optional, matching Core's tested missing-cutscene-service behavior.
+5. WPF: session-start wrapped in try/catch (invalid content surfaces in UI, not a dispatcher crash); cancellation registrations disposed; callbacks marshaled via `RunOnUi`.
+6. `BackgroundActionTracker.DrainAsync` defined as quiesce semantics (faults observed/logged once; never rethrown regardless of snapshot timing) (+ delayed-fault test).
+7. Root docs truth-up: README "How it works"/"Extending" describe the portable architecture; pre-extraction log/tickets marked historical; PROJECT-OVERVIEW addendum marks §3–§3.5 historical; `agents.md` rules 2/5 are now defaults overridable by an approved execution packet.
+
+Deferred items ledger: [`DEFERRED.md`](DEFERRED.md).
 
 ## Cross-host duplication search result
 

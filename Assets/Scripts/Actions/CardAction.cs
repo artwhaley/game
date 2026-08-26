@@ -15,10 +15,11 @@ namespace TruthCardGame
 
         public bool IsBlocking => isBlocking;
 
-        /// <summary>Converts to the portable definition; base means "no action" for legacy/test subclasses.</summary>
-        public virtual TruthCardGame.Content.GameActionDefinition ToDefinition(CutsceneBindingRegistry registry)
-        {
-            return null;
-        }
+        /// <summary>
+        /// Converts this asset to its portable definition. Abstract on purpose:
+        /// every action wrapper must participate in the portable engine or the
+        /// project does not compile (fail noisy over silently vanishing content).
+        /// </summary>
+        public abstract TruthCardGame.Content.GameActionDefinition ToDefinition(CutsceneBindingRegistry registry);
     }
 }

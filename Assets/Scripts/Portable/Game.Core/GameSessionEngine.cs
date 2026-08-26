@@ -118,6 +118,11 @@ namespace TruthCardGame.Core
                     var context = new GameContext(Player, _services);
                     await _executor.ExecuteCardAsync(card, context, cancellationToken);
 
+                    // Commit boundary: a cancelled advance must never emit
+                    // completion events or progress the session, even if a
+                    // host service swallowed its cancellation.
+                    cancellationToken.ThrowIfCancellationRequested();
+
                     CardFinished?.Invoke(card);
 
                     var beforePhase = _driver.PhaseIndex;
