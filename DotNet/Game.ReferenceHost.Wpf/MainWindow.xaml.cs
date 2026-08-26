@@ -1,11 +1,13 @@
 using System;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using Microsoft.Data.Sqlite;
 using TruthCardGame.Content;
-using TruthCardGame.Content.Samples;
+using TruthCardGame.Content.Sqlite;
 using TruthCardGame.Core;
 
 namespace TruthCardGame.ReferenceHost.Wpf
@@ -34,19 +36,21 @@ namespace TruthCardGame.ReferenceHost.Wpf
             Loaded += (_, _) => LoadContent();
         }
 
-        // ---------- content loading ----------
+        // ---------- content loading (canonical SQLite) ----------
 
         private void LoadContent()
         {
             try
             {
-                // Temporary in-memory sample snapshot; Ticket 09 replaces this
-                // with a load from the canonical Content/GameContent.db.
-                _content = SampleContent.Build();
+                var path = ResolveDatabasePath();
+                using (var connection = new SqliteConnection("Data Source=" + path))
+                {
+                    _content = GameContentSnapshotLoader.Load(connection);
+                }
                 SessionCombo.ItemsSource = _content.Sessions;
                 SessionCombo.DisplayMemberPath = nameof(SessionDefinition.Title);
                 SessionCombo.SelectedIndex = 0;
-                Log("Sample content loaded.");
+                Log("Content loaded from " + path);
             }
             catch (Exception ex)
             {
@@ -54,6 +58,23 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 MessageBox.Show(this, "Failed to load content:\n\n" + ex.Message,
                     "Reference host", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        /// <summary>
+        /// Canonical DB location: an explicit --db &lt;path&gt; command-line
+        /// argument, else the repo-relative dev path Content/GameContent.db.
+        /// Never a hardcoded machine path.
+        /// </summary>
+        private static string ResolveDatabasePath()
+        {
+            var args = Environment.GetCommandLineArgs();
+            for (var i = 1; i + 1 < args.Length; i++)
+            {
+                if (args[i] == "--db") return Path.GetFullPath(args[i + 1]);
+            }
+
+            return Path.GetFullPath(Path.Combine(
+                AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Content", "GameContent.db"));
         }
 
         // ---------- session lifecycle ----------
