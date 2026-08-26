@@ -1,62 +1,55 @@
 using System;
-using UnityEngine;
+using TruthCardGame.Content;
 
-namespace TruthCardGame
+namespace TruthCardGame.Core
 {
     /// <summary>
     /// Walks a session's phases: owns the current phase, the unscaled draw
-    /// target picked once per phase, and the live length-modifier math. The
-    /// CardExecutor stays "draw one matching card"; the driver owns which
-    /// filter to use and when to advance.
+    /// target picked once per phase, and the live length-modifier math.
     ///
     /// Advance rule (evaluated live on every card completion):
-    ///   cardsDrawn >= Round(baseTarget * SessionConfig.LengthModifier), clamped ≥ 1
+    ///   cardsDrawn >= Round(baseTarget * lengthModifier()), clamped >= 1
     /// Nothing is baked at session start, so a mid-session modifier change
-    /// (e.g. a future choice action) takes effect on the very next draw —
-    /// growing extends the phase, shrinking can end it immediately.
+    /// takes effect on the very next draw.
     ///
-    /// A phase with no matching cards advances early with a warning (expected
-    /// never to happen with authored content). The final phase's completion
-    /// marks the session complete; the game layer returns to the menu.
+    /// A phase with no matching cards advances early with a warning. The
+    /// final phase's completion marks the session complete.
     /// </summary>
     public sealed class SessionDriver
     {
-        private readonly Session _session;
+        private readonly SessionDefinition _session;
         private readonly Func<float> _lengthModifier;
-        private readonly Action<string> _warn;
-        private readonly System.Random _rng;
+        private readonly IGameLog _log;
+        private readonly IRandomSource _rng;
 
         private int _phaseIndex;
-        private int _baseTarget;   // unscaled draw target for the current phase
+        private int _baseTarget;
         private int _cardsDrawn;
 
-        /// <summary>True once the last phase has run its draws.</summary>
         public bool IsComplete { get; private set; }
 
-        /// <summary>Phase index currently being drawn from; -1 once complete.</summary>
         public int PhaseIndex => IsComplete ? -1 : _phaseIndex;
 
-        /// <summary>Tags that filter draws for the current phase.</summary>
         public string[] CurrentMustInclude { get; private set; }
         public string[] CurrentMustExclude { get; private set; }
 
         public SessionDriver(
-            Session session,
+            SessionDefinition session,
             Func<float> lengthModifier = null,
-            Action<string> warn = null,
-            System.Random rng = null)
+            IGameLog log = null,
+            IRandomSource phaseRng = null)
         {
             _session = session ?? throw new ArgumentNullException(nameof(session));
-            _lengthModifier = lengthModifier ?? (() => SessionConfig.LengthModifier);
-            _warn = warn ?? Debug.LogWarning;
-            _rng = rng ?? new System.Random();
+            _lengthModifier = lengthModifier ?? (() => 1f);
+            _log = log ?? new NullGameLog();
+            _rng = phaseRng ?? new SystemRandomSource();
             _phaseIndex = 0;
             _baseTarget = NextBaseTarget(_rng);
             CurrentMustInclude = ToArray(CurrentPhase.MustIncludeTags);
             CurrentMustExclude = ToArray(CurrentPhase.MustExcludeTags);
         }
 
-        private Phase CurrentPhase
+        private PhaseDefinition CurrentPhase
         {
             get
             {
@@ -68,11 +61,11 @@ namespace TruthCardGame
             }
         }
 
-        private int NextBaseTarget(System.Random rng)
+        private int NextBaseTarget(IRandomSource rng)
         {
-            var min = Mathf.Max(1, CurrentPhase.MinCards);
-            var max = Mathf.Max(min, CurrentPhase.MaxCards);
-            return rng.Next(min, max + 1);
+            var min = Math.Max(1, CurrentPhase.MinCards);
+            var max = Math.Max(min, CurrentPhase.MaxCards);
+            return rng.NextInt(min, max + 1);
         }
 
         private static string[] ToArray(System.Collections.Generic.IReadOnlyList<string> list)
@@ -83,23 +76,17 @@ namespace TruthCardGame
             return result;
         }
 
-        /// <summary>
-        /// The scaled draw target for the current phase, clamped ≥ 1. Read live
-        /// so modifier changes rebake immediately.
-        /// </summary>
         public int CurrentTarget()
         {
-            var scaled = Mathf.RoundToInt(_baseTarget * _lengthModifier());
-            return Mathf.Max(1, scaled);
+            var scaled = (int)MathF.Round(_baseTarget * _lengthModifier(), MidpointRounding.ToEven);
+            return Math.Max(1, scaled);
         }
 
-        /// <summary>How many draws remain in the current phase (live).</summary>
         public int Remaining()
         {
-            return IsComplete ? 0 : Mathf.Max(0, CurrentTarget() - _cardsDrawn);
+            return IsComplete ? 0 : Math.Max(0, CurrentTarget() - _cardsDrawn);
         }
 
-        /// <summary>Called after each card finishes executing.</summary>
         public void OnCardCompleted()
         {
             if (IsComplete) return;
@@ -108,18 +95,17 @@ namespace TruthCardGame
 
             if (_cardsDrawn < CurrentTarget())
             {
-                return; // phase continues
+                return;
             }
 
             AdvancePhase();
         }
 
-        /// <summary>Called when the executor found no card matching the phase's filter.</summary>
         public void OnNoMatchingCard()
         {
             if (IsComplete) return;
 
-            _warn($"[TruthCardGame] Session '{_session.Title}' phase '{CurrentPhase.Title}' drew no matching cards; advancing early.");
+            _log.Warning($"[TruthCardGame] Session '{_session.Title}' phase '{CurrentPhase.Title}' drew no matching cards; advancing early.");
             AdvancePhase();
         }
 

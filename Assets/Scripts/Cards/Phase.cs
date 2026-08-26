@@ -26,5 +26,18 @@ namespace TruthCardGame
         public IReadOnlyList<string> MustExcludeTags => mustExcludeTags;
         public int MinCards => minCards;
         public int MaxCards => maxCards;
+
+        public TruthCardGame.Content.PhaseDefinition ToDefinition()
+        {
+            var definition = new TruthCardGame.Content.PhaseDefinition
+            {
+                Title = title,
+                MinCards = minCards,
+                MaxCards = maxCards
+            };
+            if (mustIncludeTags != null) definition.MustIncludeTags.AddRange(mustIncludeTags);
+            if (mustExcludeTags != null) definition.MustExcludeTags.AddRange(mustExcludeTags);
+            return definition;
+        }
     }
 }

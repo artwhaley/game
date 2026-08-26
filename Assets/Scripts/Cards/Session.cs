@@ -21,5 +21,19 @@ namespace TruthCardGame
         public string Title => title;
         public IReadOnlyList<string> Tags => tags;
         public IReadOnlyList<Phase> Phases => phases;
+
+        public TruthCardGame.Content.SessionDefinition ToDefinition()
+        {
+            var definition = new TruthCardGame.Content.SessionDefinition { Title = title };
+            if (tags != null) definition.Tags.AddRange(tags);
+            if (phases != null)
+            {
+                foreach (var phase in phases)
+                {
+                    definition.Phases.Add(phase == null ? null : phase.ToDefinition());
+                }
+            }
+            return definition;
+        }
     }
 }

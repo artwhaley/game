@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using TruthCardGame.Core;
 
 namespace TruthCardGame
 {
@@ -41,7 +42,7 @@ namespace TruthCardGame
 
             _player = new Player(playerName);
             _services = new GameServices(runner: this, prompts: this, cutscene: directorPlayer);
-            _driver = new SessionDriver(SessionConfig.SelectedSession);
+            _driver = new SessionDriver(SessionConfig.SelectedSession.ToDefinition(), () => SessionConfig.LengthModifier);
         }
 
         private void Start()
