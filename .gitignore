@@ -50,3 +50,10 @@ Thumbs.db
 [Bb]in/
 !DotNet/**/*.csproj
 !Game.Workbench.sln
+
+# ============= #
+# SQLite sidecars #
+# ============= #
+*.db-wal
+*.db-shm
+*.db-journal

@@ -8,6 +8,8 @@
 --    dense-lists decision, reference lists have no null no-op slots; absence
 --    of a row means absence of the reference. choice_option.child_action_id
 --    stays NULL because a choice option with no child action is legal.
+--  - action_debug carries delay_seconds (REAL NULL): the packet omitted it,
+--    but DebugActionDefinition.DelaySeconds is runtime behavior, not wording.
 
 CREATE TABLE tag (
     id    TEXT PRIMARY KEY CHECK (length(trim(id)) > 0),
@@ -98,8 +100,9 @@ CREATE TABLE action (
 );
 
 CREATE TABLE action_debug (
-    action_id  TEXT PRIMARY KEY,
-    message    TEXT NULL,
+    action_id     TEXT PRIMARY KEY,
+    message       TEXT NULL,
+    delay_seconds REAL NULL,
     FOREIGN KEY (action_id) REFERENCES action(id) ON DELETE CASCADE
 );
 

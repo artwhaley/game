@@ -22,6 +22,10 @@ Semantics are preserved; the following were adapted deliberately:
 4. **`choice_option.child_action_id` remains nullable.** A choice option with
    no child action is legal (baseline "Cautious" option), so a null child
    reference is not a null slot.
+5. **`action_debug.delay_seconds` (REAL NULL) added (Ticket 06).** The packet
+   script omitted it, but `DebugActionDefinition.DelaySeconds` is runtime
+   behavior (the sample's 2.5s/5s waits), not disposable wording, so the
+   subtype table carries it.
 
 ## Contract properties proven by tests (`SchemaConstraintTests`)
 
