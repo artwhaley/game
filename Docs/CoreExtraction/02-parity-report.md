@@ -57,9 +57,25 @@ cutscene resource id, final stats (courage 2, brave 5), drained background work.
 
 | Mechanic area | Portable automated | Unity automated | Unity manual | WPF manual |
 |---|---|---|---|---|
-| Session progression / selection / actions / engine | **PASS** (77 tests) | PENDING (Ticket 09/10) | PENDING (Ticket 10) | PENDING (Ticket 12/13) |
+| Session progression / selection / actions / engine | **PASS** (77 tests) | **PASS** (8 EditMode adapter tests; 2 PlayMode host smoke tests — see below) | **BLOCKED/UNVERIFIED** — no interactive GUI session in this environment; batch-only. Human Play-mode pass still owed (menu → draws → choice overlay → completion beat → menu return). Baseline itself had the same open item per repo README. | PENDING (Ticket 12/13) |
 | ScriptableObject conversion fidelity | n/a | PASS (ContentAdapterTests, 8 tests) | PENDING | n/a |
+| Host adapters at runtime (scaled-time delay, UnityRandomSource draws, wrapper→definition→engine chain) | n/a | PASS (HostSmokeTests, PlayMode, headless batch) | PENDING | n/a |
 | Authored Timeline playback | n/a | PRE-EXISTING UNVERIFIED at baseline (AD-25) | PRE-EXISTING UNVERIFIED | n/a |
+
+### Ticket 10 verification record
+
+- Command (EditMode): `Unity.exe -batchmode -projectPath <repo> -runTests -testPlatform EditMode -testResults … -logFile …` → **8/8 passed**.
+- Command (PlayMode): same with `-testPlatform PlayMode` → **2/2 passed**
+  (`PortableCore_RunsThroughUnityHostAdapters_AndCompletes`,
+  `ConvertedScriptableObjects_FeedCoreEngine_InPlayMode`). The smoke test
+  verifies: engine constructed from converted wrapper assets executes a card
+  through ActionExecutor on the main thread; UnityGameDelay consumes real
+  scaled game time (≥ configured delay measured against `Time.time`);
+  lifecycle returns to idle; zero background faults; no error logs.
+- Manual sample flow (items 1–12 of Ticket 10): **NOT RUN** — environment is
+  batch/headless; no interactive GUI session exists to click through scenes.
+  This is recorded as `BLOCKED/UNVERIFIED`, and per the packet the milestone
+  must not be declared fully complete on this basis.
 
 Randomness note (per packet): bitstream parity between System.Random and
 UnityEngine.Random is NOT claimed or required. Parity claims cover range
