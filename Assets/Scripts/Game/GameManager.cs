@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using TruthCardGame.Core;
@@ -8,24 +9,22 @@ using TruthCardGame.Core;
 namespace TruthCardGame
 {
     /// <summary>
-    /// Owns one game session: the player, the phase driver, and the draw loop.
-    /// Lives in the Game scene. The UI reports through GamePanel.
-    ///
-    /// The CardExecutor is built fresh per draw with the driver's current
-    /// phase filter; after each card the driver is told it completed, and it
-    /// decides whether the phase advances or the session ends.
+    /// Thin Unity host around the portable GameSessionEngine. Converts the
+    /// selected session/deck once, builds host services, forwards Draw Next to
+    /// AdvanceOneCardAsync (plus the automatic first advance at start), and
+    /// owns presentation-only behavior: the 1.6 s completion beat and menu
+    /// return. No game rules live here — Core owns progression, eligibility,
+    /// action sequencing, and completion.
     /// </summary>
-    public sealed class GameManager : MonoBehaviour, ICoroutineRunner, IPromptService
+    public sealed class GameManager : MonoBehaviour
     {
         [SerializeField] private CardDeck deck;
         [SerializeField] private GamePanel panel;
         [SerializeField] private DirectorPlayer directorPlayer;
-        [SerializeField] private string playerName = "Player";
 
-        private Player _player;
-        private GameServices _services;
-        private SessionDriver _driver;
-        private bool _busy;
+        private CutsceneBindingRegistry _cutsceneRegistry;
+        private GameSessionEngine _engine;
+        private CancellationTokenSource _lifetimeCts;
 
         private void Awake()
         {
@@ -36,62 +35,72 @@ namespace TruthCardGame
             }
             if (SessionConfig.SelectedSession == null)
             {
-                Debug.LogError("[TruthCardGame] No session selected. Pick one on the setup screen (TruthCardGame → Build Scenes).");
+                Debug.LogError("[TruthCardGame] No session selected. Pick one on the setup screen.");
                 return;
             }
 
-            _player = new Player(playerName);
-            _services = new GameServices(runner: this, prompts: this, cutscene: directorPlayer);
-            _driver = new SessionDriver(SessionConfig.SelectedSession.ToDefinition(), () => SessionConfig.LengthModifier);
+            _lifetimeCts = new CancellationTokenSource();
+            _cutsceneRegistry = new CutsceneBindingRegistry();
+            directorPlayer.Bind(_cutsceneRegistry);
+
+            var services = new CoreServices(
+                delay: new UnityGameDelay(),
+                log: new UnityGameLog(),
+                prompts: new UnityPromptService(panel),
+                cutscene: directorPlayer);
+
+            _engine = new GameSessionEngine(
+                SessionConfig.SelectedSession.ToDefinition(),
+                deck.ToDefinition(_cutsceneRegistry),
+                () => SessionConfig.LengthModifier,
+                phaseRng: new SystemRandomSource(),
+                cardRng: new UnityRandomSource(),
+                services);
+
+            _engine.CardStarted += card => panel.ShowDrawing(card.Title);
+            _engine.CardFinished += card => panel.ShowDone(card.Title);
         }
 
         private void Start()
         {
-            DrawNextCard();
+            // Baseline parity: the first card draws automatically at session start.
+            RunAdvance();
         }
 
-        /// <summary>Draws and executes the next card for the current phase, unless one is still running.</summary>
+        /// <summary>User-triggered Draw Next; forwarded to Core orchestration.</summary>
         public void DrawNextCard()
         {
-            if (_busy || _driver == null || _driver.IsComplete) return;
+            RunAdvance();
+        }
 
-            var executor = new CardExecutor(deck, this, _driver.CurrentMustInclude, _driver.CurrentMustExclude);
-            if (executor.TryDrawCard(out var card))
+        private async void RunAdvance()
+        {
+            if (_engine == null || _lifetimeCts == null) return;
+
+            try
             {
-                _busy = true;
-                panel.ShowDrawing(card);
-                StartCoroutine(RunCard(card, executor));
-            }
-            else
-            {
-                // No card matches this phase's filter — advance early and try the next phase.
-                _driver.OnNoMatchingCard();
-                if (_driver.IsComplete)
+                var result = await _engine.AdvanceOneCardAsync(_lifetimeCts.Token);
+                if (result.Kind == AdvanceResultKind.SessionCompleted)
                 {
                     CompleteSession();
                 }
-                else
-                {
-                    DrawNextCard();
-                }
             }
-        }
-
-        private IEnumerator RunCard(Card card, CardExecutor executor)
-        {
-            var context = new GameContext(_player, _services);
-            yield return executor.ExecuteCard(card, context);
-            panel.ShowDone(card);
-            _busy = false;
-
-            _driver.OnCardCompleted();
-            if (_driver.IsComplete)
+            catch (OperationCanceledException)
             {
-                CompleteSession();
+                // Expected during teardown/scene change.
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException(ex);
             }
         }
 
-        /// <summary>Session finished — show it and head back to the menu.</summary>
+        public void ReturnToMenu()
+        {
+            SceneManager.LoadScene("MainMenu");
+        }
+
+        /// <summary>Session finished — show it, then head back to the menu (host presentation only).</summary>
         private void CompleteSession()
         {
             panel.ShowSessionComplete();
@@ -104,27 +113,11 @@ namespace TruthCardGame
             ReturnToMenu();
         }
 
-        public void ReturnToMenu()
+        private void OnDestroy()
         {
-            SceneManager.LoadScene("MainMenu");
-        }
-
-        public void StartRoutine(IEnumerator routine)
-        {
-            StartCoroutine(routine);
-        }
-
-        // ---------- IPromptService ----------
-
-        public CustomYieldInstruction Ask(string prompt, IReadOnlyList<string> options, Action<int> onChosen)
-        {
-            var handle = new PromptHandle();
-            panel.ShowPrompt(prompt, options, i =>
-            {
-                handle.Resolve();
-                onChosen?.Invoke(i);
-            });
-            return handle;
+            _lifetimeCts?.Cancel();
+            _lifetimeCts?.Dispose();
+            _lifetimeCts = null;
         }
     }
 }

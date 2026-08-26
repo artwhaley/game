@@ -37,17 +37,31 @@ namespace TruthCardGame
 
         // ---------- card status ----------
 
-        public void ShowDrawing(Card card)
+        public void ShowDrawing(string cardTitle)
         {
-            cardTitle.text = card.Title;
+            this.cardTitle.text = cardTitle;
             status.text = "Executing…";
             drawNextButton.interactable = false;
         }
 
-        public void ShowDone(Card card)
+        public void ShowDone(string cardTitle)
         {
+            this.cardTitle.text = cardTitle;
             status.text = "Done.";
             drawNextButton.interactable = true;
+        }
+
+        public void HidePrompt()
+        {
+            if (!_promptActive) return;
+            promptRoot.SetActive(false);
+            foreach (var button in _promptButtons)
+            {
+                Destroy(button);
+            }
+            _promptButtons.Clear();
+            _onPromptChosen = null;
+            _promptActive = false;
         }
 
         public void ShowNoCards()

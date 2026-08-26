@@ -1,33 +1,52 @@
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Playables;
 
 namespace TruthCardGame
 {
     /// <summary>
-    /// Concrete ICutscenePlayer backed by a PlayableDirector in the game scene.
-    /// The director's playableAsset is assigned per sure; this player just
-    /// starts playback and reports when the director is no longer playing.
+    /// Unity ICutsceneService: resolves a Core resource key through the
+    /// Ticket-07 registry back to the registered asset, plays it on the scene's
+    /// PlayableDirector, and completes when playback stops. Main-thread only.
     /// </summary>
     [DefaultExecutionOrder(-100)] // resolve before GameManager.Awake
-    public sealed class DirectorPlayer : MonoBehaviour, ICutscenePlayer
+    public sealed class DirectorPlayer : MonoBehaviour, TruthCardGame.Core.ICutsceneService
     {
         [SerializeField] private PlayableDirector director;
 
+        private CutsceneBindingRegistry _registry;
+
         public bool IsPlaying => director != null && director.state == PlayState.Playing;
 
-        public void Play(PlayableAsset timeline)
+        public void Bind(CutsceneBindingRegistry registry)
         {
-            if (timeline == null)
-            {
-                Debug.LogError("[TruthCardGame] CutsceneAction: timeline asset is null. Assign it on the action asset.");
-                return;
-            }
+            _registry = registry;
+        }
+
+        public async Task PlayAsync(string resourceId, CancellationToken cancellationToken)
+        {
             if (director == null)
             {
-                Debug.LogError("[TruthCardGame] CutsceneAction: DirectorPlayer has no PlayableDirector. Rebuild with TruthCardGame → Build Scenes.");
+                Debug.LogError("[TruthCardGame] DirectorPlayer has no PlayableDirector. Rebuild with TruthCardGame → Build Scenes.");
                 return;
             }
-            director.Play(timeline);
+            if (_registry == null || !_registry.TryResolve(resourceId, out var asset) || asset == null)
+            {
+                Debug.LogError($"[TruthCardGame] No cutscene registered for resource '{resourceId}'.");
+                return;
+            }
+
+            director.Play(asset);
+            while (IsPlaying)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    director.Stop();
+                    return;
+                }
+                await Task.Yield();
+            }
         }
     }
 }
