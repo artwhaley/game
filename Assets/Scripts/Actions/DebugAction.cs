@@ -10,7 +10,7 @@ namespace TruthCardGame
         [Tooltip("How long to wait before completing. 0 = complete immediately.")]
         [SerializeField] private float delaySeconds = 0f;
 
-        public override TruthCardGame.Content.GameActionDefinition ToDefinition(CutsceneBindingRegistry registry)
+        public override TruthCardGame.Content.GameActionDefinition ToDefinition(UnityContentGraphBuilder builder)
         {
             return new TruthCardGame.Content.DebugActionDefinition
             {

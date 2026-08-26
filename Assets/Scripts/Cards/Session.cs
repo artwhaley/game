@@ -36,15 +36,30 @@ namespace TruthCardGame
             EnsureId();
         }
 
-        public TruthCardGame.Content.SessionDefinition ToDefinition()
+        /// <summary>
+        /// Shallow conversion: one PhaseSlot per referenced Phase (transitional
+        /// deterministic ids), collecting each Phase once into the builder.
+        /// </summary>
+        public TruthCardGame.Content.SessionDefinition ToDefinition(UnityContentGraphBuilder builder)
         {
             var definition = new TruthCardGame.Content.SessionDefinition { Id = id, Title = title };
             if (tags != null) definition.Tags.AddRange(tags);
             if (phases != null)
             {
-                foreach (var phase in phases)
+                for (var i = 0; i < phases.Count; i++)
                 {
-                    definition.Phases.Add(phase == null ? null : phase.ToDefinition());
+                    var phase = phases[i];
+                    if (phase == null) continue;
+                    builder?.CollectPhase(phase);
+
+                    var slotId = $"legacy-slot:{id}:{phase.Id}:{i}";
+                    var slot = new TruthCardGame.Content.PhaseSlotDefinition { Id = slotId, Title = phase.Title };
+                    slot.Candidates.Add(new TruthCardGame.Content.PhaseSlotCandidateDefinition
+                    {
+                        Id = $"legacy-candidate:{slotId}:0",
+                        PhaseId = phase.Id
+                    });
+                    definition.PhaseSlots.Add(slot);
                 }
             }
             return definition;

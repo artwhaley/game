@@ -31,10 +31,11 @@ namespace TruthCardGame
         }
 
         /// <summary>
-        /// Converts this asset to its portable definition. Abstract on purpose:
+        /// Converts this asset to its portable definition (shallow; referenced
+        /// children are collected through the builder). Abstract on purpose:
         /// every action wrapper must participate in the portable engine or the
         /// project does not compile (fail noisy over silently vanishing content).
         /// </summary>
-        public abstract TruthCardGame.Content.GameActionDefinition ToDefinition(CutsceneBindingRegistry registry);
+        public abstract TruthCardGame.Content.GameActionDefinition ToDefinition(UnityContentGraphBuilder builder);
     }
 }

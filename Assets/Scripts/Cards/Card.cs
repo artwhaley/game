@@ -34,8 +34,11 @@ namespace TruthCardGame
             EnsureId();
         }
 
-        /// <summary>Converts to the portable definition, preserving order and null action entries.</summary>
-        public TruthCardGame.Content.CardDefinition ToDefinition(CutsceneBindingRegistry registry)
+        /// <summary>
+        /// Shallow conversion: ordered ActionIds referencing collected Actions.
+        /// Dense lists — null action entries are skipped, not position-preserved.
+        /// </summary>
+        public TruthCardGame.Content.CardDefinition ToDefinition(UnityContentGraphBuilder builder)
         {
             var definition = new TruthCardGame.Content.CardDefinition { Id = id, Title = title };
             if (tags != null) definition.Tags.AddRange(tags);
@@ -43,7 +46,9 @@ namespace TruthCardGame
             {
                 foreach (var action in actions)
                 {
-                    definition.Actions.Add(action == null ? null : action.ToDefinition(registry));
+                    if (action == null) continue;
+                    builder?.CollectAction(action);
+                    definition.ActionIds.Add(action.Id);
                 }
             }
             return definition;

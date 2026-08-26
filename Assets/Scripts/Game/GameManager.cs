@@ -54,11 +54,16 @@ namespace TruthCardGame
                 prompts: new UnityPromptService(panel),
                 cutscene: directorPlayer);
 
+            // Build the portable reference graph once from the selected
+            // session + deck; Core executes this in-memory snapshot, never SQL.
+            var builder = new UnityContentGraphBuilder(_cutsceneRegistry);
+            var content = builder.Build(SessionConfig.SelectedSession, deck);
+
             _engine = new GameSessionEngine(
-                SessionConfig.SelectedSession.ToDefinition(),
-                deck.ToDefinition(_cutsceneRegistry),
+                content,
+                SessionConfig.SelectedSession.Id,
                 () => SessionConfig.LengthModifier,
-                phaseRng: new SystemRandomSource(),
+                phaseLengthRng: new SystemRandomSource(),
                 cardRng: new UnityRandomSource(),
                 services);
 

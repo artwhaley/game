@@ -54,20 +54,33 @@ namespace TruthCardGame.Tests
             var log = new RecordingLog();
             var services = new CoreServices(new UnityGameDelay(), log);
 
-            var session = new SessionDefinition { Title = "Smoke Session" };
-            var phase = new PhaseDefinition { Title = "Smoke", MinCards = 1, MaxCards = 1 };
+            var phase = new PhaseDefinition { Id = "phase-smoke", Title = "Smoke", MinCards = 1, MaxCards = 1 };
             phase.MustIncludeTags.Add("smoke");
-            session.Phases.Add(phase);
 
-            var card = new CardDefinition { Title = "Smoke Card", Tags = { "smoke" } };
-            card.Actions.Add(new StatIncreaseActionDefinition { StatKey = "courage", Amount = 3 });
-            card.Actions.Add(new DebugActionDefinition { Message = "scaled-time beat", DelaySeconds = 0.05f });
+            var stat = new StatIncreaseActionDefinition { Id = "action-stat", StatKey = "courage", Amount = 3 };
+            var debug = new DebugActionDefinition { Id = "action-debug", Message = "scaled-time beat", DelaySeconds = 0.05f };
+
+            var card = new CardDefinition { Id = "card-smoke", Title = "Smoke Card", Tags = { "smoke" }, ActionIds = { stat.Id, debug.Id } };
+
+            var session = new SessionDefinition { Id = "session-smoke", Title = "Smoke Session" };
+            var slot = new PhaseSlotDefinition { Id = "slot-smoke", Title = "Smoke" };
+            slot.Candidates.Add(new PhaseSlotCandidateDefinition { Id = "cand-smoke", PhaseId = phase.Id });
+            session.PhaseSlots.Add(slot);
+
+            var content = new GameContentDefinition
+            {
+                Deck = new CardDeckDefinition { Id = "deck-smoke", CardIds = { card.Id } },
+                Sessions = { session },
+                Phases = { phase },
+                Cards = { card },
+                Actions = { stat, debug }
+            };
 
             var engine = new GameSessionEngine(
-                session,
-                new CardDeckDefinition { Cards = { card } },
+                content,
+                session.Id,
                 () => 1f,
-                phaseRng: new SystemRandomSource(42),
+                phaseLengthRng: new SystemRandomSource(42),
                 cardRng: new UnityRandomSource(),
                 services);
 
@@ -146,11 +159,13 @@ namespace TruthCardGame.Tests
 
             var log = new RecordingLog();
             var services = new CoreServices(new UnityGameDelay(), log);
+            var builder = new UnityContentGraphBuilder(new CutsceneBindingRegistry());
+            var content = builder.Build(sessionAsset, deckAsset);
             var engine = new GameSessionEngine(
-                sessionAsset.ToDefinition(),
-                deckAsset.ToDefinition(null),
+                content,
+                sessionAsset.Id,
                 () => 1f,
-                phaseRng: new SystemRandomSource(5),
+                phaseLengthRng: new SystemRandomSource(5),
                 cardRng: new SystemRandomSource(9),
                 services);
 

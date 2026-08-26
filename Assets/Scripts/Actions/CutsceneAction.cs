@@ -19,6 +19,8 @@ namespace TruthCardGame
         private string resourceId;
 
         public string ResourceId => resourceId;
+        public TimelineAsset Timeline => timeline;
+        public bool HasTimeline => timeline != null;
 
         /// <summary>Mints the stable resource id on first call; no-op once set. Called by OnValidate and authoring tooling.</summary>
         public void EnsureResourceId()
@@ -33,28 +35,30 @@ namespace TruthCardGame
             EnsureResourceId();
         }
 
-        public override TruthCardGame.Content.GameActionDefinition ToDefinition(CutsceneBindingRegistry registry)
+        public override TruthCardGame.Content.GameActionDefinition ToDefinition(UnityContentGraphBuilder builder)
         {
-            string resolved = null;
-            if (timeline != null)
+            if (builder == null)
             {
-                EnsureResourceId();
-                if (registry == null)
+                if (timeline != null)
                 {
-                    Debug.LogError("[TruthCardGame] CutsceneAction has a timeline but no registry to bind it; converting as missing resource.");
+                    Debug.LogError("[TruthCardGame] CutsceneAction has a timeline but no graph builder to bind it; converting as missing resource.");
                 }
-                else
+                return new TruthCardGame.Content.CutsceneActionDefinition
                 {
-                    registry.Register(ResourceId, timeline);
-                    resolved = ResourceId;
-                }
+                    Id = Id,
+                    IsBlocking = IsBlocking,
+                    ResourceId = resourceId
+                };
             }
+
+            builder.CollectCutscene(this);
+
             // Null/empty ResourceId preserves the current missing-timeline no-op behavior downstream.
             return new TruthCardGame.Content.CutsceneActionDefinition
             {
                 Id = Id,
                 IsBlocking = IsBlocking,
-                ResourceId = resolved
+                ResourceId = resourceId
             };
         }
     }

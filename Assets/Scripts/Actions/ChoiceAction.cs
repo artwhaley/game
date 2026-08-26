@@ -54,7 +54,7 @@ namespace TruthCardGame
             EnsureId();
         }
 
-        public override TruthCardGame.Content.GameActionDefinition ToDefinition(CutsceneBindingRegistry registry)
+        public override TruthCardGame.Content.GameActionDefinition ToDefinition(UnityContentGraphBuilder builder)
         {
             var definition = new TruthCardGame.Content.ChoiceActionDefinition
             {
@@ -66,16 +66,20 @@ namespace TruthCardGame
 
             foreach (var option in options)
             {
-                if (option == null)
+                if (option == null) continue;
+
+                string childId = null;
+                if (option.Action != null)
                 {
-                    definition.Options.Add(null);
-                    continue;
+                    builder?.CollectAction(option.Action);
+                    childId = option.Action.Id;
                 }
+
                 definition.Options.Add(new TruthCardGame.Content.ChoiceOptionDefinition
                 {
                     Id = option.Id,
                     Label = option.Label,
-                    Child = option.Action == null ? null : option.Action.ToDefinition(registry)
+                    ChildActionId = childId
                 });
             }
             return definition;
