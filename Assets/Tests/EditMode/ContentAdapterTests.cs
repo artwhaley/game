@@ -84,6 +84,41 @@ namespace TruthCardGame.Tests
         }
 
         [Test]
+        public void Action_Converts_WithStableId()
+        {
+            var action = ScriptableObject.CreateInstance<DebugAction>();
+            action.EnsureId();
+
+            var definition = (Content.DebugActionDefinition)action.ToDefinition(null);
+
+            Assert.AreEqual(action.Id, definition.Id);
+            Assert.That(definition.Id, Is.Not.Empty);
+        }
+
+        [Test]
+        public void ContentId_MintsOnce_AndNeverRegenerates()
+        {
+            var card = ScriptableObject.CreateInstance<Card>();
+
+            card.EnsureId();
+            var first = card.Id;
+            card.EnsureId();
+
+            Assert.AreEqual(first, card.Id);
+            StringAssert.IsMatch(@"^[0-9a-f]{32}$", card.Id);
+        }
+
+        [Test]
+        public void ContentId_IsPerInstance_Unique()
+        {
+            var a = ScriptableObject.CreateInstance<Card>();
+            var b = ScriptableObject.CreateInstance<Card>();
+            a.EnsureId();
+            b.EnsureId();
+            Assert.AreNotEqual(a.Id, b.Id);
+        }
+
+        [Test]
         public void StatAction_Converts_Fields()
         {
             var action = ScriptableObject.CreateInstance<StatIncreaseAction>();
@@ -124,6 +159,32 @@ namespace TruthCardGame.Tests
         }
 
         [Test]
+        public void ChoiceAction_Converts_WithStableIds_OnChoiceAndOptions()
+        {
+            var child = ScriptableObject.CreateInstance<DebugAction>();
+            child.EnsureId();
+            var choice = ScriptableObject.CreateInstance<ChoiceAction>();
+            Set(choice, "prompt", "Pick");
+            var so = new SerializedObject(choice);
+            var options = so.FindProperty("options");
+            options.arraySize = 2;
+            options.GetArrayElementAtIndex(0).FindPropertyRelative("label").stringValue = "A";
+            options.GetArrayElementAtIndex(0).FindPropertyRelative("action").objectReferenceValue = child;
+            options.GetArrayElementAtIndex(1).FindPropertyRelative("label").stringValue = "B";
+            so.ApplyModifiedPropertiesWithoutUndo();
+            choice.EnsureId(); // mints the choice id and both option ids
+
+            var definition = (Content.ChoiceActionDefinition)choice.ToDefinition(null);
+
+            Assert.AreEqual(choice.Id, definition.Id);
+            Assert.AreEqual(choice.Options[0].Id, definition.Options[0].Id);
+            Assert.AreEqual(choice.Options[1].Id, definition.Options[1].Id);
+            Assert.That(definition.Options[0].Id, Is.Not.Empty);
+            Assert.That(definition.Options[1].Id, Is.Not.Empty);
+            Assert.AreEqual(child.Id, ((Content.DebugActionDefinition)definition.Options[0].Child).Id);
+        }
+
+        [Test]
         public void CutsceneAction_NullTimeline_ConvertsToNullResourceId()
         {
             var action = ScriptableObject.CreateInstance<CutsceneAction>();
@@ -136,10 +197,11 @@ namespace TruthCardGame.Tests
         }
 
         [Test]
-        public void CutsceneAction_WithRegistry_RegistersAndResolves()
+        public void CutsceneAction_AuthoredResourceId_RegistersAndResolves()
         {
             var action = ScriptableObject.CreateInstance<CutsceneAction>();
             Set(action, "isBlocking", true);
+            Set(action, "resourceId", "cs:familiar_face");
             var timeline = ScriptableObject.CreateInstance<TimelineAsset>();
             var so = new SerializedObject(action);
             so.FindProperty("timeline").objectReferenceValue = timeline;
@@ -148,9 +210,52 @@ namespace TruthCardGame.Tests
             var registry = new CutsceneBindingRegistry();
             var definition = (Content.CutsceneActionDefinition)action.ToDefinition(registry);
 
-            Assert.That(definition.ResourceId, Does.StartWith("cutscene:"));
+            Assert.AreEqual("cs:familiar_face", definition.ResourceId);
             Assert.IsTrue(registry.TryResolve(definition.ResourceId, out var resolved));
             Assert.AreSame(timeline, resolved);
+        }
+
+        [Test]
+        public void CutsceneAction_MintsStableGuid_WhenNoAuthoredId()
+        {
+            var action = ScriptableObject.CreateInstance<CutsceneAction>();
+            var timeline = ScriptableObject.CreateInstance<TimelineAsset>();
+            var so = new SerializedObject(action);
+            so.FindProperty("timeline").objectReferenceValue = timeline;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            var registry = new CutsceneBindingRegistry();
+            var definition = (Content.CutsceneActionDefinition)action.ToDefinition(registry);
+
+            StringAssert.IsMatch(@"^[0-9a-f]{32}$", definition.ResourceId);
+            Assert.IsTrue(registry.TryResolve(definition.ResourceId, out var resolved));
+            Assert.AreSame(timeline, resolved);
+        }
+
+        [Test]
+        public void CutsceneAction_AuthoredResourceId_IsStableAcrossConversions()
+        {
+            var action = ScriptableObject.CreateInstance<CutsceneAction>();
+            Set(action, "resourceId", "cs:intro");
+            var timeline = ScriptableObject.CreateInstance<TimelineAsset>();
+            var so = new SerializedObject(action);
+            so.FindProperty("timeline").objectReferenceValue = timeline;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            var first = (Content.CutsceneActionDefinition)action.ToDefinition(new CutsceneBindingRegistry());
+            var second = (Content.CutsceneActionDefinition)action.ToDefinition(new CutsceneBindingRegistry());
+
+            Assert.AreEqual("cs:intro", first.ResourceId);
+            Assert.AreEqual(first.ResourceId, second.ResourceId);
+        }
+
+        [Test]
+        public void CutsceneRegistry_DuplicateResourceId_FailsLoudly()
+        {
+            var registry = new CutsceneBindingRegistry();
+            registry.Register("cs:dup", ScriptableObject.CreateInstance<TimelineAsset>());
+
+            Assert.Throws<System.InvalidOperationException>(() => registry.Register("cs:dup", ScriptableObject.CreateInstance<TimelineAsset>()));
         }
 
         // ---------- cards / deck / session ----------
@@ -161,6 +266,7 @@ namespace TruthCardGame.Tests
             var debug = ScriptableObject.CreateInstance<DebugAction>();
             Set(debug, "message", "d");
             var card = ScriptableObject.CreateInstance<Card>();
+            card.EnsureId();
             Set(card, "title", "The Card");
             SetStringList(card, "tags", new[] { "party", "truth" });
             var so = new SerializedObject(card);
@@ -168,6 +274,7 @@ namespace TruthCardGame.Tests
 
             var definition = card.ToDefinition(null);
 
+            Assert.AreEqual(card.Id, definition.Id);
             Assert.AreEqual("The Card", definition.Title);
             CollectionAssert.AreEqual(new[] { "party", "truth" }, definition.Tags.ToArray());
             Assert.AreEqual(2, definition.Actions.Count);
@@ -179,13 +286,16 @@ namespace TruthCardGame.Tests
         public void Deck_Converts_PreservingOrderAndNulls()
         {
             var cardA = ScriptableObject.CreateInstance<Card>();
+            cardA.EnsureId();
             Set(cardA, "title", "A");
             var deck = ScriptableObject.CreateInstance<CardDeck>();
+            deck.EnsureId();
             var so = new SerializedObject(deck);
             SetObjectList(so, "cards", new Object[] { cardA, null });
 
             var definition = deck.ToDefinition(null);
 
+            Assert.AreEqual(deck.Id, definition.Id);
             Assert.AreEqual(2, definition.Cards.Count);
             Assert.AreEqual("A", definition.Cards[0].Title);
             Assert.IsNull(definition.Cards[1]);
@@ -195,6 +305,7 @@ namespace TruthCardGame.Tests
         public void SessionAndPhases_Convert_WithTagsMinMax()
         {
             var phase = ScriptableObject.CreateInstance<Phase>();
+            phase.EnsureId();
             Set(phase, "title", "Warm Up");
             Set(phase, "minCards", 2);
             Set(phase, "maxCards", 5);
@@ -202,6 +313,7 @@ namespace TruthCardGame.Tests
             SetStringList(phase, "mustExcludeTags", new[] { "loud" });
 
             var session = ScriptableObject.CreateInstance<Session>();
+            session.EnsureId();
             Set(session, "title", "Relaxing");
             SetStringList(session, "tags", new[] { "relaxing" });
             var so = new SerializedObject(session);
@@ -209,10 +321,12 @@ namespace TruthCardGame.Tests
 
             var definition = session.ToDefinition();
 
+            Assert.AreEqual(session.Id, definition.Id);
             Assert.AreEqual("Relaxing", definition.Title);
             CollectionAssert.AreEqual(new[] { "relaxing" }, definition.Tags.ToArray());
             Assert.AreEqual(1, definition.Phases.Count);
             var converted = definition.Phases[0];
+            Assert.AreEqual(phase.Id, converted.Id);
             Assert.AreEqual("Warm Up", converted.Title);
             Assert.AreEqual(2, converted.MinCards);
             Assert.AreEqual(5, converted.MaxCards);

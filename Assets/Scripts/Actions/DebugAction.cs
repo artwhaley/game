@@ -14,6 +14,7 @@ namespace TruthCardGame
         {
             return new TruthCardGame.Content.DebugActionDefinition
             {
+                Id = Id,
                 IsBlocking = IsBlocking,
                 Message = message,
                 DelaySeconds = delaySeconds

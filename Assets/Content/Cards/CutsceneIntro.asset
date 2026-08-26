@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1ef06af488d40a948bbdd0b55d4465b8, type: 3}
   m_Name: CutsceneIntro
   m_EditorClassIdentifier: TruthCardGame::TruthCardGame.Card
+  id: 54e39eb4014f4b73b017a9315b130c21
   title: A Familiar Face
   tags:
   - cutscene

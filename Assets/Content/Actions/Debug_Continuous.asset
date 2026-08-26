@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a5388e6db77acb747874a872967227df, type: 3}
   m_Name: Debug_Continuous
   m_EditorClassIdentifier: TruthCardGame::TruthCardGame.DebugAction
+  id: 3d0a65f2c63147568656c4f95e8ff774
   isBlocking: 0
   message: "A low murmur of whispers carries across the room\u2026"
   delaySeconds: 5

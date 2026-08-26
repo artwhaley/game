@@ -10,10 +10,25 @@ namespace TruthCardGame
     /// </summary>
     public abstract class CardAction : ScriptableObject
     {
+        [Tooltip("Stable content ID, minted once at authoring time. Never regenerated; used by cross-host references.")]
+        [SerializeField] private string id;
+
         [Tooltip("True: the executor waits for this action to finish before the next one. False: fire-and-forget (may overlap).")]
         [SerializeField] private bool isBlocking = true;
 
+        public string Id => id;
         public bool IsBlocking => isBlocking;
+
+        /// <summary>Mints the stable ID on first call; no-op once set. Called by OnValidate and authoring tooling.</summary>
+        public virtual void EnsureId()
+        {
+            if (string.IsNullOrEmpty(id)) id = System.Guid.NewGuid().ToString("N");
+        }
+
+        private void OnValidate()
+        {
+            EnsureId();
+        }
 
         /// <summary>
         /// Converts this asset to its portable definition. Abstract on purpose:

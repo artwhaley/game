@@ -5,14 +5,19 @@ using System.Text.Json.Serialization;
 namespace TruthCardGame.Content.Json
 {
     /// <summary>
-    /// Loads/saves portable content documents (schemaVersion 1). Camel-case
+    /// Loads/saves portable content documents (schemaVersion 2). Camel-case
     /// properties, explicit action discriminators, loud failures on unknown
     /// action types and unsupported schema versions. Desktop-only; Game.Content
     /// itself stays free of any JSON attributes.
+    ///
+    /// schemaVersion 2: every content entity (deck, cards, actions, choice
+    /// options, phases, sessions) carries a stable GUID "id" minted once at
+    /// authoring time. Version 1 files (no ids) are rejected loudly rather
+    /// than silently carried.
     /// </summary>
     public static class ContentJson
     {
-        public const int CurrentSchemaVersion = 1;
+        public const int CurrentSchemaVersion = 2;
 
         public static readonly JsonSerializerOptions Options = CreateOptions();
 

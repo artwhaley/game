@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1ef06af488d40a948bbdd0b55d4465b8, type: 3}
   m_Name: FaceTheCrowd
   m_EditorClassIdentifier: TruthCardGame::TruthCardGame.Card
+  id: 5fea312b53554d3f80428480c3c2cf3b
   title: Face the Crowd
   tags:
   - party

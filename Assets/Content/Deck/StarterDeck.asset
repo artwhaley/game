@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cfe49ad8533498441a45bef1062c682c, type: 3}
   m_Name: StarterDeck
   m_EditorClassIdentifier: TruthCardGame::TruthCardGame.CardDeck
+  id: b8399104a3ee4bd7b0b61771d76d0e0f
   cards:
   - {fileID: 11400000, guid: adb6c18870688ff4782cca5e6d857345, type: 2}
   - {fileID: 11400000, guid: 7ebd3d81633044541b95726817f02247, type: 2}

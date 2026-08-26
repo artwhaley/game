@@ -1,4 +1,5 @@
 using System;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 
@@ -51,10 +52,21 @@ namespace TruthCardGame.EditorTools
             // PoC cutscene: the timeline asset is authored by hand in the
             // Timeline window (this builder cannot). Assign it on this action
             // asset once authored — until then, drawing the card logs an error.
+            // The stable resource id is set now so portable content can
+            // reference the cutscene before the timeline exists.
             var cutscene = GetOrCreateAction<CutsceneAction>(ActionsFolder + "/Cutscene_Intro.asset", action =>
             {
                 SetBool(action, "isBlocking", true);
+                SetString(action, "resourceId", "cs:intro");
             });
+            // Sample-owned cutscene: prefer the authored id over an empty or
+            // machine-minted GUID, but never clobber a human-authored readable id.
+            if (string.IsNullOrEmpty(cutscene.ResourceId)
+                || Regex.IsMatch(cutscene.ResourceId, "^[0-9a-f]{32}$"))
+            {
+                SetString(cutscene, "resourceId", "cs:intro");
+                EditorUtility.SetDirty(cutscene);
+            }
 
             // A choice action: ask the player a question, branch on the answer.
             var choice = GetOrCreateAction<ChoiceAction>(ActionsFolder + "/Choice_FaceTheCrowd.asset", action =>
@@ -80,6 +92,8 @@ namespace TruthCardGame.EditorTools
                 deck = ScriptableObject.CreateInstance<CardDeck>();
                 AssetDatabase.CreateAsset(deck, StarterDeckPath);
             }
+            deck.EnsureId();
+            EditorUtility.SetDirty(deck);
             var cards = new[] { courageBoost, crowdWatches, ambientWhispers, dareCelebrate, twinWhispers, cutsceneIntro, crowdChoice };
             var so = new SerializedObject(deck);
             var cardsProp = so.FindProperty("cards");
@@ -159,6 +173,8 @@ namespace TruthCardGame.EditorTools
                 phasesProp.GetArrayElementAtIndex(i).objectReferenceValue = phases[i];
             }
             so.ApplyModifiedPropertiesWithoutUndo();
+            session.EnsureId();
+            EditorUtility.SetDirty(session);
             return session;
         }
 
@@ -181,6 +197,8 @@ namespace TruthCardGame.EditorTools
                 tagsProp.GetArrayElementAtIndex(i).stringValue = includeTags[i];
             }
             so.ApplyModifiedPropertiesWithoutUndo();
+            phase.EnsureId();
+            EditorUtility.SetDirty(phase);
             return phase;
         }
 
@@ -189,17 +207,31 @@ namespace TruthCardGame.EditorTools
         private static T GetOrCreateAction<T>(string path, Action<T> configure) where T : CardAction
         {
             var action = AssetDatabase.LoadAssetAtPath<T>(path);
-            if (action != null) return action;
+            if (action != null)
+            {
+                // Existing assets (e.g. pre-ID content) still need IDs minted and persisted.
+                action.EnsureId(); // covers this action and, for ChoiceAction, its nested options
+                EditorUtility.SetDirty(action);
+                return action;
+            }
             action = ScriptableObject.CreateInstance<T>();
             AssetDatabase.CreateAsset(action, path);
             configure(action);
+            action.EnsureId();
+            EditorUtility.SetDirty(action);
             return action;
         }
 
         private static Card GetOrCreateCard(string path, string title, string[] tags, params CardAction[] actions)
         {
             var card = AssetDatabase.LoadAssetAtPath<Card>(path);
-            if (card != null) return card;
+            if (card != null)
+            {
+                // Existing assets (e.g. pre-ID content) still need IDs minted and persisted.
+                card.EnsureId();
+                EditorUtility.SetDirty(card);
+                return card;
+            }
             card = ScriptableObject.CreateInstance<Card>();
             AssetDatabase.CreateAsset(card, path);
             var so = new SerializedObject(card);
@@ -217,6 +249,8 @@ namespace TruthCardGame.EditorTools
                 actionsProp.GetArrayElementAtIndex(i).objectReferenceValue = actions[i];
             }
             so.ApplyModifiedPropertiesWithoutUndo();
+            card.EnsureId();
+            EditorUtility.SetDirty(card);
             return card;
         }
 

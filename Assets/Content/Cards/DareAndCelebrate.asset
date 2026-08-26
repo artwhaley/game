@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1ef06af488d40a948bbdd0b55d4465b8, type: 3}
   m_Name: DareAndCelebrate
   m_EditorClassIdentifier: TruthCardGame::TruthCardGame.Card
+  id: 3f7191b1557a4907bb53fa8ff1788aa3
   title: Dare & Celebrate
   tags:
   - party

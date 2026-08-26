@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2893ff68b866fd948ae338d1f5ffe9fd, type: 3}
   m_Name: Phase_Teasing
   m_EditorClassIdentifier: TruthCardGame::TruthCardGame.Phase
+  id: 1122d60cc029403e8247db97ebdbb05a
   title: Teasing
   mustIncludeTags:
   - solo

@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2893ff68b866fd948ae338d1f5ffe9fd, type: 3}
   m_Name: Phase_TheEnd
   m_EditorClassIdentifier: TruthCardGame::TruthCardGame.Phase
+  id: 2d7417bc6057427395b62c76a1fb718e
   title: The End
   mustIncludeTags:
   - ending

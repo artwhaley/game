@@ -41,7 +41,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             try
             {
-                var path = Path.Combine(AppContext.BaseDirectory, "TestData", "parity-content-v1.json");
+                var path = Path.Combine(AppContext.BaseDirectory, "TestData", "parity-content-v2.json");
                 _document = ContentJson.Load(File.ReadAllText(path));
                 SessionCombo.ItemsSource = _document.Sessions;
                 SessionCombo.DisplayMemberPath = nameof(SessionDefinition.Title);

@@ -66,5 +66,25 @@ namespace TruthCardGame.Core.Tests
             Assert.AreEqual("cs1", ((CutsceneActionDefinition)card.Actions[3]).ResourceId);
             Assert.IsTrue(((CutsceneActionDefinition)card.Actions[3]).IsBlocking);
         }
+
+        [Test]
+        public void Definitions_AcceptAndPreserve_StableIds()
+        {
+            var deck = new CardDeckDefinition { Id = "deck-1" };
+            var card = new CardDefinition { Id = "card-1", Title = "C" };
+            var action = new DebugActionDefinition { Id = "action-1" };
+            var option = new ChoiceOptionDefinition { Id = "option-1", Label = "L", Child = action };
+            var choice = new ChoiceActionDefinition { Id = "choice-1", Options = { option } };
+            var phase = new PhaseDefinition { Id = "phase-1" };
+            var session = new SessionDefinition { Id = "session-1", Phases = { phase } };
+
+            Assert.AreEqual("deck-1", deck.Id);
+            Assert.AreEqual("card-1", card.Id);
+            Assert.AreEqual("action-1", choice.Options[0].Child.Id);
+            Assert.AreEqual("option-1", choice.Options[0].Id);
+            Assert.AreEqual("choice-1", choice.Id);
+            Assert.AreEqual("phase-1", session.Phases[0].Id);
+            Assert.AreEqual("session-1", session.Id);
+        }
     }
 }

@@ -12,10 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f35b0d2f1c7f3534e88f933e02af1ba2, type: 3}
   m_Name: Choice_FaceTheCrowd
   m_EditorClassIdentifier: TruthCardGame::TruthCardGame.ChoiceAction
+  id: 1625604f324e456f916807c1d00fc97f
   isBlocking: 1
   prompt: The crowd leans in. How do you answer?
   options:
-  - label: Own it
+  - id: e7d944eb749d4bdf8ae69383de600abf
+    label: Own it
     action: {fileID: 11400000, guid: 0704b097f45e26b4b89e5983d80fb595, type: 2}
-  - label: Shrug it off
+  - id: c88838e4dcf248e1ba9e46de9f30ec5a
+    label: Shrug it off
     action: {fileID: 11400000, guid: 43ab12b4fdfa4b643b52497947f55524, type: 2}

@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1ef06af488d40a948bbdd0b55d4465b8, type: 3}
   m_Name: TwinWhispers
   m_EditorClassIdentifier: TruthCardGame::TruthCardGame.Card
+  id: d00dcc10e12c4e71a131b45ef3df0e19
   title: Twin Whispers
   tags:
   - solo

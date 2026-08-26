@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 16e697cf882a8b14d8280e616cc03d68, type: 3}
   m_Name: CouragePlusOne
   m_EditorClassIdentifier: TruthCardGame::TruthCardGame.StatIncreaseAction
+  id: d0b7a66bba314acb94c6133d22d6a732
   isBlocking: 1
   statKey: courage
   amount: 1

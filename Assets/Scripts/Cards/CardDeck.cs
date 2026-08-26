@@ -7,9 +7,23 @@ namespace TruthCardGame
     [CreateAssetMenu(fileName = "CardDeck", menuName = "TruthCardGame/Card Deck")]
     public sealed class CardDeck : ScriptableObject
     {
+        [Tooltip("Stable content ID, minted once at authoring time. Never regenerated; used by cross-host references.")]
+        [SerializeField] private string id;
         [SerializeField] private List<Card> cards = new List<Card>();
 
+        public string Id => id;
         public IReadOnlyList<Card> Cards => cards;
+
+        /// <summary>Mints the stable ID on first call; no-op once set. Called by OnValidate and authoring tooling.</summary>
+        public void EnsureId()
+        {
+            if (string.IsNullOrEmpty(id)) id = System.Guid.NewGuid().ToString("N");
+        }
+
+        private void OnValidate()
+        {
+            EnsureId();
+        }
 
         /// <summary>
         /// Every distinct tag across the deck, in first-seen order.
@@ -33,7 +47,7 @@ namespace TruthCardGame
         /// <summary>Converts to the portable deck definition, preserving order and null entries.</summary>
         public TruthCardGame.Content.CardDeckDefinition ToDefinition(CutsceneBindingRegistry registry)
         {
-            var definition = new TruthCardGame.Content.CardDeckDefinition();
+            var definition = new TruthCardGame.Content.CardDeckDefinition { Id = id };
             if (cards != null)
             {
                 foreach (var card in cards)

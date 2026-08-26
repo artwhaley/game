@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -13,7 +14,7 @@ namespace TruthCardGame.Core.Tests
         private static string FixturePath()
         {
             return Path.Combine(
-                AppContext.BaseDirectory, "TestData", "parity-content-v1.json");
+                AppContext.BaseDirectory, "TestData", "parity-content-v2.json");
         }
 
         private static ContentDocument LoadFixture()
@@ -26,7 +27,7 @@ namespace TruthCardGame.Core.Tests
         {
             var document = LoadFixture();
 
-            Assert.AreEqual(1, document.SchemaVersion);
+            Assert.AreEqual(2, document.SchemaVersion);
             Assert.AreEqual(5, document.Deck.Cards.Count); // includes one null entry
             Assert.IsNull(document.Deck.Cards[4]);
             Assert.AreEqual(1, document.Sessions.Count);
@@ -80,6 +81,96 @@ namespace TruthCardGame.Core.Tests
         }
 
         [Test]
+        public void StableIds_Present_OnEveryEntity_InFixture()
+        {
+            var document = LoadFixture();
+
+            Assert.That(document.Deck.Id, Is.Not.Empty);
+            Assert.That(document.Sessions[0].Id, Is.Not.Empty);
+            CollectionAssert.AllItemsAreNotNull(document.Sessions[0].Phases.Select(p => p.Id).ToArray());
+            CollectionAssert.AllItemsAreNotNull(document.Sessions[0].Phases.Select(p => p.Title).ToArray());
+
+            foreach (var card in document.Deck.Cards.Where(c => c != null))
+            {
+                Assert.That(card.Id, Is.Not.Empty);
+                foreach (var action in card.Actions.Where(a => a != null))
+                {
+                    Assert.That(action.Id, Is.Not.Empty);
+                    if (action is ChoiceActionDefinition choice)
+                    {
+                        foreach (var option in choice.Options.Where(o => o != null))
+                        {
+                            Assert.That(option.Id, Is.Not.Empty);
+                            if (option.Child != null) Assert.That(option.Child.Id, Is.Not.Empty);
+                        }
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void StableIds_AreUnique_AcrossFixture()
+        {
+            var document = LoadFixture();
+
+            var ids = new List<string> { document.Deck.Id, document.Sessions[0].Id };
+            ids.AddRange(document.Sessions[0].Phases.Select(p => p.Id));
+            foreach (var card in document.Deck.Cards.Where(c => c != null))
+            {
+                ids.Add(card.Id);
+                foreach (var action in card.Actions.Where(a => a != null))
+                {
+                    ids.Add(action.Id);
+                    if (action is ChoiceActionDefinition choice)
+                    {
+                        foreach (var option in choice.Options.Where(o => o != null))
+                        {
+                            ids.Add(option.Id);
+                            if (option.Child != null) ids.Add(option.Child.Id);
+                        }
+                    }
+                }
+            }
+
+            Assert.AreEqual(ids.Count, ids.Distinct().Count(), "Content IDs must be unique within a document.");
+        }
+
+        [Test]
+        public void StableIds_RoundTrip_OnAllEntities()
+        {
+            var original = LoadFixture();
+            var roundTripped = ContentJson.Load(ContentJson.Save(original));
+
+            Assert.AreEqual(original.Deck.Id, roundTripped.Deck.Id);
+            Assert.AreEqual(original.Sessions[0].Id, roundTripped.Sessions[0].Id);
+            CollectionAssert.AreEqual(
+                original.Sessions[0].Phases.Select(p => p.Id),
+                roundTripped.Sessions[0].Phases.Select(p => p.Id));
+
+            var originalCards = original.Deck.Cards.Where(c => c != null).ToList();
+            var roundTrippedCards = roundTripped.Deck.Cards.Where(c => c != null).ToList();
+            CollectionAssert.AreEqual(originalCards.Select(c => c.Id), roundTrippedCards.Select(c => c.Id));
+            CollectionAssert.AreEqual(
+                originalCards.SelectMany(c => c.Actions.Where(a => a != null).Select(a => a.Id)),
+                roundTrippedCards.SelectMany(c => c.Actions.Where(a => a != null).Select(a => a.Id)));
+        }
+
+        [Test]
+        public void SchemaVersion1_WithoutIds_IsRejected()
+        {
+            const string json = """
+                {
+                  "schemaVersion": 1,
+                  "deck": { "cards": [ { "title": "X", "actions": [] } ] },
+                  "sessions": []
+                }
+                """;
+
+            var ex = Assert.Throws<JsonException>(() => ContentJson.Load(json));
+            StringAssert.Contains("schemaVersion 1", ex.Message);
+        }
+
+        [Test]
         public void CutsceneResourceId_RoundTrips()
         {
             var document = new ContentDocument
@@ -100,7 +191,7 @@ namespace TruthCardGame.Core.Tests
         {
             const string json = """
                 {
-                  "schemaVersion": 1,
+                  "schemaVersion": 2,
                   "deck": { "cards": [ { "title": "X", "actions": [ { "type": "minigame", "isBlocking": true } ] } ] },
                   "sessions": []
                 }
@@ -115,7 +206,7 @@ namespace TruthCardGame.Core.Tests
         {
             const string json = """
                 {
-                  "schemaVersion": 1,
+                  "schemaVersion": 2,
                   "deck": { "cards": [ { "title": "X", "actions": [ { "message": "no type here" } ] } ] },
                   "sessions": []
                 }

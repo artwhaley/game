@@ -33,7 +33,7 @@ changing observable behavior:
   - tests: `dotnet test Game.Workbench.sln`;
   - WPF reference player: run `DotNet/Game.ReferenceHost.Wpf` (loads
     `DotNet/TestData/parity-content-v1.json`, one card per Draw Next click);
-  - `Game.Content.Json` — schemaVersion-1 JSON spike for future authoring tools.
+  - `Game.Content.Json` — schemaVersion-2 JSON spike for future authoring tools; every entity carries a stable GUID `id`.
 - Facts/reports: [`Docs/CoreExtraction/`](Docs/CoreExtraction/) — baseline
   inventory, extraction map, parity report.
 
@@ -52,9 +52,10 @@ changing observable behavior:
   - `DebugAction` — logs a message, waits a configurable delay.
   - `StatIncreaseAction` — adds to a named player stat.
   - `ChoiceAction` — prompt + ordered options; each option's child action is converted recursively.
-  - `CutsceneAction` — serialized `TimelineAsset`, bridged to an opaque string resource id by the runtime `CutsceneBindingRegistry`.
+  - `CutsceneAction` — serialized `TimelineAsset` plus an authored stable `resourceId` (e.g. `cs:intro`; minted once if left empty). Portable content references the cutscene by that id; `CutsceneBindingRegistry` resolves it to the asset, failing loudly on duplicates. No counter keys — links survive authoring round trips.
 - **CardDeck / Phase / Session / SessionLibrary** = data assets likewise converted once at session start.
 - Content lives under `Assets/Content/`. Create, duplicate, mutate in the Project window — the seed of the future authoring tools.
+- **Stable content IDs**: every entity (deck, card, action, choice option, phase, session) carries a GUID `id` minted once at authoring time and never regenerated. Names, tags, and list positions may change; ids don't — so cross-host references (e.g. a Unity cutscene binding pointing at a card) survive authoring round trips. Unity SOs mint on creation (`OnValidate`/`EnsureId`); `SampleContentBuilder` ensures and persists ids for existing assets too; JSON requires them from schemaVersion 2 onward.
 
 ### Execution flow — one portable engine, Unity is a host
 

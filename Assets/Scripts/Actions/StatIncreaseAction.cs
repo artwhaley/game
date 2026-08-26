@@ -13,6 +13,7 @@ namespace TruthCardGame
         {
             return new TruthCardGame.Content.StatIncreaseActionDefinition
             {
+                Id = Id,
                 IsBlocking = IsBlocking,
                 StatKey = statKey,
                 Amount = amount

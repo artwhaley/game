@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1ef06af488d40a948bbdd0b55d4465b8, type: 3}
   m_Name: AmbientWhispers
   m_EditorClassIdentifier: TruthCardGame::TruthCardGame.Card
+  id: 29e2b4399a0d4d57861cd481cb42c683
   title: Ambient Whispers
   tags:
   - solo
