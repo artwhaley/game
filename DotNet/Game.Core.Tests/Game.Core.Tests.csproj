@@ -16,6 +16,11 @@
   <ItemGroup>
     <ProjectReference Include="..\Game.Core\Game.Core.csproj" />
     <ProjectReference Include="..\Game.Content\Game.Content.csproj" />
+    <ProjectReference Include="..\Game.Content.Json\Game.Content.Json.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\TestData\**\*.json" CopyToOutputDirectory="PreserveNewest" Link="TestData\%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

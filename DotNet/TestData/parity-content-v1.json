@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "deck": {
+    "cards": [
+      {
+        "title": "Warm One",
+        "tags": [ "warm" ],
+        "actions": [
+          { "type": "statIncrease", "isBlocking": true, "statKey": "courage", "amount": 2 },
+          { "type": "debug", "isBlocking": false, "message": "warming up", "delaySeconds": 0.5 }
+        ]
+      },
+      {
+        "title": "Warm Two",
+        "tags": [ "warm" ],
+        "actions": [
+          { "type": "debug", "isBlocking": true, "message": "again", "delaySeconds": 0 }
+        ]
+      },
+      {
+        "title": "Crossroads",
+        "tags": [ "choice" ],
+        "actions": [
+          {
+            "type": "choice",
+            "isBlocking": true,
+            "prompt": "Brave or cautious?",
+            "options": [
+              {
+                "label": "Brave",
+                "child": { "type": "statIncrease", "isBlocking": true, "statKey": "brave", "amount": 5 }
+              },
+              { "label": "Cautious", "child": null }
+            ]
+          }
+        ]
+      },
+      {
+        "title": "The End",
+        "tags": [ "ending" ],
+        "actions": [
+          { "type": "cutscene", "isBlocking": true, "resourceId": "cs:finale" }
+        ]
+      },
+      null
+    ]
+  },
+  "sessions": [
+    {
+      "title": "Parity Session",
+      "tags": [ "sfw" ],
+      "phases": [
+        { "title": "Warm Up", "mustIncludeTags": [ "warm" ], "mustExcludeTags": [], "minCards": 2, "maxCards": 2 },
+        { "title": "Choice", "mustIncludeTags": [ "choice" ], "mustExcludeTags": [], "minCards": 1, "maxCards": 1 },
+        { "title": "Ending", "mustIncludeTags": [ "ending" ], "mustExcludeTags": [], "minCards": 1, "maxCards": 1 }
+      ]
+    }
+  ]
+}
