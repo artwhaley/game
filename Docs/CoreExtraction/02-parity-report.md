@@ -53,14 +53,38 @@ Crossroads → The End), prompt answer "Brave", fake cutscene completion.
 Asserts exact card order, exact lifecycle event sequence, prompt labels/order,
 cutscene resource id, final stats (courage 2, brave 5), drained background work.
 
-## Verification columns still owed
+## Verification columns (Ticket 13 final pass)
 
 | Mechanic area | Portable automated | Unity automated | Unity manual | WPF manual |
 |---|---|---|---|---|
-| Session progression / selection / actions / engine | **PASS** (77 tests) | **PASS** (8 EditMode adapter tests; 2 PlayMode host smoke tests — see below) | **BLOCKED/UNVERIFIED** — no interactive GUI session in this environment; batch-only. Human Play-mode pass still owed (menu → draws → choice overlay → completion beat → menu return). Baseline itself had the same open item per repo README. | PENDING (Ticket 12/13) |
-| ScriptableObject conversion fidelity | n/a | PASS (ContentAdapterTests, 8 tests) | PENDING | n/a |
-| Host adapters at runtime (scaled-time delay, UnityRandomSource draws, wrapper→definition→engine chain) | n/a | PASS (HostSmokeTests, PlayMode, headless batch) | PENDING | n/a |
+| Session progression / selection / actions / engine | **PASS** (77 engine tests + 8 serializer tests) | **PASS** — EditMode 8/8, PlayMode smoke 2/2 (re-run after JSON/WPF work) | **BLOCKED/UNVERIFIED** — batch/headless environment, no interactive GUI session; human Play-mode pass still owed. Same open item existed at baseline per repo README. | **PARTIAL** — WPF app builds; process launches, survives startup with fixture loaded, closes cleanly (exit 0); interactive end-to-end play NOT exercised (headless). |
+| ScriptableObject conversion fidelity | n/a | **PASS** (ContentAdapterTests, 8 tests) | BLOCKED/UNVERIFIED (same reason) | n/a |
+| Host adapters at runtime (scaled-time delay, UnityRandomSource draws, wrapper→definition→engine chain) | n/a | **PASS** (HostSmokeTests, PlayMode, headless batch) | BLOCKED/UNVERIFIED | n/a |
+| JSON schemaVersion 1 round-trip incl. recursive choice/cutscene id/null entries | **PASS** (8 ContentJsonTests) | n/a (Unity does not consume serializer by design) | n/a | PASS-by-fixture-load at startup (full interactive play pending human pass) |
 | Authored Timeline playback | n/a | PRE-EXISTING UNVERIFIED at baseline (AD-25) | PRE-EXISTING UNVERIFIED | n/a |
+
+## Cross-host duplication search result
+
+Searched both hosts for rule constructs (`Random.Range`, `Mathf/RoundToInt`,
+`MustInclude`, `IsBlocking` branching, `TryDrawCard`, `CurrentTarget`,
+action-type dispatch, choice-child branching):
+
+- Unity host outside `Assets/Scripts/Portable/`: no matching/filtering/rounding/
+  sequencing code remains. Only hits are the sanctioned `UnityRandomSource`
+  adapter (Core RNG contract backed by UnityEngine.Random.Range), serialized
+  field accessors on wrapper assets, and GameManager forwarding.
+- WPF host: only engine construction (injected RNGs), `AdvanceOneCardAsync`
+  forwarding from Draw Next, and read-only state mirroring for display.
+
+No duplicated gameplay-rule path exists in either host.
+
+### Ticket 13 regression record
+
+- `dotnet test Game.Workbench.sln` → **85/85 passed** (after JSON+WPF additions).
+- Unity EditMode re-run → **8/8 passed**; Unity PlayMode smoke re-run → **2/2 passed**
+  (proving the JSON/WPF additions did not disturb the Unity host path).
+- WPF: startup smoke only (see table); interactive end-to-end remains a human step.
+
 
 ### Ticket 10 verification record
 

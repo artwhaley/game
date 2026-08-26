@@ -4,13 +4,36 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
 
 ## Status
 
-- Playable shell: main menu → tag-filter setup → draw & execute cards.
-- Two action types: console debug (with optional delay) and stat increase.
-- Editor builders generate all scenes + a starter deck — no manual wiring.
-- EditMode tests cover the executor's filtering and sequencing.
-- Verified working: compiles clean, all EditMode tests pass, scenes + starter content generated headlessly on 6000.5.9f1 (2026-08-24).
-- Unity 6000.5.9f1 installed via the Unity CLI (elevated) — see Requirements.
+- Playable shell: main menu → session picker → draw & execute cards.
+- Game rules now live in a **portable C# engine** (`Game.Content` + `Game.Core`,
+  .NET Standard 2.1) that both Unity and a desktop WPF reference player host —
+  one engine, two hosts. See [Extraction milestone](#extraction-milestone-01) below.
+- Editor builders generate all scenes + starter content — no manual wiring.
+- Unity 6000.5.9f1 pinned; verified: compiles clean, EditMode 8/8, PlayMode
+  smoke 2/2 headless on this checkout; portable suite 85/85 via `dotnet test`.
 - Development rules: [`agents.md`](agents.md) · Unity CLI notes: [`unity-cli.md`](unity-cli.md)
+
+## Extraction milestone (0.1)
+
+The original Unity-side rules were extracted into portable assemblies without
+changing observable behavior:
+
+- `Assets/Scripts/Portable/Game.Content/` — inert data model (sessions,
+  phases, cards, deck, action definitions).
+- `Assets/Scripts/Portable/Game.Core/` — rules & orchestration
+  (`SessionDriver`, card selector, async `ActionExecutor`, background tracker,
+  user-paced `GameSessionEngine.AdvanceOneCardAsync`).
+- Unity is a host: `GameManager` converts assets once and forwards Draw Next;
+  the old coroutine engine was removed. ScriptableObject assets keep their
+  identity and convert to definitions at session start.
+- `DotNet/` contains SDK projects compiling the **same physical source**:
+  - `Game.Workbench.sln` opens in Visual Studio;
+  - tests: `dotnet test Game.Workbench.sln`;
+  - WPF reference player: run `DotNet/Game.ReferenceHost.Wpf` (loads
+    `DotNet/TestData/parity-content-v1.json`, one card per Draw Next click);
+  - `Game.Content.Json` — schemaVersion-1 JSON spike for future authoring tools.
+- Facts/reports: [`Docs/CoreExtraction/`](Docs/CoreExtraction/) — baseline
+  inventory, extraction map, parity report.
 
 ## How it works
 

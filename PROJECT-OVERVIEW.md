@@ -4,6 +4,17 @@
 hand and wants to understand: what this is, how it's built, what's decided,
 what's open, and where it should go next.*
 
+> **Addendum (extraction milestone 0.1, 2026-08):** the game rules described in
+> §3 now live in portable `Game.Content`/`Game.Core` assemblies under
+> `Assets/Scripts/Portable/`, consumed by Unity (thin host) and a WPF reference
+> player; the coroutine engine, `CardExecutor`, old prompt/cutscene contracts
+> and `SessionDriver` Unity copy were removed. See
+> [`Docs/CoreExtraction/`](Docs/CoreExtraction/) for the factual baseline,
+> extraction map, and parity report, and the README "How it works"/"Tests"
+> sections for current commands. §3.5's test counts predate this milestone;
+> current: 8 EditMode adapter tests + 2 PlayMode smoke tests + 85 portable
+> tests via `dotnet test`. The cutscene timeline assignment (§6.1) remains open.
+
 Companion docs: [`agents.md`](agents.md) (operating rules),
 [`README.md`](README.md) (current status + dev log),
 [`unity-cli.md`](unity-cli.md) (CLI notes), [`Tickets/`](Tickets/README.md)
