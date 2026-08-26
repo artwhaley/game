@@ -1,5 +1,12 @@
 # 02 — Parity Report
 
+> **Superseded note (SQLite milestone 0.2):** this report describes the JSON
+> parity pipeline of the extraction milestone. JSON is demoted/removed — the
+> canonical content store is now SQLite
+> (`Content/GameContent.db`, `Game.Content.Sqlite`); see
+> [`Docs/SqliteContentGraph/`](../SqliteContentGraph/). The behavior mapping
+> below remains historically accurate and the portable tests still exist.
+
 Mapping of baseline Unity behaviors to their portable tests. Status values:
 `PORTABLE` (proven by pure .NET tests), `UNITY-ADAPTER` (Unity EditMode test),
 `PENDING` (column not yet executed). Completed during Tickets 08/10/13.

@@ -20,6 +20,23 @@ what's open, and where it should go next.*
 > are not a standing law that visual Unity work must always be reconstructed
 > from C#.
 
+> **Addendum (SQLite content pipeline 0.2, 2026-08):** SQLite is now the
+> canonical source of content truth. The relational model
+> (Session/Phase/Card/Action/Tag/Resource + PhaseSlot/PhaseSlotCandidate)
+> lives at `Content/GameContent.db`, owned by the provider-neutral
+> `DotNet/Game.Content.Sqlite` project (migrations, snapshot loader,
+> authoring repositories, seed tool). `GameContentDefinition` is the
+> in-memory snapshot; `Game.Core` resolves and runs it through
+> `ContentCatalog`; the WPF reference player loads the canonical DB and is
+> the future primary core-content author; Unity runs a temporary
+> ScriptableObject→snapshot bridge (`UnityContentGraphBuilder`) and will
+> later read the same SQLite schema, owning `unity_*` extension tables
+> (proven safe by the integrity audit). The JSON spike (`Game.Content.Json`)
+> was removed; there is no JSON schema v3. Current truth:
+> [`Docs/SqliteContentGraph/`](Docs/SqliteContentGraph/) (00-checkpoint,
+> 01-schema-v1, 02-integrity-audit) plus README "Status". The extraction-era
+> addendum above and §3–§9 below are retained as history.
+
 Companion docs: [`agents.md`](agents.md) (operating rules),
 [`README.md`](README.md) (current status + dev log),
 [`unity-cli.md`](unity-cli.md) (CLI notes), [`Tickets/`](Tickets/README.md)

@@ -1,5 +1,13 @@
 # Deferred From the Extraction/Remediation Passes
 
+> **Resolution note (SQLite milestone 0.2):** items below that hinge on the
+> JSON spike (items 1, 5) are superseded — JSON was removed and SQLite is the
+> canonical store (`Content/GameContent.db`). Items 1 and 5 are now owed
+> against the SQLite model (validator before WPF authoring; Unity reads the
+> same schema later); see [`Docs/SqliteContentGraph/`](../SqliteContentGraph/).
+> Items 2–4 were resolved in the content-graph correction stack (ID-graph
+> cycle guard, stable IDs, stable resource ids).
+
 Deliberately NOT done in extraction milestone 0.1 or its remediation pass.
 Each entry names **when it comes due** so we remember it at the right time —
 do not pull these forward casually; most belong inside a design decision

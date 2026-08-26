@@ -213,3 +213,21 @@ PhaseSlot multi-candidate selection rules, weighted randomness, stat predicates,
 arbitrary branch graphs, slot jumps, pass-condition DSL, editor UX, Action binding UX.
 These belong to the WPF high-level authoring milestone; `NEXT-WPF-HANDOFF.md` (Ticket 10)
 will open that discussion.
+
+## 10. SQLite persistence override (Ticket 12)
+
+Short override, recorded after the fact rather than erasing the map above: the
+**persistence layer** this map anticipated as "JSON schema v3" (item 12) was
+instead delivered as **SQLite**. The graph decisions in §§1–9 stand unchanged
+— this override only replaces the storage backend:
+
+- Canonical content lives in the relational DB at `Content/GameContent.db`
+  (schema v1 in `DotNet/Game.Content.Sqlite/SQLITE-SCHEMA-V1.sql`):
+  `session`, `phase_slot`, `phase_slot_candidate`, `phase`, `card`,
+  `card_action`, `tag`, `resource`, `action` + per-type tables.
+- `Game.Content.Json` was removed; **no JSON schema v3 will be created**.
+- `GameContentDefinition` remains the in-memory snapshot the engine runs;
+  `Game.Content.Sqlite` loads/stores it, `Game.Core` resolves it.
+- Host extensions (Unity later, WPF now) may add `unity_*`/`wpf_*` tables;
+  the core schema, migrator, loader, and all authoring operations preserve
+  unknown tables (see `Docs/SqliteContentGraph/02-integrity-audit.md`).

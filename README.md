@@ -4,16 +4,50 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
 
 ## Status
 
-- Playable shell: main menu → session picker → draw & execute cards.
-- Game rules now live in a **portable C# engine** (`Game.Content` + `Game.Core`,
+- **SQLite is the canonical source of content truth** — relational
+  Session/Phase/Card/Action/Tag/Resource model with PhaseSlots +
+  PhaseSlotCandidates at `Content/GameContent.db`, owned by the
+  provider-neutral `Game.Content.Sqlite` project. See the
+  [SQLite content pipeline milestone](#sqlite-content-pipeline-milestone-02) below.
+- Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core`,
   .NET Standard 2.1) that both Unity and a desktop WPF reference player host —
-  one engine, two hosts. See [Extraction milestone](#extraction-milestone-01) below.
+  one engine, two hosts. `GameContentDefinition` is the in-memory snapshot;
+  `Game.Core` owns resolution and runtime. See
+  [Extraction milestone](#extraction-milestone-01) below.
 - Editor builders generate all scenes + starter content — no manual wiring.
-- Unity 6000.5.9f1 pinned; verified: compiles clean, EditMode 8/8, PlayMode
-  smoke 2/2 headless on this checkout; portable suite 87/87 via `dotnet test`.
-  Human Play-mode passes of both hosts completed against
+- Unity 6000.5.9f1 pinned; verified: compiles clean, EditMode 24/24, PlayMode
+  smoke 2/2 headless on this checkout; portable suite 140/140 via
+  `dotnet test` (94 engine + 46 SQLite). The WPF reference player loads the
+  canonical SQLite DB. Human Play-mode passes of both hosts completed against
   [`Docs/CoreExtraction/MANUAL-TEST-GUIDE.md`](Docs/CoreExtraction/MANUAL-TEST-GUIDE.md).
 - Development rules: [`agents.md`](agents.md) · Unity CLI notes: [`unity-cli.md`](unity-cli.md)
+
+## SQLite content pipeline milestone (0.2)
+
+SQLite replaced JSON as the canonical authored content store. The JSON
+spike (`Game.Content.Json`) was removed; no JSON schema v3 will be created.
+
+- `DotNet/Game.Content.Sqlite` — provider-neutral (any `DbConnection`):
+  schema v1 migrations, snapshot loader, empty-DB initializer, granular
+  authoring repositories (Session / PhaseSlot / Phase), and the seed tool.
+- `Content/GameContent.db` — the committed canonical DB, seeded from the Unity
+  sample content (2 sessions, 6 phases, 7 cards, 5 actions, 1 resource).
+  Guarded by tests: it must always load and pass `integrity_check` /
+  `foreign_key_check`.
+- `GameContentDefinition` (portable `Game.Content`) is the **in-memory
+  snapshot**, not the store: sessions own ordered PhaseSlots, each slot holds
+  one PhaseSlotCandidate referencing an independent Phase; cards reference
+  independent actions by ID; tags and resources are independent entities.
+- `Game.Core` resolves the snapshot through `ContentCatalog` — no DB types
+  in the engine.
+- **WPF** is the future primary core-content authoring host and already loads
+  the canonical DB.
+- **Unity** currently uses a temporary ScriptableObject→snapshot bridge
+  (`UnityContentGraphBuilder`); it later reads the same SQLite schema and owns
+  `unity_*` extension data in it (host tables are preserved by all core
+  operations — see `Docs/SqliteContentGraph/02-integrity-audit.md`).
+- Docs: [`Docs/SqliteContentGraph/`](Docs/SqliteContentGraph/) (checkpoint,
+  schema v1, integrity audit).
 
 ## Extraction milestone (0.1)
 
@@ -31,21 +65,22 @@ changing observable behavior:
 - `DotNet/` contains SDK projects compiling the **same physical source**:
   - `Game.Workbench.sln` opens in Visual Studio;
   - tests: `dotnet test Game.Workbench.sln`;
-  - WPF reference player: run `DotNet/Game.ReferenceHost.Wpf` (loads
-    `DotNet/TestData/parity-content-v1.json`, one card per Draw Next click);
-  - `Game.Content.Json` — schemaVersion-2 JSON spike for future authoring tools; every entity carries a stable GUID `id`.
+  - WPF reference player: run `DotNet/Game.ReferenceHost.Wpf` (loads the
+    canonical `Content/GameContent.db`, one card per Draw Next click).
 - Facts/reports: [`Docs/CoreExtraction/`](Docs/CoreExtraction/) — baseline
-  inventory, extraction map, parity report.
+  inventory, extraction map, parity report (the JSON pipeline those reports
+  describe was superseded by SQLite in milestone 0.2).
 
 ## How it works
 
 > The sections below describe the **current** architecture (post-extraction).
-> The [Development log](#development-log) and [Tickets](#tickets) sections at
-> the bottom are historical records of the pre-extraction coroutine era.
+> The [Development log](#development-log-historical--pre-extraction) and
+> [Tickets](#tickets-historical--pre-extraction) sections at the bottom are
+> historical records of the pre-extraction coroutine era.
 
 ### Content — ScriptableObject shells converting to portable definitions
 
-- **Card** = title + filter tags + an ordered list of actions (null entries allowed).
+- **Card** = title + filter tags + an ordered list of actions (dense — no null entries).
 - **CardAction** (abstract) = a serialized data shell: blocking/continuous flag
   plus fields. It has **no execution code** — each wrapper implements
   `ToDefinition(...)` producing its portable `GameActionDefinition`. Four exist:
@@ -55,7 +90,7 @@ changing observable behavior:
   - `CutsceneAction` — serialized `TimelineAsset` plus an authored stable `resourceId` (e.g. `cs:intro`; minted once if left empty). Portable content references the cutscene by that id; `CutsceneBindingRegistry` resolves it to the asset, failing loudly on duplicates. No counter keys — links survive authoring round trips.
 - **CardDeck / Phase / Session / SessionLibrary** = data assets likewise converted once at session start.
 - Content lives under `Assets/Content/`. Create, duplicate, mutate in the Project window — the seed of the future authoring tools.
-- **Stable content IDs**: every entity (deck, card, action, choice option, phase, session) carries a GUID `id` minted once at authoring time and never regenerated. Names, tags, and list positions may change; ids don't — so cross-host references (e.g. a Unity cutscene binding pointing at a card) survive authoring round trips. Unity SOs mint on creation (`OnValidate`/`EnsureId`); `SampleContentBuilder` ensures and persists ids for existing assets too; JSON requires them from schemaVersion 2 onward.
+- **Stable content IDs**: every entity (deck, card, action, choice option, phase, session) carries an opaque string `id` minted once at authoring time and never regenerated. Names, tags, and list positions may change; ids don't — so cross-host references (e.g. a Unity cutscene binding pointing at a card) survive authoring round trips. Unity SOs mint on creation (`OnValidate`/`EnsureId`); the SQLite canonical DB uses the same IDs as the Unity sample content.
 
 ### Execution flow — one portable engine, Unity is a host
 
@@ -84,8 +119,9 @@ Adding an action now touches the portable engine — there is no Unity-side
 3. **Core handler**: add a case in `Game.Core.ActionExecutor.ExecuteActionAsync`
    interpreting the definition (log-and-no-op for misconfiguration, matching
    existing semantics).
-4. **JSON (if authorable outside Unity)**: add a discriminator token in
-   `Game.Content.Json.ActionDefinitionConverter`.
+4. **SQLite schema (if authorable outside Unity)**: add the per-type table +
+   `action_type` discriminator value in `Game.Content.Sqlite` (schema v1 or a
+   v2 migration) and teach `GameContentSnapshotLoader` to read it.
 5. **Host service (if it needs host capability)**: extend `CoreServices` with
    an optional contract and implement it per host; keep missing-service
    behavior a tested logged no-op.
@@ -96,8 +132,8 @@ Assets → Create → TruthCardGame → Card; give it tags + actions; add it to 
 
 ## Tests
 
-- Portable suite: `dotnet test Game.Workbench.sln` — 87 tests covering every engine rule plus the JSON serializer.
-- Unity EditMode (`Assets/Tests/EditMode`) — ScriptableObject→definition conversion fidelity (8 tests).
+- Portable suite: `dotnet test Game.Workbench.sln` — 140 tests: 94 covering every engine rule, 46 covering SQLite schema constraints, migrations, snapshot round-trip, authoring repositories, canonical-DB integrity, and host-extension safety.
+- Unity EditMode (`Assets/Tests/EditMode`) — ScriptableObject→definition conversion fidelity via `UnityContentGraphBuilder` (24 tests).
 - Unity PlayMode smoke (`Assets/Tests/PlayMode`) — Core running through real Unity adapters inside live play mode (2 tests).
 - **com.unity.test-framework** and **com.unity.ugui** are pinned in `Packages/manifest.json` (the fresh-import default manifest lacks uGUI, which broke all UI scripts until added — don't remove it).
 

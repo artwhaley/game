@@ -1,5 +1,10 @@
 # Core Extraction — Final Report (Milestone 0.1)
 
+> **Superseded note (SQLite milestone 0.2):** the JSON spike this report
+> references has been removed; SQLite is the canonical content store
+> (`Content/GameContent.db`, `Game.Content.Sqlite`). See
+> [`Docs/SqliteContentGraph/`](../SqliteContentGraph/) for current truth.
+
 ## 1. Baseline
 
 | Item | Value |

@@ -5,6 +5,15 @@ This is a Unity 6 game project (editor version 6000.5.9f1), built incrementally 
 
 Git repo initialized; remote is `https://github.com/artwhaley/game.git`. Unity CLI notes in [`unity-cli.md`](unity-cli.md).
 
+**Current architecture truth:** read [`README.md`](README.md) first (status),
+[`Docs/SqliteContentGraph/`](Docs/SqliteContentGraph/) (SQLite is the canonical
+content store at `Content/GameContent.db`; `Game.Content.Sqlite` owns it;
+`GameContentDefinition` is the in-memory snapshot; `Game.Core` resolves and
+runs it; WPF is the future primary authoring host; Unity runs a temporary
+ScriptableObject→snapshot bridge and will later read the same SQLite schema),
+and [`Docs/CoreExtraction/`](Docs/CoreExtraction/) (extraction milestone
+history).
+
 Current project status lives in [`README.md`](README.md) — read it first, keep it current (rule 6). This file holds only rules intended to stand for the life of the project; status snapshots belong in the README, never here.
 
 ## Overriding principle: incremental and intentional construction
