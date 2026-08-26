@@ -1,11 +1,8 @@
 {
-    "name": "TruthCardGame",
-    "rootNamespace": "TruthCardGame",
+    "name": "Game.Core",
+    "rootNamespace": "TruthCardGame.Core",
     "references": [
-        "Game.Content",
-        "Game.Core",
-        "Unity.Timeline",
-        "Unity.Cinemachine"
+        "Game.Content"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
@@ -15,5 +12,5 @@
     "autoReferenced": true,
     "defineConstraints": [],
     "versionDefines": [],
-    "noEngineReferences": false
+    "noEngineReferences": true
 }
