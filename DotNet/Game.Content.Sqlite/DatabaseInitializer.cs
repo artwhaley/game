@@ -19,8 +19,8 @@ namespace TruthCardGame.Content.Sqlite
         {
             if (connection == null) throw new ArgumentNullException(nameof(connection));
             if (content == null) throw new ArgumentNullException(nameof(content));
-            if (connection.State != ConnectionState.Open) connection.Open();
 
+            ConnectionInitializer.Initialize(connection);
             CoreMigrator.EnsureSchema(connection);
 
             if (!IsCoreContentEmpty(connection))

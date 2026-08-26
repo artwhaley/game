@@ -19,8 +19,8 @@ namespace TruthCardGame.Content.Sqlite
         public static GameContentDefinition Load(DbConnection connection)
         {
             if (connection == null) throw new ArgumentNullException(nameof(connection));
-            if (connection.State != ConnectionState.Open) connection.Open();
 
+            ConnectionInitializer.Initialize(connection);
             CoreMigrator.EnsureSchema(connection);
 
             var content = new GameContentDefinition();
