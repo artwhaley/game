@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using TruthCardGame.Content;
@@ -17,6 +18,7 @@ namespace TruthCardGame.Core
         {
             var phase = new PhaseDefinition
             {
+                Id = "phase-" + Guid.NewGuid().ToString("N").Substring(0, 8),
                 Title = "P" + Guid.NewGuid().ToString("N").Substring(0, 4),
                 MinCards = min,
                 MaxCards = max
@@ -27,16 +29,46 @@ namespace TruthCardGame.Core
 
         private static SessionDefinition MakeSession(params PhaseDefinition[] phases)
         {
-            var session = new SessionDefinition { Title = "S" };
-            session.Phases.AddRange(phases);
+            var session = new SessionDefinition
+            {
+                Id = "session-" + Guid.NewGuid().ToString("N").Substring(0, 8),
+                Title = "S"
+            };
+            for (var i = 0; i < phases.Length; i++)
+            {
+                session.PhaseSlots.Add(new PhaseSlotDefinition
+                {
+                    Id = "slot-" + i,
+                    Title = phases[i].Title,
+                    Candidates = { new PhaseSlotCandidateDefinition { Id = "cand-" + i, PhaseId = phases[i].Id } }
+                });
+            }
             return session;
+        }
+
+        private static ContentCatalog MakeCatalog(SessionDefinition session, params PhaseDefinition[] phases)
+        {
+            var content = new GameContentDefinition
+            {
+                Deck = new CardDeckDefinition { Id = "deck" },
+                Sessions = { session },
+                Phases = new List<PhaseDefinition>(phases)
+            };
+            return new ContentCatalog(content);
+        }
+
+        private static SessionDriver MakeDriver(Func<float> modifier, IGameLog log, IRandomSource rng, params PhaseDefinition[] phases)
+        {
+            var session = MakeSession(phases);
+            var catalog = MakeCatalog(session, phases);
+            return new SessionDriver(session, catalog, modifier, log, rng);
         }
 
         [Test]
         public void Constructor_FirstPhase_IsCurrent_WithItsFilter()
         {
-            var session = MakeSession(MakePhase(2, 2, "truth"), MakePhase(3, 3, "dare"));
-            var driver = new SessionDriver(session, () => 1f, null, new FixedRandomSource(0));
+            var driver = MakeDriver(() => 1f, null, new FixedRandomSource(0),
+                MakePhase(2, 2, "truth"), MakePhase(3, 3, "dare"));
 
             Assert.IsFalse(driver.IsComplete);
             Assert.AreEqual(0, driver.PhaseIndex);
@@ -47,8 +79,8 @@ namespace TruthCardGame.Core
         public void Phase_Advances_AfterScaledTargetDraws()
         {
             // P1: min=max=2 → base target 2. Modifier 1 → advance after 2 draws.
-            var session = MakeSession(MakePhase(2, 2, "truth"), MakePhase(1, 1, "dare"));
-            var driver = new SessionDriver(session, () => 1f, null, new FixedRandomSource(0, 0));
+            var driver = MakeDriver(() => 1f, null, new FixedRandomSource(0, 0),
+                MakePhase(2, 2, "truth"), MakePhase(1, 1, "dare"));
 
             driver.OnCardCompleted();
             Assert.AreEqual(0, driver.PhaseIndex);
@@ -62,8 +94,7 @@ namespace TruthCardGame.Core
         [Test]
         public void OnePhase_Session_CompletesAfterTarget()
         {
-            var session = MakeSession(MakePhase(2, 2));
-            var driver = new SessionDriver(session, () => 1f, null, new FixedRandomSource(0));
+            var driver = MakeDriver(() => 1f, null, new FixedRandomSource(0), MakePhase(2, 2));
 
             driver.OnCardCompleted();
             Assert.IsFalse(driver.IsComplete);
@@ -76,8 +107,7 @@ namespace TruthCardGame.Core
         [Test]
         public void MinCards_BelowOne_ClampsToOne()
         {
-            var session = MakeSession(MakePhase(-3, 0));
-            var driver = new SessionDriver(session, () => 1f, null, new FixedRandomSource(0));
+            var driver = MakeDriver(() => 1f, null, new FixedRandomSource(0), MakePhase(-3, 0));
 
             Assert.AreEqual(1, driver.CurrentTarget());
             driver.OnCardCompleted();
@@ -88,8 +118,7 @@ namespace TruthCardGame.Core
         public void MaxCards_BelowMin_NormalizesToMin()
         {
             // min 5, max 2 → effective range collapses to [5,5]; base target must be 5.
-            var session = MakeSession(MakePhase(5, 2));
-            var driver = new SessionDriver(session, () => 1f, null, new FixedRandomSource(0));
+            var driver = MakeDriver(() => 1f, null, new FixedRandomSource(0), MakePhase(5, 2));
 
             Assert.AreEqual(5, driver.CurrentTarget());
             driver.OnCardCompleted();
@@ -100,8 +129,8 @@ namespace TruthCardGame.Core
         public void BaseTarget_UsesFullInclusiveRange()
         {
             // Range [2,4] (min 2 max 4): fixed source proves both endpoints reachable.
-            var lower = new SessionDriver(MakeSession(MakePhase(2, 4)), () => 1f, null, new FixedRandomSource(0));
-            var upper = new SessionDriver(MakeSession(MakePhase(2, 4)), () => 1f, null, new FixedRandomSource(2));
+            var lower = MakeDriver(() => 1f, null, new FixedRandomSource(0), MakePhase(2, 4));
+            var upper = MakeDriver(() => 1f, null, new FixedRandomSource(2), MakePhase(2, 4));
 
             Assert.AreEqual(2, lower.CurrentTarget());
             Assert.AreEqual(4, upper.CurrentTarget());
@@ -111,8 +140,7 @@ namespace TruthCardGame.Core
         public void LiveModifier_GrowsPhase_WhenIncreasedMidPhase()
         {
             var mod = new MutableModifier();
-            var session = MakeSession(MakePhase(3, 3));
-            var driver = new SessionDriver(session, () => mod.Value, null, new FixedRandomSource(0));
+            var driver = MakeDriver(() => mod.Value, null, new FixedRandomSource(0), MakePhase(3, 3));
 
             driver.OnCardCompleted();
             driver.OnCardCompleted();
@@ -126,8 +154,8 @@ namespace TruthCardGame.Core
         public void LiveModifier_ShrinksPhase_AndAdvancesImmediately()
         {
             var mod = new MutableModifier();
-            var session = MakeSession(MakePhase(4, 4), MakePhase(1, 1));
-            var driver = new SessionDriver(session, () => mod.Value, null, new FixedRandomSource(0, 0));
+            var driver = MakeDriver(() => mod.Value, null, new FixedRandomSource(0, 0),
+                MakePhase(4, 4), MakePhase(1, 1));
 
             driver.OnCardCompleted();
             driver.OnCardCompleted();
@@ -143,8 +171,7 @@ namespace TruthCardGame.Core
         [TestCase(1, 1.5f, 0, 2)]   // 1.5 again via non-half base × half modifier
         public void CurrentTarget_MidpointRounding_IsToEven_ThenClamped(int baseTarget, float modifier, int rngValue, int expected)
         {
-            var session = MakeSession(MakePhase(baseTarget, baseTarget));
-            var driver = new SessionDriver(session, () => modifier, null, new FixedRandomSource(rngValue));
+            var driver = MakeDriver(() => modifier, null, new FixedRandomSource(rngValue), MakePhase(baseTarget, baseTarget));
             Assert.AreEqual(expected, driver.CurrentTarget());
         }
 
@@ -152,8 +179,8 @@ namespace TruthCardGame.Core
         public void NoMatchingCard_Warns_AndAdvancesEarly()
         {
             var log = new RecordingLog();
-            var session = MakeSession(MakePhase(5, 5), MakePhase(1, 1));
-            var driver = new SessionDriver(session, () => 1f, log, new FixedRandomSource(0, 0));
+            var driver = MakeDriver(() => 1f, log, new FixedRandomSource(0, 0),
+                MakePhase(5, 5), MakePhase(1, 1));
 
             driver.OnNoMatchingCard();
 
@@ -164,8 +191,7 @@ namespace TruthCardGame.Core
         [Test]
         public void NoMatch_OnFinalPhase_CompletesSession()
         {
-            var session = MakeSession(MakePhase(1, 1));
-            var driver = new SessionDriver(session, () => 1f, null, new FixedRandomSource(0));
+            var driver = MakeDriver(() => 1f, null, new FixedRandomSource(0), MakePhase(1, 1));
 
             driver.OnNoMatchingCard();
 
@@ -175,8 +201,8 @@ namespace TruthCardGame.Core
         [Test]
         public void LastPhase_Completion_EndsSession()
         {
-            var session = MakeSession(MakePhase(2, 2), MakePhase(3, 3));
-            var driver = new SessionDriver(session, () => 1f, null, new FixedRandomSource(0, 0));
+            var driver = MakeDriver(() => 1f, null, new FixedRandomSource(0, 0),
+                MakePhase(2, 2), MakePhase(3, 3));
 
             driver.OnCardCompleted();
             driver.OnCardCompleted();
@@ -195,8 +221,7 @@ namespace TruthCardGame.Core
         {
             // Target 2 (modifier 1), then shrink so a later completion overshoots.
             var mod = new MutableModifier();
-            var session = MakeSession(MakePhase(2, 2));
-            var driver = new SessionDriver(session, () => mod.Value, null, new FixedRandomSource(0));
+            var driver = MakeDriver(() => mod.Value, null, new FixedRandomSource(0), MakePhase(2, 2));
 
             driver.OnCardCompleted();
             mod.Value = 0.5f;             // target now max(1, round(1)) = 1
@@ -207,17 +232,67 @@ namespace TruthCardGame.Core
         }
 
         [Test]
-        public void EmptyPhases_Constructor_ThrowsLikeBaseline()
+        public void EmptyPhaseSlots_Constructor_ThrowsLikeBaseline()
         {
-            var session = new SessionDefinition { Title = "empty" };
+            var session = new SessionDefinition { Id = "session-empty", Title = "empty" };
+            var catalog = MakeCatalog(session);
             Assert.Throws<InvalidOperationException>(
-                () => new SessionDriver(session, () => 1f, null, new FixedRandomSource()));
+                () => new SessionDriver(session, catalog, () => 1f, null, new FixedRandomSource()));
         }
 
         [Test]
         public void NullSession_Throws()
         {
-            Assert.Throws<ArgumentNullException>(() => new SessionDriver(null));
+            Assert.Throws<ArgumentNullException>(() => new SessionDriver(null, null));
+        }
+
+        // ---------- PhaseSlot contract (Ticket 08) ----------
+
+        [Test]
+        public void OneCandidateSlot_ConsumesNoRng()
+        {
+            // Phase RNG supplies exactly one draw per phase; slot resolution
+            // must not consume any (FixedRandomSource throws when exhausted).
+            var driver = MakeDriver(() => 1f, null, new FixedRandomSource(0, 0),
+                MakePhase(1, 1), MakePhase(1, 1));
+
+            driver.OnCardCompleted();
+            driver.OnCardCompleted();
+            Assert.IsTrue(driver.IsComplete);
+        }
+
+        [Test]
+        public void ZeroCandidateSlot_Throws()
+        {
+            var session = new SessionDefinition { Id = "session-zero", Title = "S" };
+            session.PhaseSlots.Add(new PhaseSlotDefinition { Id = "slot-empty", Title = "Empty" });
+            var catalog = MakeCatalog(session);
+
+            var ex = Assert.Throws<InvalidOperationException>(
+                () => new SessionDriver(session, catalog, () => 1f, null, new FixedRandomSource(0)));
+            StringAssert.Contains("zero candidates", ex.Message);
+        }
+
+        [Test]
+        public void MultiCandidateSlot_ThrowsNotImplemented()
+        {
+            var phase = MakePhase(1, 1);
+            var session = new SessionDefinition { Id = "session-multi", Title = "S" };
+            session.PhaseSlots.Add(new PhaseSlotDefinition
+            {
+                Id = "slot-multi",
+                Title = "Multi",
+                Candidates =
+                {
+                    new PhaseSlotCandidateDefinition { Id = "cand-a", PhaseId = phase.Id },
+                    new PhaseSlotCandidateDefinition { Id = "cand-b", PhaseId = phase.Id }
+                }
+            });
+            var catalog = MakeCatalog(session, phase);
+
+            var ex = Assert.Throws<InvalidOperationException>(
+                () => new SessionDriver(session, catalog, () => 1f, null, new FixedRandomSource(0)));
+            StringAssert.Contains("not implemented", ex.Message);
         }
     }
 }

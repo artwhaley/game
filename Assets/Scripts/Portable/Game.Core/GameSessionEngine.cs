@@ -17,6 +17,10 @@ namespace TruthCardGame.Core
     /// Hosts observe through the synchronous lifecycle events below and never
     /// reimplement game rules. The end-of-session presentation delay/scene
     /// change remains host behavior.
+    ///
+    /// The engine executes an in-memory snapshot (GameContentDefinition via
+    /// ContentCatalog); it never issues SQL and never reads the database
+    /// during a running preview.
     /// </summary>
     public sealed class GameSessionEngine
     {
@@ -37,25 +41,28 @@ namespace TruthCardGame.Core
         public event Action SessionCompleted;
 
         public GameSessionEngine(
-            SessionDefinition session,
-            CardDeckDefinition deck,
+            GameContentDefinition content,
+            string sessionId,
             Func<float> lengthModifier,
-            IRandomSource phaseRng,
+            IRandomSource phaseLengthRng,
             IRandomSource cardRng,
             CoreServices services)
         {
-            if (session == null) throw new ArgumentNullException(nameof(session));
-            if (deck == null) throw new ArgumentNullException(nameof(deck));
+            if (content == null) throw new ArgumentNullException(nameof(content));
+            if (string.IsNullOrEmpty(sessionId)) throw new ArgumentNullException(nameof(sessionId));
             if (lengthModifier == null) throw new ArgumentNullException(nameof(lengthModifier));
-            if (phaseRng == null) throw new ArgumentNullException(nameof(phaseRng));
+            if (phaseLengthRng == null) throw new ArgumentNullException(nameof(phaseLengthRng));
             if (cardRng == null) throw new ArgumentNullException(nameof(cardRng));
             _services = services ?? throw new ArgumentNullException(nameof(services));
 
+            var catalog = new ContentCatalog(content);
+            var session = catalog.SessionById(sessionId);
+
             _cardRng = cardRng;
             _tracker = new BackgroundActionTracker(_services.Log);
-            _executor = new ActionExecutor(_tracker);
-            _selector = new CardSelector(deck);
-            _driver = new SessionDriver(session, lengthModifier, _services.Log, phaseRng);
+            _executor = new ActionExecutor(catalog, _tracker);
+            _selector = new CardSelector(content.Deck, catalog);
+            _driver = new SessionDriver(session, catalog, lengthModifier, _services.Log, phaseLengthRng);
             Player = new Player("Player");
         }
 

@@ -11,11 +11,46 @@ namespace TruthCardGame.Core
 {
     public class ActionExecutorTests
     {
+        private static string Id(GameActionDefinition action)
+        {
+            if (string.IsNullOrEmpty(action.Id))
+            {
+                action.Id = "action-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            }
+            return action.Id;
+        }
+
         private static CardDefinition MakeCard(params GameActionDefinition[] actions)
         {
             var card = new CardDefinition { Title = "C" };
-            card.Actions.AddRange(actions);
+            foreach (var action in actions)
+            {
+                card.ActionIds.Add(action == null ? null : Id(action));
+            }
             return card;
+        }
+
+        private static ActionExecutor MakeExecutor(BackgroundActionTracker tracker, params GameActionDefinition[] actions)
+        {
+            foreach (var action in actions) if (action != null) Id(action);
+            var content = new GameContentDefinition
+            {
+                Deck = new CardDeckDefinition { Id = "deck" },
+                Actions = new List<GameActionDefinition>(actions)
+            };
+            return new ActionExecutor(new ContentCatalog(content), tracker);
+        }
+
+        private static ActionExecutor MakeExecutorWithResource(BackgroundActionTracker tracker, string resourceId, params GameActionDefinition[] actions)
+        {
+            foreach (var action in actions) if (action != null) Id(action);
+            var content = new GameContentDefinition
+            {
+                Deck = new CardDeckDefinition { Id = "deck" },
+                Actions = new List<GameActionDefinition>(actions)
+            };
+            content.Resources.Add(new ResourceDefinition { Id = resourceId, Kind = "cutscene" });
+            return new ActionExecutor(new ContentCatalog(content), tracker);
         }
 
         private static DebugActionDefinition DebugAction(string message, float delay = 0f, bool blocking = true)
@@ -28,9 +63,11 @@ namespace TruthCardGame.Core
         {
             var log = new RecordingLog();
             var context = TestServices.Create(log, new FakeDelayService { Order = new List<string>() });
-            var executor = new ActionExecutor(new BackgroundActionTracker(log));
+            var a = DebugAction("a");
+            var b = DebugAction("b");
+            var executor = MakeExecutor(new BackgroundActionTracker(log), a, b);
 
-            await executor.ExecuteCardAsync(MakeCard(DebugAction("a"), DebugAction("b")), context, CancellationToken.None);
+            await executor.ExecuteCardAsync(MakeCard(a, b), context, CancellationToken.None);
 
             CollectionAssert.AreEqual(
                 new[] { "info:[TruthCardGame] Test: a", "info:[TruthCardGame] Test: b" },
@@ -42,9 +79,10 @@ namespace TruthCardGame.Core
         {
             var log = new RecordingLog();
             var context = TestServices.Create(log, new FakeDelayService());
-            var executor = new ActionExecutor(new BackgroundActionTracker(log));
+            var ran = DebugAction("ran");
+            var executor = MakeExecutor(new BackgroundActionTracker(log), ran);
 
-            await executor.ExecuteCardAsync(MakeCard(null, DebugAction("ran"), null), context, CancellationToken.None);
+            await executor.ExecuteCardAsync(MakeCard(null, ran, null), context, CancellationToken.None);
 
             Assert.AreEqual(1, log.Entries.Count(e => e.Contains(": ran")));
         }
@@ -58,11 +96,12 @@ namespace TruthCardGame.Core
             var log = new RecordingLog();
             var context = TestServices.Create(log, delay);
             var tracker = new BackgroundActionTracker(log);
-            var executor = new ActionExecutor(tracker);
 
             var background = DebugAction("bg", 5f, blocking: false);
+            var front = DebugAction("front");
+            var executor = MakeExecutor(tracker, background, front);
 
-            await executor.ExecuteCardAsync(MakeCard(background, DebugAction("front")), context, CancellationToken.None);
+            await executor.ExecuteCardAsync(MakeCard(background, front), context, CancellationToken.None);
 
             // Background started but not finished; the later blocking action completed.
             Assert.That(order, Does.Contain("delay:start"));
@@ -80,7 +119,6 @@ namespace TruthCardGame.Core
         public async Task BackgroundFault_IsObservedAndLogged_NotLost()
         {
             var log = new RecordingLog();
-            var context = TestServices.Create(log, new FakeDelayService());
             var tracker = new BackgroundActionTracker(log);
 
             tracker.Start(Task.FromException(new InvalidOperationException("boom")));
@@ -120,9 +158,11 @@ namespace TruthCardGame.Core
             var player = new Player("Piper");
             var services = new CoreServices(delay, new ProxyLog(log, shared));
             var context = new GameContext(player, services);
-            var executor = new ActionExecutor(new BackgroundActionTracker(services.Log));
+            var tracker = new BackgroundActionTracker(services.Log);
+            var hello = DebugAction("hello", 3f);
+            var executor = MakeExecutor(tracker, hello);
 
-            await executor.ExecuteCardAsync(MakeCard(DebugAction("hello", 3f)), context, CancellationToken.None);
+            await executor.ExecuteCardAsync(MakeCard(hello), context, CancellationToken.None);
 
             Assert.That(shared.IndexOf("log:info:[TruthCardGame] Piper: hello"),
                 Is.LessThan(shared.IndexOf("delay:start")));
@@ -144,9 +184,10 @@ namespace TruthCardGame.Core
             var log = new RecordingLog();
             var delay = new FakeDelayService();
             var context = TestServices.Create(log, delay);
-            var executor = new ActionExecutor(new BackgroundActionTracker(log));
+            var instant = DebugAction("instant", 0f);
+            var executor = MakeExecutor(new BackgroundActionTracker(log), instant);
 
-            await executor.ExecuteCardAsync(MakeCard(DebugAction("instant", 0f)), context, CancellationToken.None);
+            await executor.ExecuteCardAsync(MakeCard(instant), context, CancellationToken.None);
 
             Assert.AreEqual(0, delay.LastDelayCount);
             Assert.IsTrue(log.Entries.Any(e => e.Contains(": instant")));
@@ -157,8 +198,8 @@ namespace TruthCardGame.Core
         {
             var log = new RecordingLog();
             var context = TestServices.Create(log, new FakeDelayService());
-            var executor = new ActionExecutor(new BackgroundActionTracker(log));
             var action = new StatIncreaseActionDefinition { StatKey = "courage", Amount = 3 };
+            var executor = MakeExecutor(new BackgroundActionTracker(log), action);
 
             await executor.ExecuteCardAsync(MakeCard(action), context, CancellationToken.None);
 
@@ -174,16 +215,18 @@ namespace TruthCardGame.Core
             var log = new RecordingLog();
             var prompts = new FakePromptService(1);
             var context = TestServices.Create(log, new FakeDelayService(), prompts);
-            var executor = new ActionExecutor(new BackgroundActionTracker(log));
+            var childA = DebugAction("a");
+            var childB = DebugAction("b");
             var choice = new ChoiceActionDefinition
             {
                 Prompt = "Pick",
                 Options =
                 {
-                    new ChoiceOptionDefinition { Label = "A", Child = DebugAction("a") },
-                    new ChoiceOptionDefinition { Label = "B", Child = DebugAction("b") }
+                    new ChoiceOptionDefinition { Label = "A", ChildActionId = Id(childA) },
+                    new ChoiceOptionDefinition { Label = "B", ChildActionId = Id(childB) }
                 }
             };
+            var executor = MakeExecutor(new BackgroundActionTracker(log), choice, childA, childB);
 
             await executor.ExecuteCardAsync(MakeCard(choice), context, CancellationToken.None);
 
@@ -202,12 +245,13 @@ namespace TruthCardGame.Core
             var prompts = new FakePromptService(0);
             var context = TestServices.Create(log, delay, prompts);
             var tracker = new BackgroundActionTracker(log);
-            var executor = new ActionExecutor(tracker);
+            var child = DebugAction("child", 4f, blocking: false);
             var choice = new ChoiceActionDefinition
             {
                 Prompt = "Go",
-                Options = { new ChoiceOptionDefinition { Label = "Only", Child = DebugAction("child", 4f, blocking: false) } }
+                Options = { new ChoiceOptionDefinition { Label = "Only", ChildActionId = Id(child) } }
             };
+            var executor = MakeExecutor(tracker, choice, child);
 
             await executor.ExecuteCardAsync(MakeCard(choice), context, CancellationToken.None);
 
@@ -227,12 +271,13 @@ namespace TruthCardGame.Core
             var log = new RecordingLog();
             var prompts = new FakePromptService(answer);
             var context = TestServices.Create(log, new FakeDelayService(), prompts);
-            var executor = new ActionExecutor(new BackgroundActionTracker(log));
+            var child = DebugAction("never");
             var choice = new ChoiceActionDefinition
             {
                 Prompt = "Pick",
-                Options = { new ChoiceOptionDefinition { Label = "Only", Child = DebugAction("never") } }
+                Options = { new ChoiceOptionDefinition { Label = "Only", ChildActionId = Id(child) } }
             };
+            var executor = MakeExecutor(new BackgroundActionTracker(log), choice, child);
 
             await executor.ExecuteCardAsync(MakeCard(choice), context, CancellationToken.None);
 
@@ -245,12 +290,12 @@ namespace TruthCardGame.Core
             var log = new RecordingLog();
             var prompts = new FakePromptService(0);
             var context = TestServices.Create(log, new FakeDelayService(), prompts);
-            var executor = new ActionExecutor(new BackgroundActionTracker(log));
             var choice = new ChoiceActionDefinition
             {
                 Prompt = "Pick",
                 Options = { new ChoiceOptionDefinition { Label = "Empty" } }
             };
+            var executor = MakeExecutor(new BackgroundActionTracker(log), choice);
 
             await executor.ExecuteCardAsync(MakeCard(choice), context, CancellationToken.None);
 
@@ -262,12 +307,13 @@ namespace TruthCardGame.Core
         {
             var log = new RecordingLog();
             var context = TestServices.Create(log, new FakeDelayService()); // no prompt service
-            var executor = new ActionExecutor(new BackgroundActionTracker(log));
+            var child = DebugAction("never");
             var choice = new ChoiceActionDefinition
             {
                 Prompt = "Pick",
-                Options = { new ChoiceOptionDefinition { Label = "Only", Child = DebugAction("never") } }
+                Options = { new ChoiceOptionDefinition { Label = "Only", ChildActionId = Id(child) } }
             };
+            var executor = MakeExecutor(new BackgroundActionTracker(log), choice, child);
 
             await executor.ExecuteCardAsync(MakeCard(choice), context, CancellationToken.None);
 
@@ -281,12 +327,28 @@ namespace TruthCardGame.Core
             var log = new RecordingLog();
             var prompts = new FakePromptService(0);
             var context = TestServices.Create(log, new FakeDelayService(), prompts);
-            var executor = new ActionExecutor(new BackgroundActionTracker(log));
+            var choice = new ChoiceActionDefinition { Prompt = "Pick" };
+            var executor = MakeExecutor(new BackgroundActionTracker(log), choice);
 
-            await executor.ExecuteCardAsync(MakeCard(new ChoiceActionDefinition { Prompt = "Pick" }), context, CancellationToken.None);
+            await executor.ExecuteCardAsync(MakeCard(choice), context, CancellationToken.None);
 
             Assert.AreEqual(1, log.Entries.Count(e => e.StartsWith("error:") && e.Contains("no options")));
             Assert.IsEmpty(prompts.Requests);
+        }
+
+        [Test]
+        public async Task ActionCycle_ChoiceChildReferencingItself_StopsWithLoggedError()
+        {
+            var log = new RecordingLog();
+            var prompts = new FakePromptService(0);
+            var context = TestServices.Create(log, new FakeDelayService(), prompts);
+            var choice = new ChoiceActionDefinition { Prompt = "Pick" };
+            choice.Options.Add(new ChoiceOptionDefinition { Label = "Loop", ChildActionId = Id(choice) });
+            var executor = MakeExecutor(new BackgroundActionTracker(log), choice);
+
+            await executor.ExecuteCardAsync(MakeCard(choice), context, CancellationToken.None);
+
+            Assert.That(log.Entries.Single(e => e.StartsWith("error:")), Does.Contain("cycle"));
         }
 
         // ---------- cutscene ----------
@@ -299,8 +361,8 @@ namespace TruthCardGame.Core
             var cutscenes = new FakeCutsceneService(gate1, gate2);
             var log = new RecordingLog();
             var context = TestServices.Create(log, new FakeDelayService(), cutscenes: cutscenes);
-            var executor = new ActionExecutor(new BackgroundActionTracker(log));
             var action = new CutsceneActionDefinition { ResourceId = "cs:intro" };
+            var executor = MakeExecutorWithResource(new BackgroundActionTracker(log), "cs:intro", action);
             var task = executor.ExecuteCardAsync(MakeCard(action), context, CancellationToken.None);
 
             await Task.Yield();
@@ -318,9 +380,10 @@ namespace TruthCardGame.Core
             var log = new RecordingLog();
             var cutscenes = new FakeCutsceneService();
             var context = TestServices.Create(log, new FakeDelayService(), cutscenes: cutscenes);
-            var executor = new ActionExecutor(new BackgroundActionTracker(log));
+            var action = new CutsceneActionDefinition { ResourceId = resourceId };
+            var executor = MakeExecutor(new BackgroundActionTracker(log), action);
 
-            await executor.ExecuteCardAsync(MakeCard(new CutsceneActionDefinition { ResourceId = resourceId }), context, CancellationToken.None);
+            await executor.ExecuteCardAsync(MakeCard(action), context, CancellationToken.None);
 
             Assert.AreEqual(1, log.Entries.Count(e => e.StartsWith("error:") && e.Contains("no resource assigned")));
             Assert.IsEmpty(cutscenes.Started);
@@ -331,11 +394,24 @@ namespace TruthCardGame.Core
         {
             var log = new RecordingLog();
             var context = TestServices.Create(log, new FakeDelayService()); // no cutscene service
-            var executor = new ActionExecutor(new BackgroundActionTracker(log));
+            var action = new CutsceneActionDefinition { ResourceId = "cs:x" };
+            var executor = MakeExecutorWithResource(new BackgroundActionTracker(log), "cs:x", action);
 
-            await executor.ExecuteCardAsync(MakeCard(new CutsceneActionDefinition { ResourceId = "cs:x" }), context, CancellationToken.None);
+            await executor.ExecuteCardAsync(MakeCard(action), context, CancellationToken.None);
 
             Assert.AreEqual(1, log.Entries.Count(e => e.StartsWith("error:") && e.Contains("no cutscene service")));
+        }
+
+        [Test]
+        public void Cutscene_UnknownResourceId_FailsLoudly()
+        {
+            var log = new RecordingLog();
+            var context = TestServices.Create(log, new FakeDelayService(), cutscenes: new FakeCutsceneService());
+            var action = new CutsceneActionDefinition { ResourceId = "cs:missing" };
+            var executor = MakeExecutor(new BackgroundActionTracker(log), action);
+
+            Assert.ThrowsAsync<InvalidOperationException>(
+                () => executor.ExecuteCardAsync(MakeCard(action), context, CancellationToken.None));
         }
 
         // ---------- cancellation ----------
@@ -348,9 +424,10 @@ namespace TruthCardGame.Core
             var cutscenes = new FakeCutsceneService(gate);
             var log = new RecordingLog();
             var context = TestServices.Create(log, new FakeDelayService(), cutscenes: cutscenes);
-            var executor = new ActionExecutor(new BackgroundActionTracker(log));
+            var action = new CutsceneActionDefinition { ResourceId = "cs:x" };
+            var executor = MakeExecutorWithResource(new BackgroundActionTracker(log), "cs:x", action);
 
-            var task = executor.ExecuteCardAsync(MakeCard(new CutsceneActionDefinition { ResourceId = "cs:x" }), context, cts.Token);
+            var task = executor.ExecuteCardAsync(MakeCard(action), context, cts.Token);
             await Task.Yield();
             cts.Cancel();
 
@@ -366,12 +443,13 @@ namespace TruthCardGame.Core
             var log = new RecordingLog();
             var context = TestServices.Create(log, delay);
             var tracker = new BackgroundActionTracker(log);
-            var executor = new ActionExecutor(tracker);
+            var bg = DebugAction("bg", 9f, blocking: false);
+            var executor = MakeExecutor(tracker, bg);
 
             // Baseline parity: dispatching a continuous action means the card
             // itself is not held by it, so cancelling the token faults only
             // the background work, which the tracker observes quietly.
-            var task = executor.ExecuteCardAsync(MakeCard(DebugAction("bg", 9f, blocking: false)), context, cts.Token);
+            var task = executor.ExecuteCardAsync(MakeCard(bg), context, cts.Token);
             await Task.Yield();
             Assert.DoesNotThrowAsync(async () => await task);
 

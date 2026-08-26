@@ -7,22 +7,28 @@ using TruthCardGame.Content;
 namespace TruthCardGame.Core
 {
     /// <summary>
-    /// Executes card action definitions with baseline semantics:
-    /// - null actions are skipped;
+    /// Executes card action references with baseline semantics:
+    /// - null/empty action references are skipped;
     /// - blocking actions are awaited in order;
     /// - nonblocking actions are started through the background tracker and
-    ///   execution continues immediately.
+    ///   execution continues immediately;
+    /// - Choice children resolve by ChildActionId through the catalog;
+    /// - reference cycles (Choice -> child -> ... -> itself) are stopped with
+    ///   a clear logged failure instead of unbounded recursion.
     /// Misconfiguration (missing prompt/cutscene service, empty options,
     /// dismissed choice, missing resource) logs an error and no-ops, exactly
-    /// as the current Unity implementation does. Unexpected exceptions fault
-    /// the task and must be observed by the caller or the tracker.
+    /// as before. A non-empty Action ID missing from the catalog fails loudly
+    /// with context. Unexpected exceptions fault the task and must be observed
+    /// by the caller or the tracker.
     /// </summary>
     public sealed class ActionExecutor
     {
+        private readonly ContentCatalog _catalog;
         private readonly BackgroundActionTracker _tracker;
 
-        public ActionExecutor(BackgroundActionTracker tracker)
+        public ActionExecutor(ContentCatalog catalog, BackgroundActionTracker tracker)
         {
+            _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
             _tracker = tracker ?? throw new ArgumentNullException(nameof(tracker));
         }
 
@@ -30,46 +36,67 @@ namespace TruthCardGame.Core
         public async Task ExecuteCardAsync(CardDefinition card, GameContext context, CancellationToken cancellationToken)
         {
             if (card == null) throw new ArgumentNullException(nameof(card));
-            var actions = card.Actions;
-            if (actions == null) return;
+            var actionIds = card.ActionIds;
+            if (actionIds == null) return;
 
-            for (var i = 0; i < actions.Count; i++)
+            for (var i = 0; i < actionIds.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var action = actions[i];
-                if (action == null) continue;
+                var id = actionIds[i];
+                if (string.IsNullOrEmpty(id)) continue;
+
+                var action = _catalog.ActionById(id);
 
                 if (action.IsBlocking)
                 {
-                    await ExecuteActionAsync(action, context, cancellationToken);
+                    await ExecuteActionAsync(action, context, new HashSet<string>(), cancellationToken);
                 }
                 else
                 {
-                    _tracker.Start(ExecuteActionAsync(action, context, cancellationToken));
+                    _tracker.Start(ExecuteActionAsync(action, context, new HashSet<string>(), cancellationToken));
                 }
             }
         }
 
         /// <summary>Runs a single action to completion (used for blocking actions and chosen children).</summary>
-        public async Task ExecuteActionAsync(GameActionDefinition action, GameContext context, CancellationToken cancellationToken)
+        public Task ExecuteActionAsync(GameActionDefinition action, GameContext context, CancellationToken cancellationToken)
         {
-            switch (action)
+            return ExecuteActionAsync(action, context, new HashSet<string>(), cancellationToken);
+        }
+
+        private async Task ExecuteActionAsync(GameActionDefinition action, GameContext context, HashSet<string> chain, CancellationToken cancellationToken)
+        {
+            var id = action.Id;
+            if (!string.IsNullOrEmpty(id) && !chain.Add(id))
             {
-                case DebugActionDefinition debug:
-                    await ExecuteDebugAsync(debug, context, cancellationToken);
-                    break;
-                case StatIncreaseActionDefinition stat:
-                    ExecuteStat(stat, context);
-                    break;
-                case ChoiceActionDefinition choice:
-                    await ExecuteChoiceAsync(choice, context, cancellationToken);
-                    break;
-                case CutsceneActionDefinition cutscene:
-                    await ExecuteCutsceneAsync(cutscene, context, cancellationToken);
-                    break;
-                default:
-                    context.Services.Log.Error($"[TruthCardGame] No executor for action type {action.GetType().Name}.");
-                    break;
+                context.Services.Log.Error($"[TruthCardGame] Action reference cycle detected at action '{id}'; stopping this chain.");
+                return;
+            }
+
+            try
+            {
+                switch (action)
+                {
+                    case DebugActionDefinition debug:
+                        await ExecuteDebugAsync(debug, context, cancellationToken);
+                        break;
+                    case StatIncreaseActionDefinition stat:
+                        ExecuteStat(stat, context);
+                        break;
+                    case ChoiceActionDefinition choice:
+                        await ExecuteChoiceAsync(choice, context, chain, cancellationToken);
+                        break;
+                    case CutsceneActionDefinition cutscene:
+                        await ExecuteCutsceneAsync(cutscene, context, cancellationToken);
+                        break;
+                    default:
+                        context.Services.Log.Error($"[TruthCardGame] No executor for action type {action.GetType().Name}.");
+                        break;
+                }
+            }
+            finally
+            {
+                if (!string.IsNullOrEmpty(id)) chain.Remove(id);
             }
         }
 
@@ -89,7 +116,7 @@ namespace TruthCardGame.Core
             context.Services.Log.Info($"[TruthCardGame] {context.Player.Name} {action.StatKey} +{action.Amount} (now {context.Player.Stats.Get(action.StatKey)})");
         }
 
-        private async Task ExecuteChoiceAsync(ChoiceActionDefinition action, GameContext context, CancellationToken ct)
+        private async Task ExecuteChoiceAsync(ChoiceActionDefinition action, GameContext context, HashSet<string> chain, CancellationToken ct)
         {
             var prompts = context.Services.Prompts;
             if (prompts == null)
@@ -116,19 +143,21 @@ namespace TruthCardGame.Core
                 return; // dismissed or invalid; nothing to run
             }
 
-            var child = action.Options[chosen.Value]?.Child;
-            if (child == null)
+            var childId = action.Options[chosen.Value]?.ChildActionId;
+            if (string.IsNullOrEmpty(childId))
             {
                 return;
             }
 
+            var child = _catalog.ActionById(childId);
+
             if (child.IsBlocking)
             {
-                await ExecuteActionAsync(child, context, ct);
+                await ExecuteActionAsync(child, context, chain, ct);
             }
             else
             {
-                _tracker.Start(ExecuteActionAsync(child, context, ct));
+                _tracker.Start(ExecuteActionAsync(child, context, new HashSet<string>(), ct));
             }
         }
 
@@ -139,6 +168,10 @@ namespace TruthCardGame.Core
                 context.Services.Log.Error("[TruthCardGame] CutsceneAction has no resource assigned.");
                 return;
             }
+
+            // The portable Resource must exist in the snapshot; hosts resolve
+            // their own bindings off this ID afterwards.
+            _catalog.ResourceById(action.ResourceId);
 
             var cutscenes = context.Services.Cutscene;
             if (cutscenes == null)

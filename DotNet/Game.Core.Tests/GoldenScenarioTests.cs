@@ -32,8 +32,8 @@ namespace TruthCardGame.Core.Tests
 
             var services = new CoreServices(delay, log, prompts, cutscenes);
             var engine = new GameSessionEngine(
-                ParityFixture.MakeSession(),
-                ParityFixture.MakeDeck(),
+                ParityFixture.MakeContent(),
+                ParityFixture.SessionId,
                 () => 1f,
                 phaseRng,
                 cardRng,

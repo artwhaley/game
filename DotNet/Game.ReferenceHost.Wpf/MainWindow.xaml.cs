@@ -1,12 +1,11 @@
 using System;
 using System.Collections.ObjectModel;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using TruthCardGame.Content;
-using TruthCardGame.Content.Json;
+using TruthCardGame.Content.Samples;
 using TruthCardGame.Core;
 
 namespace TruthCardGame.ReferenceHost.Wpf
@@ -23,7 +22,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private const int MaxLogEntries = 400;
 
         private readonly ObservableCollection<string> _log = new ObservableCollection<string>();
-        private ContentDocument _document;
+        private GameContentDefinition _content;
         private GameSessionEngine _engine;
         private CancellationTokenSource _sessionCts;
         private float _lengthModifier = 1f;
@@ -32,26 +31,27 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             InitializeComponent();
             LogList.ItemsSource = _log;
-            Loaded += (_, _) => LoadFixture();
+            Loaded += (_, _) => LoadContent();
         }
 
-        // ---------- fixture loading ----------
+        // ---------- content loading ----------
 
-        private void LoadFixture()
+        private void LoadContent()
         {
             try
             {
-                var path = Path.Combine(AppContext.BaseDirectory, "TestData", "parity-content-v2.json");
-                _document = ContentJson.Load(File.ReadAllText(path));
-                SessionCombo.ItemsSource = _document.Sessions;
+                // Temporary in-memory sample snapshot; Ticket 09 replaces this
+                // with a load from the canonical Content/GameContent.db.
+                _content = SampleContent.Build();
+                SessionCombo.ItemsSource = _content.Sessions;
                 SessionCombo.DisplayMemberPath = nameof(SessionDefinition.Title);
                 SessionCombo.SelectedIndex = 0;
-                Log("Fixture loaded: " + path);
+                Log("Sample content loaded.");
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Fixture error";
-                MessageBox.Show(this, "Failed to load content fixture:\n\n" + ex.Message,
+                StatusText.Text = "Content error";
+                MessageBox.Show(this, "Failed to load content:\n\n" + ex.Message,
                     "Reference host", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -62,7 +62,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             try
             {
-                if (_document == null || SessionCombo.SelectedItem is not SessionDefinition selected)
+                if (_content == null || SessionCombo.SelectedItem is not SessionDefinition selected)
                 {
                     Log("No session selected.");
                     return;
@@ -78,10 +78,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     cutscene: new UiCutsceneService(this));
 
                 _engine = new GameSessionEngine(
-                    selected,
-                    _document.Deck,
+                    _content,
+                    selected.Id,
                     () => _lengthModifier,
-                    phaseRng: new SystemRandomSource(7),
+                    phaseLengthRng: new SystemRandomSource(7),
                     cardRng: new SystemRandomSource(11),
                     services);
 

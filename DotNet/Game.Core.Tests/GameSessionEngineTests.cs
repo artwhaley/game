@@ -13,37 +13,74 @@ namespace TruthCardGame.Core
     {
         private readonly List<string> _eventOrder = new List<string>();
 
-        private static SessionDefinition MakeSession(params PhaseDefinition[] phases)
-        {
-            var session = new SessionDefinition { Title = "S" };
-            session.Phases.AddRange(phases);
-            return session;
-        }
-
         private static PhaseDefinition Phase(int min, int max, params string[] include)
         {
-            var phase = new PhaseDefinition { Title = "P" + min + max + string.Concat(include), MinCards = min, MaxCards = max };
+            var phase = new PhaseDefinition
+            {
+                Id = "phase-" + Guid.NewGuid().ToString("N").Substring(0, 8),
+                Title = "P" + min + max + string.Concat(include),
+                MinCards = min,
+                MaxCards = max
+            };
             phase.MustIncludeTags.AddRange(include);
             return phase;
         }
 
+        private static SessionDefinition Session(params PhaseDefinition[] phases)
+        {
+            var session = new SessionDefinition
+            {
+                Id = "session-" + Guid.NewGuid().ToString("N").Substring(0, 8),
+                Title = "S"
+            };
+            for (var i = 0; i < phases.Length; i++)
+            {
+                session.PhaseSlots.Add(new PhaseSlotDefinition
+                {
+                    Id = "slot-" + i,
+                    Title = phases[i].Title,
+                    Candidates = { new PhaseSlotCandidateDefinition { Id = "cand-" + i, PhaseId = phases[i].Id } }
+                });
+            }
+            return session;
+        }
+
         private static CardDefinition Card(string title, params string[] tags)
         {
-            var card = new CardDefinition { Title = title };
+            var card = new CardDefinition
+            {
+                Id = "card-" + Guid.NewGuid().ToString("N").Substring(0, 8),
+                Title = title
+            };
             card.Tags.AddRange(tags);
             return card;
         }
 
-        private static CardDeckDefinition Deck(params CardDefinition[] cards)
+        private static GameContentDefinition Content(
+            SessionDefinition session,
+            PhaseDefinition[] phases,
+            CardDefinition[] cards,
+            GameActionDefinition[] actions = null,
+            ResourceDefinition[] resources = null)
         {
-            var deck = new CardDeckDefinition();
-            deck.Cards.AddRange(cards);
-            return deck;
+            var deck = new CardDeckDefinition { Id = "deck" };
+            foreach (var card in cards) deck.CardIds.Add(card.Id);
+
+            var content = new GameContentDefinition
+            {
+                Deck = deck,
+                Sessions = { session },
+                Phases = new List<PhaseDefinition>(phases),
+                Cards = new List<CardDefinition>(cards),
+                Actions = actions == null ? new List<GameActionDefinition>() : new List<GameActionDefinition>(actions)
+            };
+            if (resources != null) content.Resources.AddRange(resources);
+            return content;
         }
 
         private GameSessionEngine MakeEngine(
-            SessionDefinition session,
-            CardDeckDefinition deck,
+            GameContentDefinition content,
+            string sessionId,
             RecordingLog log,
             FakeDelayService delay,
             IPromptService prompts = null,
@@ -54,8 +91,8 @@ namespace TruthCardGame.Core
             _eventOrder.Clear();
             var services = new CoreServices(delay, log, prompts, cutscenes);
             var engine = new GameSessionEngine(
-                session,
-                deck,
+                content,
+                sessionId,
                 () => 1f,
                 phaseRng ?? new FixedRandomSource(Enumerable.Repeat(0, 64).ToArray()),
                 cardRng ?? new FixedRandomSource(Enumerable.Repeat(0, 64).ToArray()),
@@ -72,10 +109,10 @@ namespace TruthCardGame.Core
         public async Task OneCall_DrawsExactlyOneCard_ThenRequiresAnother()
         {
             var log = new RecordingLog();
-            var engine = MakeEngine(
-                MakeSession(Phase(3, 3)),
-                Deck(Card("A"), Card("B")),
-                log, new FakeDelayService());
+            var phases = new[] { Phase(3, 3) };
+            var session = Session(phases);
+            var cards = new[] { Card("A"), Card("B") };
+            var engine = MakeEngine(Content(session, phases, cards), session.Id, log, new FakeDelayService());
 
             var first = await engine.AdvanceOneCardAsync(CancellationToken.None);
             Assert.AreEqual(AdvanceResultKind.CardCompleted, first.Kind);
@@ -93,10 +130,10 @@ namespace TruthCardGame.Core
         {
             var log = new RecordingLog();
             // P1 wants "ending" (deck has none) then advances; P2 draws normally.
-            var engine = MakeEngine(
-                MakeSession(Phase(1, 1, "ending"), Phase(1, 1)),
-                Deck(Card("Normal", "plain")),
-                log, new FakeDelayService());
+            var phases = new[] { Phase(1, 1, "ending"), Phase(1, 1) };
+            var session = Session(phases);
+            var cards = new[] { Card("Normal", "plain") };
+            var engine = MakeEngine(Content(session, phases, cards), session.Id, log, new FakeDelayService());
 
             var result = await engine.AdvanceOneCardAsync(CancellationToken.None);
 
@@ -110,10 +147,10 @@ namespace TruthCardGame.Core
         public async Task SeveralConsecutiveNoMatchPhases_AreSkippedSafely()
         {
             var log = new RecordingLog();
-            var engine = MakeEngine(
-                MakeSession(Phase(1, 1, "x"), Phase(1, 1, "y"), Phase(1, 1)),
-                Deck(Card("Only", "z")),
-                log, new FakeDelayService());
+            var phases = new[] { Phase(1, 1, "x"), Phase(1, 1, "y"), Phase(1, 1) };
+            var session = Session(phases);
+            var cards = new[] { Card("Only", "z") };
+            var engine = MakeEngine(Content(session, phases, cards), session.Id, log, new FakeDelayService());
 
             var result = await engine.AdvanceOneCardAsync(CancellationToken.None);
 
@@ -127,10 +164,10 @@ namespace TruthCardGame.Core
         public async Task NoMatchThroughFinalPhase_CompletesSession_WithNullCard()
         {
             var log = new RecordingLog();
-            var engine = MakeEngine(
-                MakeSession(Phase(1, 1, "unreachable")),
-                Deck(Card("Anything")),
-                log, new FakeDelayService());
+            var phases = new[] { Phase(1, 1, "unreachable") };
+            var session = Session(phases);
+            var cards = new[] { Card("Anything") };
+            var engine = MakeEngine(Content(session, phases, cards), session.Id, log, new FakeDelayService());
 
             var result = await engine.AdvanceOneCardAsync(CancellationToken.None);
 
@@ -144,10 +181,10 @@ namespace TruthCardGame.Core
         public async Task CardCompletion_AtTarget_AdvancesPhase_AndFinalCardCompletes()
         {
             var log = new RecordingLog();
-            var engine = MakeEngine(
-                MakeSession(Phase(2, 2), Phase(1, 1)),
-                Deck(Card("C1"), Card("C2"), Card("C3")),
-                log, new FakeDelayService());
+            var phases = new[] { Phase(2, 2), Phase(1, 1) };
+            var session = Session(phases);
+            var cards = new[] { Card("C1"), Card("C2"), Card("C3") };
+            var engine = MakeEngine(Content(session, phases, cards), session.Id, log, new FakeDelayService());
 
             await engine.AdvanceOneCardAsync(CancellationToken.None);
             Assert.AreEqual(0, engine.PhaseIndex);
@@ -165,7 +202,10 @@ namespace TruthCardGame.Core
         public async Task AdvanceAfterCompletion_ReturnsSessionCompleted_WithoutDrawing()
         {
             var log = new RecordingLog();
-            var engine = MakeEngine(MakeSession(Phase(1, 1)), Deck(Card("Only")), log, new FakeDelayService());
+            var phases = new[] { Phase(1, 1) };
+            var session = Session(phases);
+            var cards = new[] { Card("Only") };
+            var engine = MakeEngine(Content(session, phases, cards), session.Id, log, new FakeDelayService());
             await engine.AdvanceOneCardAsync(CancellationToken.None);
             _eventOrder.Clear();
 
@@ -182,12 +222,14 @@ namespace TruthCardGame.Core
             var log = new RecordingLog();
             var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             var cutscenes = new FakeCutsceneService(gate);
-            var cutCard = new CardDefinition { Title = "Cut", Tags = { "cs" } };
-            cutCard.Actions.Add(new CutsceneActionDefinition { ResourceId = "cs:x" });
-            var engine = MakeEngine(
-                MakeSession(Phase(1, 1)),
-                Deck(cutCard),
-                log, new FakeDelayService(), cutscenes: cutscenes);
+            var cut = new CutsceneActionDefinition { Id = "a-cut", ResourceId = "cs:x" };
+            var cutCard = Card("Cut", "cs");
+            cutCard.ActionIds.Add(cut.Id);
+            var phases = new[] { Phase(1, 1) };
+            var session = Session(phases);
+            var content = Content(session, phases, new[] { cutCard }, new[] { cut },
+                new[] { new ResourceDefinition { Id = "cs:x", Kind = "cutscene" } });
+            var engine = MakeEngine(content, session.Id, log, new FakeDelayService(), cutscenes: cutscenes);
 
             var busyWork = engine.AdvanceOneCardAsync(CancellationToken.None);
             await Task.Yield();
@@ -207,10 +249,10 @@ namespace TruthCardGame.Core
         public async Task Notifications_OccurInPreservedOrder()
         {
             var log = new RecordingLog();
-            var engine = MakeEngine(
-                MakeSession(Phase(1, 1)),
-                Deck(Card("Solo")),
-                log, new FakeDelayService());
+            var phases = new[] { Phase(1, 1) };
+            var session = Session(phases);
+            var cards = new[] { Card("Solo") };
+            var engine = MakeEngine(Content(session, phases, cards), session.Id, log, new FakeDelayService());
 
             await engine.AdvanceOneCardAsync(CancellationToken.None);
 
@@ -228,12 +270,13 @@ namespace TruthCardGame.Core
             var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             var order = new List<string>();
             var delay = new FakeDelayService { Gate = gate, Order = order };
-            var bgCard = new CardDefinition { Title = "Bg" };
-            bgCard.Actions.Add(new DebugActionDefinition { Message = "bg", DelaySeconds = 5f, IsBlocking = false });
-            var engine = MakeEngine(
-                MakeSession(Phase(3, 3)),
-                Deck(bgCard, Card("Next")),
-                log, delay);
+            var bg = new DebugActionDefinition { Id = "a-bg", Message = "bg", DelaySeconds = 5f, IsBlocking = false };
+            var bgCard = Card("Bg");
+            bgCard.ActionIds.Add(bg.Id);
+            var phases = new[] { Phase(3, 3) };
+            var session = Session(phases);
+            var cards = new[] { bgCard, Card("Next") };
+            var engine = MakeEngine(Content(session, phases, cards, new[] { bg }), session.Id, log, delay);
 
             var first = await engine.AdvanceOneCardAsync(CancellationToken.None);
             Assert.AreEqual(AdvanceResultKind.CardCompleted, first.Kind);
@@ -253,17 +296,23 @@ namespace TruthCardGame.Core
         {
             var log = new RecordingLog();
             var prompts = new GatedPromptService();
+            var child = new DebugActionDefinition { Id = "a-child", Message = "a" };
             var choice = new ChoiceActionDefinition
             {
+                Id = "a-choice",
                 Prompt = "Pick",
                 Options =
                 {
-                    new ChoiceOptionDefinition { Label = "A", Child = new DebugActionDefinition { Message = "a" } },
+                    new ChoiceOptionDefinition { Label = "A", ChildActionId = child.Id },
                     new ChoiceOptionDefinition { Label = "B" }
                 }
             };
-            var deck = Deck(new CardDefinition { Title = "Choice", Actions = { choice } });
-            var engine = MakeEngine(MakeSession(Phase(1, 1)), deck, log, new FakeDelayService(), prompts: prompts);
+            var choiceCard = Card("Choice");
+            choiceCard.ActionIds.Add(choice.Id);
+            var phases = new[] { Phase(1, 1) };
+            var session = Session(phases);
+            var content = Content(session, phases, new[] { choiceCard }, new GameActionDefinition[] { choice, child });
+            var engine = MakeEngine(content, session.Id, log, new FakeDelayService(), prompts: prompts);
 
             var pending = engine.AdvanceOneCardAsync(CancellationToken.None);
             await Task.Yield();
@@ -299,12 +348,14 @@ namespace TruthCardGame.Core
         {
             var log = new RecordingLog();
             var cts = new CancellationTokenSource();
-            var cutCard = new CardDefinition { Title = "Cut", Tags = { "cs" } };
-            cutCard.Actions.Add(new CutsceneActionDefinition { ResourceId = "cs:x" });
-            var engine = MakeEngine(
-                MakeSession(Phase(1, 1)),
-                Deck(cutCard),
-                log, new FakeDelayService(), cutscenes: new SwallowingCutsceneService());
+            var cut = new CutsceneActionDefinition { Id = "a-cut", ResourceId = "cs:x" };
+            var cutCard = Card("Cut", "cs");
+            cutCard.ActionIds.Add(cut.Id);
+            var phases = new[] { Phase(1, 1) };
+            var session = Session(phases);
+            var content = Content(session, phases, new[] { cutCard }, new[] { cut },
+                new[] { new ResourceDefinition { Id = "cs:x", Kind = "cutscene" } });
+            var engine = MakeEngine(content, session.Id, log, new FakeDelayService(), cutscenes: new SwallowingCutsceneService());
 
             var blocked = engine.AdvanceOneCardAsync(cts.Token);
             await Task.Yield();
@@ -330,12 +381,14 @@ namespace TruthCardGame.Core
             var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             var cutscenes = new FakeCutsceneService(gate);
             var cts = new CancellationTokenSource();
-            var cutCard = new CardDefinition { Title = "Cut", Tags = { "cs" } };
-            cutCard.Actions.Add(new CutsceneActionDefinition { ResourceId = "cs:x" });
-            var engine = MakeEngine(
-                MakeSession(Phase(1, 1)),
-                Deck(cutCard),
-                log, new FakeDelayService(), cutscenes: cutscenes);
+            var cut = new CutsceneActionDefinition { Id = "a-cut", ResourceId = "cs:x" };
+            var cutCard = Card("Cut", "cs");
+            cutCard.ActionIds.Add(cut.Id);
+            var phases = new[] { Phase(1, 1) };
+            var session = Session(phases);
+            var content = Content(session, phases, new[] { cutCard }, new[] { cut },
+                new[] { new ResourceDefinition { Id = "cs:x", Kind = "cutscene" } });
+            var engine = MakeEngine(content, session.Id, log, new FakeDelayService(), cutscenes: cutscenes);
 
             var blocked = engine.AdvanceOneCardAsync(cts.Token);
             await Task.Yield();

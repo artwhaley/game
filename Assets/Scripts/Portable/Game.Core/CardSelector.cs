@@ -4,10 +4,11 @@ using TruthCardGame.Content;
 namespace TruthCardGame.Core
 {
     /// <summary>
-    /// Draws a random card from a deck matching tag filters.
+    /// Draws a random card from a deck matching tag filters. Deck entries are
+    /// Card IDs resolved through the catalog.
     ///
     /// Matching semantics (preserved from baseline):
-    /// - null deck entries are ignored;
+    /// - null/empty deck entries are skipped defensively (dense lists have none);
     /// - a card matches when it has ALL must-include tags and NONE of the
     ///   must-exclude tags;
     /// - comparison is default string equality (ordinal, case-sensitive);
@@ -18,10 +19,12 @@ namespace TruthCardGame.Core
     public sealed class CardSelector
     {
         private readonly CardDeckDefinition _deck;
+        private readonly ContentCatalog _catalog;
 
-        public CardSelector(CardDeckDefinition deck)
+        public CardSelector(CardDeckDefinition deck, ContentCatalog catalog)
         {
             _deck = deck ?? throw new System.ArgumentNullException(nameof(deck));
+            _catalog = catalog ?? throw new System.ArgumentNullException(nameof(catalog));
         }
 
         public bool TryDrawCard(
@@ -43,11 +46,13 @@ namespace TruthCardGame.Core
         private List<CardDefinition> MatchingCards(IReadOnlyList<string> mustInclude, IReadOnlyList<string> mustExclude)
         {
             var matches = new List<CardDefinition>();
-            var cards = _deck.Cards;
-            for (var i = 0; i < cards.Count; i++)
+            var ids = _deck.CardIds;
+            for (var i = 0; i < ids.Count; i++)
             {
-                var candidate = cards[i];
-                if (candidate == null) continue;
+                var id = ids[i];
+                if (string.IsNullOrEmpty(id)) continue;
+
+                var candidate = _catalog.CardById(id);
                 if (!HasAllTags(candidate.Tags, mustInclude)) continue;
                 if (HasAnyTag(candidate.Tags, mustExclude)) continue;
                 matches.Add(candidate);
