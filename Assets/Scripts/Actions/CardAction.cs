@@ -24,5 +24,15 @@ namespace TruthCardGame
         public bool IsBlocking => isBlocking;
 
         public abstract IEnumerator Execute(GameContext context);
+
+        /// <summary>
+        /// Converts this asset to its portable definition. The base returns
+        /// null so legacy/test subclasses without a portable form stay
+        /// convertible as "no action" entries; concrete actions override.
+        /// </summary>
+        public virtual TruthCardGame.Content.GameActionDefinition ToDefinition(CutsceneBindingRegistry registry)
+        {
+            return null;
+        }
     }
 }

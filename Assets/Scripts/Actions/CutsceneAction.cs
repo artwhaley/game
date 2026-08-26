@@ -42,5 +42,27 @@ namespace TruthCardGame
                 yield return null;
             }
         }
+
+        public override TruthCardGame.Content.GameActionDefinition ToDefinition(CutsceneBindingRegistry registry)
+        {
+            string resourceId = null;
+            if (timeline != null)
+            {
+                if (registry == null)
+                {
+                    Debug.LogError("[TruthCardGame] CutsceneAction has a timeline but no registry to bind it; converting as missing resource.");
+                }
+                else
+                {
+                    resourceId = registry.Register(timeline);
+                }
+            }
+            // Null/empty ResourceId preserves the current missing-timeline no-op behavior downstream.
+            return new TruthCardGame.Content.CutsceneActionDefinition
+            {
+                IsBlocking = IsBlocking,
+                ResourceId = resourceId
+            };
+        }
     }
 }

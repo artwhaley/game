@@ -19,5 +19,20 @@ namespace TruthCardGame
         public string Title => title;
         public IReadOnlyList<string> Tags => tags;
         public IReadOnlyList<CardAction> Actions => actions;
+
+        /// <summary>Converts to the portable definition, preserving order and null action entries.</summary>
+        public TruthCardGame.Content.CardDefinition ToDefinition(CutsceneBindingRegistry registry)
+        {
+            var definition = new TruthCardGame.Content.CardDefinition { Title = title };
+            if (tags != null) definition.Tags.AddRange(tags);
+            if (actions != null)
+            {
+                foreach (var action in actions)
+                {
+                    definition.Actions.Add(action == null ? null : action.ToDefinition(registry));
+                }
+            }
+            return definition;
+        }
     }
 }

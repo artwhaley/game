@@ -75,5 +75,30 @@ namespace TruthCardGame
                 Debug.LogError("[TruthCardGame] ChoiceAction: chosen continuous child but no coroutine runner in context.");
             }
         }
+
+        public override TruthCardGame.Content.GameActionDefinition ToDefinition(CutsceneBindingRegistry registry)
+        {
+            var definition = new TruthCardGame.Content.ChoiceActionDefinition
+            {
+                IsBlocking = IsBlocking,
+                Prompt = prompt
+            };
+            if (options == null) return definition;
+
+            foreach (var option in options)
+            {
+                if (option == null)
+                {
+                    definition.Options.Add(null);
+                    continue;
+                }
+                definition.Options.Add(new TruthCardGame.Content.ChoiceOptionDefinition
+                {
+                    Label = option.Label,
+                    Child = option.Action == null ? null : option.Action.ToDefinition(registry)
+                });
+            }
+            return definition;
+        }
     }
 }

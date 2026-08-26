@@ -19,5 +19,15 @@ namespace TruthCardGame
             Debug.Log($"[TruthCardGame] {context.Player.Name} {statKey} +{amount} (now {context.Player.Stats.Get(statKey)})");
             yield break;
         }
+
+        public override TruthCardGame.Content.GameActionDefinition ToDefinition(CutsceneBindingRegistry registry)
+        {
+            return new TruthCardGame.Content.StatIncreaseActionDefinition
+            {
+                IsBlocking = IsBlocking,
+                StatKey = statKey,
+                Amount = amount
+            };
+        }
     }
 }

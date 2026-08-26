@@ -29,5 +29,19 @@ namespace TruthCardGame
             }
             return result;
         }
+
+        /// <summary>Converts to the portable deck definition, preserving order and null entries.</summary>
+        public TruthCardGame.Content.CardDeckDefinition ToDefinition(CutsceneBindingRegistry registry)
+        {
+            var definition = new TruthCardGame.Content.CardDeckDefinition();
+            if (cards != null)
+            {
+                foreach (var card in cards)
+                {
+                    definition.Cards.Add(card == null ? null : card.ToDefinition(registry));
+                }
+            }
+            return definition;
+        }
     }
 }

@@ -22,5 +22,15 @@ namespace TruthCardGame
                 yield return new WaitForSeconds(delaySeconds);
             }
         }
+
+        public override TruthCardGame.Content.GameActionDefinition ToDefinition(CutsceneBindingRegistry registry)
+        {
+            return new TruthCardGame.Content.DebugActionDefinition
+            {
+                IsBlocking = IsBlocking,
+                Message = message,
+                DelaySeconds = delaySeconds
+            };
+        }
     }
 }
