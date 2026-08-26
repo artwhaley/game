@@ -33,6 +33,9 @@ namespace TruthCardGame.Core
         public string[] CurrentMustInclude { get; private set; }
         public string[] CurrentMustExclude { get; private set; }
 
+        /// <summary>Title of the current phase, or null once complete (host display convenience).</summary>
+        public string CurrentPhaseTitle => IsComplete ? null : CurrentPhase.Title;
+
         public SessionDriver(
             SessionDefinition session,
             Func<float> lengthModifier = null,

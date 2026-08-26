@@ -94,6 +94,30 @@ namespace TruthCardGame.Core.Tests
         }
     }
 
+    /// <summary>Prompt fake that stays pending per request until Answer is called (for busy-state tests).</summary>
+    public sealed class GatedPromptService : IPromptService
+    {
+        private TaskCompletionSource<int?> _pending;
+
+        public int RequestCount { get; private set; }
+
+        public Task<int?> AskAsync(string prompt, IReadOnlyList<string> options, CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            var tcs = new TaskCompletionSource<int?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _pending = tcs;
+            var registration = cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
+            tcs.Task.ContinueWith(_ => registration.Dispose(), TaskScheduler.Default);
+            return tcs.Task;
+        }
+
+        public void Answer(int? index)
+        {
+            _pending?.TrySetResult(index);
+            _pending = null;
+        }
+    }
+
     /// <summary>Cutscene fake: playback stays pending until Finish is called; cancellation-aware.</summary>
     public sealed class FakeCutsceneService : ICutsceneService
     {
