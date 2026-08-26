@@ -10,18 +10,22 @@
 --    stays NULL because a choice option with no child action is legal.
 --  - action_debug carries delay_seconds (REAL NULL): the packet omitted it,
 --    but DebugActionDefinition.DelaySeconds is runtime behavior, not wording.
+--  - Every CREATE TABLE is IF NOT EXISTS: re-running the migration over an
+--    existing schema (stale migration ledger, restored DB file, or a host
+--    extension installed mid-life) re-asserts the schema instead of failing
+--    or rebuilding, and never touches rows or unknown tables.
 
-CREATE TABLE tag (
+CREATE TABLE IF NOT EXISTS tag (
     id    TEXT PRIMARY KEY CHECK (length(trim(id)) > 0),
     name  TEXT NOT NULL UNIQUE
 );
 
-CREATE TABLE session (
+CREATE TABLE IF NOT EXISTS session (
     id     TEXT PRIMARY KEY CHECK (length(trim(id)) > 0),
     title  TEXT NOT NULL
 );
 
-CREATE TABLE session_tag (
+CREATE TABLE IF NOT EXISTS session_tag (
     session_id  TEXT NOT NULL,
     tag_id      TEXT NOT NULL,
     ordinal     INTEGER NOT NULL CHECK (ordinal >= 0),
@@ -31,14 +35,14 @@ CREATE TABLE session_tag (
     FOREIGN KEY (tag_id) REFERENCES tag(id) ON DELETE RESTRICT
 );
 
-CREATE TABLE phase (
+CREATE TABLE IF NOT EXISTS phase (
     id         TEXT PRIMARY KEY CHECK (length(trim(id)) > 0),
     title      TEXT NOT NULL,
     min_cards  INTEGER NOT NULL,
     max_cards  INTEGER NOT NULL
 );
 
-CREATE TABLE phase_required_tag (
+CREATE TABLE IF NOT EXISTS phase_required_tag (
     phase_id  TEXT NOT NULL,
     tag_id    TEXT NOT NULL,
     ordinal   INTEGER NOT NULL CHECK (ordinal >= 0),
@@ -48,7 +52,7 @@ CREATE TABLE phase_required_tag (
     FOREIGN KEY (tag_id) REFERENCES tag(id) ON DELETE RESTRICT
 );
 
-CREATE TABLE phase_excluded_tag (
+CREATE TABLE IF NOT EXISTS phase_excluded_tag (
     phase_id  TEXT NOT NULL,
     tag_id    TEXT NOT NULL,
     ordinal   INTEGER NOT NULL CHECK (ordinal >= 0),
@@ -58,7 +62,7 @@ CREATE TABLE phase_excluded_tag (
     FOREIGN KEY (tag_id) REFERENCES tag(id) ON DELETE RESTRICT
 );
 
-CREATE TABLE phase_slot (
+CREATE TABLE IF NOT EXISTS phase_slot (
     id          TEXT PRIMARY KEY CHECK (length(trim(id)) > 0),
     session_id  TEXT NOT NULL,
     ordinal     INTEGER NOT NULL CHECK (ordinal >= 0),
@@ -67,7 +71,7 @@ CREATE TABLE phase_slot (
     FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE
 );
 
-CREATE TABLE phase_slot_candidate (
+CREATE TABLE IF NOT EXISTS phase_slot_candidate (
     id             TEXT PRIMARY KEY CHECK (length(trim(id)) > 0),
     phase_slot_id  TEXT NOT NULL,
     ordinal        INTEGER NOT NULL CHECK (ordinal >= 0),
@@ -77,12 +81,12 @@ CREATE TABLE phase_slot_candidate (
     FOREIGN KEY (phase_id) REFERENCES phase(id) ON DELETE RESTRICT
 );
 
-CREATE TABLE card (
+CREATE TABLE IF NOT EXISTS card (
     id     TEXT PRIMARY KEY CHECK (length(trim(id)) > 0),
     title  TEXT NOT NULL
 );
 
-CREATE TABLE card_tag (
+CREATE TABLE IF NOT EXISTS card_tag (
     card_id   TEXT NOT NULL,
     tag_id    TEXT NOT NULL,
     ordinal   INTEGER NOT NULL CHECK (ordinal >= 0),
@@ -92,34 +96,34 @@ CREATE TABLE card_tag (
     FOREIGN KEY (tag_id) REFERENCES tag(id) ON DELETE RESTRICT
 );
 
-CREATE TABLE action (
+CREATE TABLE IF NOT EXISTS action (
     id           TEXT PRIMARY KEY CHECK (length(trim(id)) > 0),
     name         TEXT NULL,
     action_type  TEXT NOT NULL,
     is_blocking  INTEGER NOT NULL CHECK (is_blocking IN (0,1))
 );
 
-CREATE TABLE action_debug (
+CREATE TABLE IF NOT EXISTS action_debug (
     action_id     TEXT PRIMARY KEY,
     message       TEXT NULL,
     delay_seconds REAL NULL,
     FOREIGN KEY (action_id) REFERENCES action(id) ON DELETE CASCADE
 );
 
-CREATE TABLE action_stat_increase (
+CREATE TABLE IF NOT EXISTS action_stat_increase (
     action_id  TEXT PRIMARY KEY,
     stat_key   TEXT NOT NULL,
     amount     INTEGER NOT NULL,
     FOREIGN KEY (action_id) REFERENCES action(id) ON DELETE CASCADE
 );
 
-CREATE TABLE action_choice (
+CREATE TABLE IF NOT EXISTS action_choice (
     action_id  TEXT PRIMARY KEY,
     prompt     TEXT NOT NULL,
     FOREIGN KEY (action_id) REFERENCES action(id) ON DELETE CASCADE
 );
 
-CREATE TABLE choice_option (
+CREATE TABLE IF NOT EXISTS choice_option (
     id               TEXT PRIMARY KEY CHECK (length(trim(id)) > 0),
     choice_action_id TEXT NOT NULL,
     ordinal          INTEGER NOT NULL CHECK (ordinal >= 0),
@@ -130,20 +134,20 @@ CREATE TABLE choice_option (
     FOREIGN KEY (child_action_id) REFERENCES action(id) ON DELETE RESTRICT
 );
 
-CREATE TABLE resource (
+CREATE TABLE IF NOT EXISTS resource (
     id    TEXT PRIMARY KEY CHECK (length(trim(id)) > 0),
     kind  TEXT NOT NULL,
     name  TEXT NULL
 );
 
-CREATE TABLE action_cutscene (
+CREATE TABLE IF NOT EXISTS action_cutscene (
     action_id   TEXT PRIMARY KEY,
     resource_id TEXT NOT NULL,
     FOREIGN KEY (action_id) REFERENCES action(id) ON DELETE CASCADE,
     FOREIGN KEY (resource_id) REFERENCES resource(id) ON DELETE RESTRICT
 );
 
-CREATE TABLE card_action (
+CREATE TABLE IF NOT EXISTS card_action (
     card_id    TEXT NOT NULL,
     ordinal    INTEGER NOT NULL CHECK (ordinal >= 0),
     action_id  TEXT NOT NULL,
@@ -152,12 +156,12 @@ CREATE TABLE card_action (
     FOREIGN KEY (action_id) REFERENCES action(id) ON DELETE RESTRICT
 );
 
-CREATE TABLE card_deck (
+CREATE TABLE IF NOT EXISTS card_deck (
     id     TEXT PRIMARY KEY CHECK (length(trim(id)) > 0),
     title  TEXT NULL
 );
 
-CREATE TABLE card_deck_card (
+CREATE TABLE IF NOT EXISTS card_deck_card (
     deck_id   TEXT NOT NULL,
     ordinal   INTEGER NOT NULL CHECK (ordinal >= 0),
     card_id   TEXT NOT NULL,
