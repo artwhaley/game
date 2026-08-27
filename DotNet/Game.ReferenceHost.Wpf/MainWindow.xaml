@@ -10,6 +10,7 @@
         Loaded="OnLoaded" Closing="OnClosing">
     <Window.Resources>
         <vm:NullToCollapsedConverter x:Key="NullToCollapsed" />
+        <vm:BoolToVisibleConverter x:Key="BoolToVisible" />
 
         <!-- Shared node template used by both graph editors. Input/output
              connector templates give every node its connection points. -->
@@ -51,6 +52,27 @@
                                 <TextBox Style="{StaticResource DarkTextBox}" Padding="2,0" MinWidth="34" Margin="3,0,0,0"
                                          Text="{Binding Check.ValueText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
                             </StackPanel>
+                        </StackPanel>
+                        <!-- Inline PhaseGoto rows (ticket 15): visible on Action nodes. -->
+                        <StackPanel Visibility="{Binding CanAddGoto, Converter={StaticResource BoolToVisible}}" Margin="0,4,0,0">
+                            <ItemsControl ItemsSource="{Binding GotoRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="0,1,0,1">
+                                            <TextBlock Text="GOTO" FontFamily="Consolas" FontSize="10"
+                                                       VerticalAlignment="Center" Foreground="#FFB0B0B0"/>
+                                            <ComboBox Style="{StaticResource DarkComboBox}" Padding="2,0" MinWidth="80" Margin="4,0,2,0"
+                                                      ItemsSource="{Binding DataContext.GotoExitOptions, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                      SelectedValuePath="Id"
+                                                      SelectedValue="{Binding ExitId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                                            <Button Content="×" Click="OnRemoveGoto" Padding="3,0"
+                                                    Style="{StaticResource DarkButton}" ToolTip="Remove this GOTO"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Content="+ GOTO" Click="OnAddGoto" Padding="6,1" Margin="0,2,0,0" HorizontalAlignment="Left"
+                                    Style="{StaticResource DarkButton}" ToolTip="Add a PhaseGoto instance (blocking, chooses an exit)"/>
                         </StackPanel>
                         <TextBlock Text="{Binding Kind}" FontFamily="Consolas" FontSize="9"
                                    Foreground="#FF808080" Margin="0,3,0,0"/>
@@ -227,12 +249,41 @@
                         <StackPanel Orientation="Horizontal" Margin="2,4,0,0">
                             <TextBlock x:Name="PhaseUsageText" Text="" FontSize="10" VerticalAlignment="Center"
                                        Foreground="#FF9CCC65"/>
-                            <TextBlock x:Name="PhaseExitsText" Text="" FontSize="10" Margin="12,0,0,0"
-                                       VerticalAlignment="Center" Foreground="#FFB0B0B0"/>
                             <Button Content="Show Sessions" Click="OnShowSessions" Padding="6,1" Margin="12,0,0,0"
                                     Style="{StaticResource DarkButton}" ToolTip="List sessions referencing this phase"/>
                             <Button x:Name="MakeUniqueButton" Content="Make Unique" Click="OnMakeUnique" Padding="6,1" Margin="6,0,0,0"
                                     Style="{StaticResource DarkButton}" ToolTip="Make Unique (Ticket 17)"/>
+                        </StackPanel>
+                        <!-- Exits strip (ticket 15): ordered PhaseExit list; rename always,
+                             add/delete only while placement count <= 1. -->
+                        <StackPanel Orientation="Horizontal" Margin="2,4,0,2">
+                            <TextBlock Text="Exits:" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"
+                                       Foreground="#FFB0B0B0"/>
+                            <Button x:Name="AddExitButton" Content="+" Click="OnAddExit" Padding="4,0" Margin="4,0,0,0"
+                                    Style="{StaticResource DarkButton}" ToolTip="Add exit (allowed while placement count is at most 1)"/>
+                            <ItemsControl x:Name="ExitsStrip" Margin="4,0,0,0" VerticalAlignment="Center">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#FF2B2B2B" BorderBrush="#FF4A4A4E" BorderThickness="1"
+                                                CornerRadius="2" Margin="0,0,4,0" Padding="4,1">
+                                            <Border.ContextMenu>
+                                                <ContextMenu>
+                                                    <MenuItem Header="Delete exit" Click="OnDeleteExit"
+                                                              IsEnabled="{Binding CanDelete}"/>
+                                                </ContextMenu>
+                                            </Border.ContextMenu>
+                                            <TextBox Style="{StaticResource DarkTextBox}" Padding="2,0" MinWidth="54"
+                                                     Text="{Binding Name, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                                     ToolTip="Rename exit (rename never breaks wiring; identity is the id)"/>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
                     </StackPanel>
                 </Border>

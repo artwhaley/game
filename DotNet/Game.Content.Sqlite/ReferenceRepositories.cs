@@ -117,5 +117,47 @@ namespace TruthCardGame.Content.Sqlite
         {
             Sql.Execute(connection, null, "DELETE FROM phase_exit WHERE id = @id;", ("id", exitId));
         }
+
+        public static void Rename(DbConnection connection, string exitId, string name)
+        {
+            if (string.IsNullOrEmpty(exitId)) throw new ArgumentException("Exit id required.", nameof(exitId));
+            Sql.Execute(connection, null,
+                "UPDATE phase_exit SET name = @name WHERE id = @id;",
+                ("name", (object)name ?? DBNull.Value), ("id", exitId));
+        }
+
+        /// <summary>
+        /// Live projection sync (Ticket 15): after a phase gains a new exit, insert
+        /// one projected phase_exit socket row on every Session-graph placement of
+        /// that phase. Socket IDs are stable per placement+exit
+        /// ({nodeId}-exit-{exitId}), so renaming never breaks wiring and re-sync is
+        /// idempotent. Exit deletion needs no sync: the schema's ON DELETE CASCADE
+        /// chain removes the projected sockets and their edges in one transaction.
+        /// </summary>
+        public static void SyncProjectedSockets(DbConnection connection, string phaseId, string exitId, int ordinal)
+        {
+            if (string.IsNullOrEmpty(phaseId)) throw new ArgumentException("Phase id required.", nameof(phaseId));
+            if (string.IsNullOrEmpty(exitId)) throw new ArgumentException("Exit id required.", nameof(exitId));
+
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    Sql.Execute(connection, transaction,
+                        "INSERT INTO session_node_output (id, node_id, port_kind, ordinal, label, phase_exit_id, session_goto_action_instance_id) " +
+                        "SELECT n.id || '-exit-' || @exit, n.id, 'phase_exit', @ordinal, NULL, @exit, NULL " +
+                        "FROM session_node_phase p JOIN session_graph_node n ON n.id = p.node_id " +
+                        "WHERE p.phase_id = @phase AND NOT EXISTS (" +
+                        "SELECT 1 FROM session_node_output o WHERE o.id = n.id || '-exit-' || @exit);",
+                        ("phase", phaseId), ("exit", exitId), ("ordinal", ordinal));
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
     }
 }

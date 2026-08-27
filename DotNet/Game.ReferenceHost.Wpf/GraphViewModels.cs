@@ -88,6 +88,71 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// <summary>Inline VariableCheck editor data (null for non-check nodes).</summary>
         public VariableCheckData Check { get; set; }
 
+        /// <summary>PhaseGoto rows of an Action node (one per instance, empty when none).</summary>
+        public ObservableCollection<GotoRowData> GotoRows { get; } = new ObservableCollection<GotoRowData>();
+
+        /// <summary>Exit choices for the GOTO ComboBoxes (shared per phase).</summary>
+        public List<ExitOption> GotoExitOptions { get; set; } = new List<ExitOption>();
+
+        /// <summary>True when the node is an Action node that can host PhaseGoto instances.</summary>
+        public bool CanAddGoto { get; set; }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+    }
+
+    /// <summary>One selectable Phase exit in the GOTO row ComboBox.</summary>
+    public sealed class ExitOption
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
+        public override string ToString() => string.IsNullOrEmpty(Name) ? Id : Name;
+    }
+
+    /// <summary>One PhaseExit chip in the Phase-pane exits strip.</summary>
+    public sealed class ExitRowViewModel : INotifyPropertyChanged
+    {
+        private string _name;
+
+        public string Id { get; set; }
+
+        public bool CanDelete { get; set; }
+
+        public string Name
+        {
+            get => _name;
+            set
+            {
+                if (_name != value)
+                {
+                    _name = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Name)));
+                }
+            }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+    }
+
+    /// <summary>One inline PhaseGoto row: instance id + currently selected exit.</summary>
+    public sealed class GotoRowData : INotifyPropertyChanged
+    {
+        private string _exitId;
+
+        public string InstanceId { get; set; }
+
+        public string ExitId
+        {
+            get => _exitId;
+            set
+            {
+                if (_exitId != value)
+                {
+                    _exitId = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ExitId)));
+                }
+            }
+        }
+
         public event PropertyChangedEventHandler PropertyChanged;
     }
 
@@ -308,6 +373,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// <summary>An inline VariableCheck field changed (persist the comparison).</summary>
         public event Action<GraphNodeViewModel> CheckChanged;
 
+        /// <summary>A PhaseGoto row's exit selection changed (persist the instance).</summary>
+        public event Action<GraphNodeViewModel, GotoRowData> GotoExitChanged;
+
+        /// <summary>The user asked to add a new PhaseGoto instance to an Action node.</summary>
+        public event Action<GraphNodeViewModel> GotoAddRequested;
+
+        /// <summary>The user asked to remove a PhaseGoto instance from an Action node.</summary>
+        public event Action<GraphNodeViewModel, GotoRowData> GotoRemoveRequested;
+
         /// <summary>Pan or zoom changed (persist the viewport row).</summary>
         public event Action ViewportChanged;
 
@@ -343,6 +417,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 if (node.Check != null)
                 {
                     node.Check.PropertyChanged += (_, _) => CheckChanged?.Invoke(node);
+                }
+                foreach (var row in node.GotoRows)
+                {
+                    row.PropertyChanged += (_, _) => GotoExitChanged?.Invoke(node, row);
                 }
                 Nodes.Add(node);
             }
@@ -709,6 +787,22 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         Key = check.VariableKey ?? "",
                     };
                 }
+                if (node is ActionNodeDefinition actionNode)
+                {
+                    vm.CanAddGoto = true;
+                    vm.GotoExitOptions = ExitOptionsFor(phase);
+                    foreach (var instance in actionNode.Sequence?.Instances ?? new List<ActionInstanceDefinition>())
+                    {
+                        if (instance is PhaseGotoInstanceDefinition gotoInstance)
+                        {
+                            vm.GotoRows.Add(new GotoRowData
+                            {
+                                InstanceId = gotoInstance.Id,
+                                ExitId = gotoInstance.PhaseExitId,
+                            });
+                        }
+                    }
+                }
                 var input = new ConnectorViewModel { Id = node.Id + "-input", Title = "" };
                 input.Owner = vm;
                 vm.Inputs.Add(input);
@@ -786,6 +880,16 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var id = "return-" + (Nodes.Count + 1);
             var node = AddNode(id, "Return", "", "return", location);
             return node;
+        }
+
+        private static List<ExitOption> ExitOptionsFor(PhaseDefinition phase)
+        {
+            var options = new List<ExitOption>();
+            foreach (var exit in phase?.Exits ?? new List<PhaseExitDefinition>())
+            {
+                options.Add(new ExitOption { Id = exit.Id, Name = exit.Name });
+            }
+            return options;
         }
 
         private static string SourceKindName(VariableSourceKind kind)

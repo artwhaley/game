@@ -40,6 +40,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
         }
     }
 
+    /// <summary>Collapses when the bound bool is false (inline GOTO rows).</summary>
+    public sealed class BoolToVisibleConverter : System.Windows.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            return value is bool flag && flag ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
     public partial class MainWindow : Window
     {
         private readonly WorkbenchViewModel _vm;
@@ -173,6 +187,48 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 AuthoringLayoutRepository.SaveViewport(connection, "phase", _vm.SelectedPhase.Id,
                     _vm.PhaseGraph.ViewportZoom, _vm.PhaseGraph.ViewportLocation.X, _vm.PhaseGraph.ViewportLocation.Y);
             });
+
+            _vm.PhaseGraph.GotoExitChanged += (node, row) => WithConnection(connection =>
+            {
+                if (row == null || string.IsNullOrEmpty(row.InstanceId) || string.IsNullOrEmpty(row.ExitId)) return;
+                PhaseGraphRepository.SetPhaseGotoExit(connection, row.InstanceId, row.ExitId);
+                // Re-point the in-memory sequence so a later reload matches.
+                if (node != null && _vm.SelectedPhase != null)
+                {
+                    var def = _vm.SelectedPhase.Graph.Nodes.Find(n => n.Id == node.Id) as ActionNodeDefinition;
+                    foreach (var instance in def?.Sequence?.Instances ?? new List<ActionInstanceDefinition>())
+                    {
+                        if (instance is PhaseGotoInstanceDefinition gotoInstance && gotoInstance.Id == row.InstanceId)
+                        {
+                            gotoInstance.PhaseExitId = row.ExitId;
+                        }
+                    }
+                }
+            });
+
+        }
+
+        private void OnAddGoto(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is FrameworkElement element) || !(element.DataContext is GraphNodeViewModel node)) return;
+            if (_vm.SelectedPhase == null || _vm.SelectedPhase.Exits.Count == 0)
+            {
+                StatusText.Text = "Add an exit to this phase first (exits strip above).";
+                return;
+            }
+            WithConnection(connection =>
+                PhaseGraphRepository.AddPhaseGoto(connection, node.Id, _vm.SelectedPhase.Exits[0].Id));
+            ReloadPhaseEditor();
+            StatusText.Text = "Added PhaseGoto instance (blocking).";
+        }
+
+        private void OnRemoveGoto(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is FrameworkElement element) || !(element.DataContext is GotoRowData row)) return;
+            if (string.IsNullOrEmpty(row.InstanceId)) return;
+            WithConnection(connection => PhaseGraphRepository.RemovePhaseGoto(connection, row.InstanceId));
+            ReloadPhaseEditor();
+            StatusText.Text = "Removed PhaseGoto instance.";
         }
 
         private static VariableSourceKind ParseSourceKind(string source)
@@ -490,23 +546,120 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
         }
 
-        /// <summary>Refreshes the Phase header readout: name, usage, exits shell.</summary>
+        /// <summary>Refreshes the Phase header readout: name, usage, exits strip.</summary>
         private void UpdatePhaseHeader()
         {
             if (_vm.SelectedPhase == null)
             {
                 PhaseUsageText.Text = "";
-                PhaseExitsText.Text = "";
+                ExitsStrip.ItemsSource = null;
                 return;
             }
             var (sessions, placements) = WithConnectionResult(connection =>
                 PhaseRepository.Usage(connection, _vm.SelectedPhase.Id));
             var placement = _vm.PhaseGraph.HasPlacementContext ? " · placed in session" : "";
             PhaseUsageText.Text = $"used in {sessions} session(s) · {placements} placement(s){placement}";
-            var exits = _vm.SelectedPhase.Exits.Count == 0
-                ? "no exits"
-                : string.Join(", ", _vm.SelectedPhase.Exits.Select(x => string.IsNullOrEmpty(x.Name) ? x.Id : x.Name));
-            PhaseExitsText.Text = "Exits: " + exits;
+
+            // Exits strip: rename always; add/delete only while placement count <= 1.
+            var canEditExits = placements <= 1;
+            AddExitButton.IsEnabled = canEditExits;
+            var rows = new List<ExitRowViewModel>();
+            foreach (var exit in _vm.SelectedPhase.Exits)
+            {
+                var row = new ExitRowViewModel
+                {
+                    Id = exit.Id,
+                    Name = exit.Name,
+                    CanDelete = canEditExits,
+                };
+                row.PropertyChanged += (_, args) =>
+                {
+                    if (args.PropertyName != nameof(ExitRowViewModel.Name)) return;
+                    WithConnection(connection => PhaseExitRepository.Rename(connection, row.Id, row.Name));
+                    var def = _vm.SelectedPhase.Exits.Find(x => x.Id == row.Id);
+                    if (def != null) def.Name = row.Name;
+                    // Live projection: rename updates the port label without breaking
+                    // wiring (identity is the exit id); refresh both canvases.
+                    ReloadPhaseEditor();
+                    ReloadSessionEditor();
+                    UpdatePhaseHeader();
+                };
+                rows.Add(row);
+            }
+            ExitsStrip.ItemsSource = rows;
+        }
+
+        private void OnAddExit(object sender, RoutedEventArgs e)
+        {
+            if (_vm.SelectedPhase == null) return;
+            var (_, placements) = WithConnectionResult(connection =>
+                PhaseRepository.Usage(connection, _vm.SelectedPhase.Id));
+            if (placements > 1)
+            {
+                MessageBox.Show(this, "Add/delete exits requires placement count <= 1 " +
+                    "(this phase is used by more than one placement).",
+                    "Cannot Add Exit", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var exitId = "px-" + _vm.SelectedPhase.Id + "-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var ordinal = _vm.SelectedPhase.Exits.Count;
+            WithConnection(connection =>
+            {
+                PhaseExitRepository.Create(connection, _vm.SelectedPhase.Id,
+                    new PhaseExitDefinition { Id = exitId, Name = "Exit " + (ordinal + 1) }, ordinal);
+                // Live projection: the new exit appears on every placement's
+                // PhaseReference node immediately (idempotent per placement).
+                PhaseExitRepository.SyncProjectedSockets(connection, _vm.SelectedPhase.Id, exitId, ordinal);
+            });
+            var def = new PhaseExitDefinition { Id = exitId, Name = "Exit " + (ordinal + 1) };
+            _vm.SelectedPhase.Exits.Add(def);
+            UpdatePhaseHeader();
+            ReloadSessionEditor();
+            ReloadPhaseEditor();
+            StatusText.Text = "Added exit — every placement's PhaseReference now projects it.";
+        }
+
+        private void OnDeleteExit(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is MenuItem menu) || !(menu.DataContext is ExitRowViewModel row)) return;
+            if (_vm.SelectedPhase == null) return;
+
+            var (_, placements) = WithConnectionResult(connection =>
+                PhaseRepository.Usage(connection, _vm.SelectedPhase.Id));
+            if (placements > 1)
+            {
+                MessageBox.Show(this, "Add/delete exits requires placement count <= 1.",
+                    "Cannot Delete Exit", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var confirm = MessageBox.Show(this,
+                "Delete exit '" + row.Name + "'? If its sole projected output is wired, " +
+                "the edge and output are removed as one transactional edit.",
+                "Delete Exit", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            // Transactional: schema ON DELETE CASCADE removes projected sockets and
+            // their edges together. A GOTO Action that still references this exit
+            // blocks the delete (RESTRICT) — we never silently auto-delete an exit.
+            try
+            {
+                WithConnection(connection => PhaseExitRepository.Delete(connection, row.Id));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Cannot delete exit: " + ex.Message +
+                    "\n\nA PhaseGoto Action may still reference it — re-point or remove it first.",
+                    "Cannot Delete Exit", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            _vm.SelectedPhase.Exits.RemoveAll(x => x.Id == row.Id);
+            UpdatePhaseHeader();
+            ReloadSessionEditor();
+            ReloadPhaseEditor();
+            StatusText.Text = "Deleted exit '" + row.Name + "' (projected socket + edge removed).";
         }
 
         /// <summary>

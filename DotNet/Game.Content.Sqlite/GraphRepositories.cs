@@ -104,6 +104,87 @@ namespace TruthCardGame.Content.Sqlite
                 ("node", nodeId));
         }
 
+        /// <summary>
+        /// The PhaseGoto instances inside an ActionNode's sequence, as (instanceId,
+        /// exitId) pairs in sequence order. An ActionNode with no goto instances
+        /// returns an empty list (the inline editor offers an add control).
+        /// </summary>
+        public static List<(string InstanceId, string ExitId)> ListPhaseGotoInstances(DbConnection connection, string nodeId)
+        {
+            var result = new List<(string, string)>();
+            Sql.QueryAll(connection,
+                "SELECT ai.id, g.phase_exit_id FROM action_instance ai " +
+                "JOIN phase_node_action pna ON pna.action_sequence_id = ai.action_sequence_id " +
+                "JOIN action_instance_phase_goto g ON g.action_instance_id = ai.id " +
+                "WHERE pna.node_id = @node ORDER BY ai.ordinal;",
+                reader => result.Add((reader.GetString(0), reader.GetString(1))),
+                ("node", nodeId));
+            return result;
+        }
+
+        /// <summary>
+        /// Appends one blocking PhaseGoto instance to the ActionNode's sequence,
+        /// referencing the given exit. Instance id is {nodeId}-goto-{n} and stable.
+        /// </summary>
+        public static void AddPhaseGoto(DbConnection connection, string nodeId, string exitId)
+        {
+            if (string.IsNullOrEmpty(nodeId)) throw new ArgumentException("Node id required.", nameof(nodeId));
+            if (string.IsNullOrEmpty(exitId)) throw new ArgumentException("Exit id required.", nameof(exitId));
+
+            var sequenceId = GetActionSequenceId(connection, nodeId);
+            var nextOrdinal = NextInstanceOrdinal(connection, sequenceId);
+            var instanceId = nodeId + "-goto-" + nextOrdinal;
+
+            Sql.Execute(connection, null,
+                "INSERT INTO action_instance (id, action_sequence_id, ordinal, action_type, is_blocking) " +
+                "VALUES (@id, @seq, @ordinal, @type, 1);",
+                ("id", instanceId), ("seq", sequenceId), ("ordinal", nextOrdinal),
+                ("type", ActionType.PhaseGotoV2));
+            Sql.Execute(connection, null,
+                "INSERT INTO action_instance_phase_goto (action_instance_id, phase_exit_id) VALUES (@i, @exit);",
+                ("i", instanceId), ("exit", exitId));
+        }
+
+        /// <summary>Re-points an existing PhaseGoto instance at a different exit (inline ComboBox).</summary>
+        public static void SetPhaseGotoExit(DbConnection connection, string instanceId, string exitId)
+        {
+            if (string.IsNullOrEmpty(exitId)) throw new ArgumentException("Exit id required.", nameof(exitId));
+            Sql.Execute(connection, null,
+                "UPDATE action_instance_phase_goto SET phase_exit_id = @exit WHERE action_instance_id = @i;",
+                ("exit", exitId), ("i", instanceId));
+        }
+
+        /// <summary>Deletes one PhaseGoto instance and its subtype row from the node's sequence.</summary>
+        public static void RemovePhaseGoto(DbConnection connection, string instanceId)
+        {
+            Sql.Execute(connection, null,
+                "DELETE FROM action_instance WHERE id = @i;", ("i", instanceId));
+        }
+
+        private static string GetActionSequenceId(DbConnection connection, string nodeId)
+        {
+            var sequenceId = "";
+            Sql.QueryAll(connection,
+                "SELECT action_sequence_id FROM phase_node_action WHERE node_id = @node;",
+                reader => sequenceId = reader.GetString(0),
+                ("node", nodeId));
+            if (string.IsNullOrEmpty(sequenceId))
+            {
+                throw new InvalidOperationException($"Node '{nodeId}' is not an Action node (no sequence).");
+            }
+            return sequenceId;
+        }
+
+        private static int NextInstanceOrdinal(DbConnection connection, string sequenceId)
+        {
+            var ordinal = 0;
+            Sql.QueryAll(connection,
+                "SELECT COALESCE(MAX(ordinal), -1) + 1 FROM action_instance WHERE action_sequence_id = @seq;",
+                reader => ordinal = reader.GetInt32(0),
+                ("seq", sequenceId));
+            return ordinal;
+        }
+
         public static void AddEdge(DbConnection connection, string phaseId, GraphEdgeDefinition edge)
         {
             if (edge == null) throw new ArgumentNullException(nameof(edge));
