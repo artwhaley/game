@@ -9,9 +9,9 @@ namespace TruthCardGame
         [SerializeField] private string statKey = "courage";
         [SerializeField] private int amount = 1;
 
-        public override TruthCardGame.Content.GameActionDefinition ToDefinition(UnityContentGraphBuilder builder)
+        public override TruthCardGame.Content.ActionInstanceDefinition ToDefinition(UnityContentGraphBuilder builder)
         {
-            return new TruthCardGame.Content.StatIncreaseActionDefinition
+            return new TruthCardGame.Content.StatIncreaseInstanceDefinition
             {
                 Id = Id,
                 IsBlocking = IsBlocking,

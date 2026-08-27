@@ -35,22 +35,31 @@ namespace TruthCardGame
         }
 
         /// <summary>
-        /// Shallow conversion: ordered ActionIds referencing collected Actions.
-        /// Dense lists — null action entries are skipped, not position-preserved.
+        /// Conversion to the v2 card shape: one owned Action sequence whose
+        /// instances are this card's own (never shared). Cards without an
+        /// authored progress action get the v2 default IncrementProgress(+10)
+        /// appended, matching the portable card contract so phases can complete.
         /// </summary>
         public TruthCardGame.Content.CardDefinition ToDefinition(UnityContentGraphBuilder builder)
         {
             var definition = new TruthCardGame.Content.CardDefinition { Id = id, Title = title };
             if (tags != null) definition.Tags.AddRange(tags);
+            definition.Sequence = new TruthCardGame.Content.ActionSequenceDefinition { Id = "seq-" + id };
             if (actions != null)
             {
                 foreach (var action in actions)
                 {
                     if (action == null) continue;
-                    builder?.CollectAction(action);
-                    definition.ActionIds.Add(action.Id);
+                    definition.Sequence.Instances.Add(action.ToDefinition(builder));
                 }
             }
+            // v2 default: cards without an authored progress action get the
+            // portable IncrementProgress(+10) appended so phases can complete.
+            definition.Sequence.Instances.Add(new TruthCardGame.Content.IncrementProgressInstanceDefinition
+            {
+                Id = id + "-default-progress",
+                Amount = 10f
+            });
             return definition;
         }
     }

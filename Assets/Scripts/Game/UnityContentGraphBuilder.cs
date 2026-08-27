@@ -13,6 +13,11 @@ namespace TruthCardGame
     /// register their Timeline bindings through the injected registry and
     /// produce portable Resource rows (kind 'cutscene').
     ///
+    /// v2 shape: configured actions are gone — every occurrence is an owned
+    /// ActionInstanceDefinition inside its sequence. Cards convert their
+    /// actions to instances; phases build the standard executable graph;
+    /// sessions build the composition graph over PhaseReferences.
+    ///
     /// Temporary bridge while Unity runs on an in-memory snapshot built from
     /// ScriptableObjects; a later Unity SQLite adapter loads the same DB into
     /// the same portable snapshot.
@@ -23,12 +28,10 @@ namespace TruthCardGame
 
         private readonly Dictionary<string, Phase> _phaseSources = new Dictionary<string, Phase>();
         private readonly Dictionary<string, Card> _cardSources = new Dictionary<string, Card>();
-        private readonly Dictionary<string, CardAction> _actionSources = new Dictionary<string, CardAction>();
         private readonly Dictionary<string, string> _resourceIds = new Dictionary<string, string>();
 
         public List<PhaseDefinition> Phases { get; } = new List<PhaseDefinition>();
         public List<CardDefinition> Cards { get; } = new List<CardDefinition>();
-        public List<GameActionDefinition> Actions { get; } = new List<GameActionDefinition>();
         public List<ResourceDefinition> Resources { get; } = new List<ResourceDefinition>();
 
         public UnityContentGraphBuilder(CutsceneBindingRegistry registry)
@@ -47,7 +50,6 @@ namespace TruthCardGame
                 Sessions = { session.ToDefinition(this) },
                 Phases = Phases,
                 Cards = Cards,
-                Actions = Actions,
                 Resources = Resources
             };
         }
@@ -84,23 +86,6 @@ namespace TruthCardGame
             }
             _cardSources[card.Id] = card;
             Cards.Add(card.ToDefinition(this));
-        }
-
-        public void CollectAction(CardAction action)
-        {
-            if (action == null) return;
-            action.EnsureId();
-            if (_actionSources.TryGetValue(action.Id, out var existing))
-            {
-                if (!ReferenceEquals(existing, action))
-                {
-                    throw new InvalidOperationException(
-                        $"[TruthCardGame] Duplicate Action id '{action.Id}' across distinct assets. Rename one.");
-                }
-                return;
-            }
-            _actionSources[action.Id] = action;
-            Actions.Add(action.ToDefinition(this));
         }
 
         /// <summary>

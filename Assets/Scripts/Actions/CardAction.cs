@@ -5,8 +5,9 @@ namespace TruthCardGame
     /// <summary>
     /// One executable step a card can trigger — serialized data shell only.
     /// Execution lives in portable Game.Core; this wrapper converts to its
-    /// definition via ToDefinition(...). The old coroutine Execute engine was
-    /// removed in Ticket 09 so exactly one implementation exists.
+    /// ActionInstanceDefinition via ToDefinition(...). Every occurrence
+    /// converts to its own instance: instances are never shared between
+    /// sequences or cards (v2 model).
     /// </summary>
     public abstract class CardAction : ScriptableObject
     {
@@ -31,11 +32,10 @@ namespace TruthCardGame
         }
 
         /// <summary>
-        /// Converts this asset to its portable definition (shallow; referenced
-        /// children are collected through the builder). Abstract on purpose:
-        /// every action wrapper must participate in the portable engine or the
-        /// project does not compile (fail noisy over silently vanishing content).
+        /// Converts this asset to its portable Action Instance (v2). Abstract on
+        /// purpose: every action wrapper must participate in the portable engine
+        /// or the project does not compile (fail noisy over silently vanishing content).
         /// </summary>
-        public abstract TruthCardGame.Content.GameActionDefinition ToDefinition(UnityContentGraphBuilder builder);
+        public abstract TruthCardGame.Content.ActionInstanceDefinition ToDefinition(UnityContentGraphBuilder builder);
     }
 }

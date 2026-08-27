@@ -8,10 +8,12 @@ namespace TruthCardGame.Tests
 {
     /// <summary>
     /// EditMode tests for ScriptableObject → portable reference graph
-    /// conversion through UnityContentGraphBuilder (Ticket 10). Complements
-    /// the portable engine suite: these prove the serialized asset shells
-    /// convert faithfully — shallow ID relationships, shared-SO-once
-    /// collection, duplicate-id failures, and the cutscene registry bridge.
+    /// conversion through UnityContentGraphBuilder (Ticket 11). Proves the
+    /// serialized asset shells convert to the v2 shape: action occurrences
+    /// become owned instances, cards own sequences with the default progress
+    /// instance, phases build the standard executable graph, sessions compose
+    /// PhaseReferences, shared-SO-once collection, duplicate-id failures, and
+    /// the cutscene registry bridge.
     /// </summary>
     public class ContentAdapterTests
     {
@@ -71,7 +73,7 @@ namespace TruthCardGame.Tests
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        // ---------- actions ----------
+        // ---------- actions -> instances ----------
 
         [Test]
         public void DebugAction_Converts_Fields()
@@ -81,7 +83,7 @@ namespace TruthCardGame.Tests
             Set(action, "delaySeconds", 1.5f);
             Set(action, "isBlocking", true);
 
-            var definition = (Content.DebugActionDefinition)action.ToDefinition(Builder());
+            var definition = (Content.DebugInstanceDefinition)action.ToDefinition(Builder());
 
             Assert.IsTrue(definition.IsBlocking);
             Assert.AreEqual("hello", definition.Message);
@@ -94,7 +96,7 @@ namespace TruthCardGame.Tests
             var action = ScriptableObject.CreateInstance<DebugAction>();
             action.EnsureId();
 
-            var definition = (Content.DebugActionDefinition)action.ToDefinition(Builder());
+            var definition = (Content.DebugInstanceDefinition)action.ToDefinition(Builder());
 
             Assert.AreEqual(action.Id, definition.Id);
             Assert.That(definition.Id, Is.Not.Empty);
@@ -131,7 +133,7 @@ namespace TruthCardGame.Tests
             Set(action, "amount", 7);
             Set(action, "isBlocking", false);
 
-            var definition = (Content.StatIncreaseActionDefinition)action.ToDefinition(Builder());
+            var definition = (Content.StatIncreaseInstanceDefinition)action.ToDefinition(Builder());
 
             Assert.IsFalse(definition.IsBlocking);
             Assert.AreEqual("courage", definition.StatKey);
@@ -139,7 +141,7 @@ namespace TruthCardGame.Tests
         }
 
         [Test]
-        public void ChoiceAction_Converts_ChildActionIds_WithNullChild()
+        public void ChoiceAction_Converts_Options_WithOwnedSequences()
         {
             var childA = ScriptableObject.CreateInstance<DebugAction>();
             Set(childA, "message", "a");
@@ -154,15 +156,15 @@ namespace TruthCardGame.Tests
             options.GetArrayElementAtIndex(1).FindPropertyRelative("action").objectReferenceValue = null;
             so.ApplyModifiedPropertiesWithoutUndo();
 
-            var builder = Builder();
-            var definition = (Content.ChoiceActionDefinition)choice.ToDefinition(builder);
+            var definition = (Content.PromptChoiceInstanceDefinition)choice.ToDefinition(Builder());
 
             Assert.AreEqual("Pick", definition.Prompt);
             Assert.AreEqual(2, definition.Options.Count);
             Assert.AreEqual("A", definition.Options[0].Label);
-            Assert.AreEqual(childA.Id, definition.Options[0].ChildActionId);
-            Assert.IsNull(definition.Options[1].ChildActionId);
-            Assert.AreEqual(1, builder.Actions.Count(a => a.Id == childA.Id));
+            Assert.AreEqual(1, definition.Options[0].Sequence.Instances.Count);
+            Assert.AreEqual(childA.Id, definition.Options[0].Sequence.Instances[0].Id,
+                "the child action became an owned instance in the option's sequence");
+            Assert.AreEqual(0, definition.Options[1].Sequence.Instances.Count, "null child -> empty option sequence");
         }
 
         [Test]
@@ -181,15 +183,13 @@ namespace TruthCardGame.Tests
             so.ApplyModifiedPropertiesWithoutUndo();
             choice.EnsureId(); // mints the choice id and both option ids
 
-            var builder = Builder();
-            var definition = (Content.ChoiceActionDefinition)choice.ToDefinition(builder);
+            var definition = (Content.PromptChoiceInstanceDefinition)choice.ToDefinition(Builder());
 
             Assert.AreEqual(choice.Id, definition.Id);
             Assert.AreEqual(choice.Options[0].Id, definition.Options[0].Id);
             Assert.AreEqual(choice.Options[1].Id, definition.Options[1].Id);
             Assert.That(definition.Options[0].Id, Is.Not.Empty);
             Assert.That(definition.Options[1].Id, Is.Not.Empty);
-            Assert.AreEqual(child.Id, definition.Options[0].ChildActionId);
         }
 
         [Test]
@@ -199,7 +199,7 @@ namespace TruthCardGame.Tests
             Set(action, "isBlocking", true);
 
             var builder = Builder();
-            var definition = (Content.CutsceneActionDefinition)action.ToDefinition(builder);
+            var definition = (Content.CutsceneInstanceDefinition)action.ToDefinition(builder);
 
             Assert.IsTrue(definition.IsBlocking);
             Assert.That(definition.ResourceId, Is.Null.Or.Empty);
@@ -219,7 +219,7 @@ namespace TruthCardGame.Tests
 
             var registry = new CutsceneBindingRegistry();
             var builder = new UnityContentGraphBuilder(registry);
-            var definition = (Content.CutsceneActionDefinition)action.ToDefinition(builder);
+            var definition = (Content.CutsceneInstanceDefinition)action.ToDefinition(builder);
 
             Assert.AreEqual("cs:familiar_face", definition.ResourceId);
             Assert.IsTrue(registry.TryResolve(definition.ResourceId, out var resolved));
@@ -239,7 +239,7 @@ namespace TruthCardGame.Tests
 
             var registry = new CutsceneBindingRegistry();
             var builder = new UnityContentGraphBuilder(registry);
-            var definition = (Content.CutsceneActionDefinition)action.ToDefinition(builder);
+            var definition = (Content.CutsceneInstanceDefinition)action.ToDefinition(builder);
 
             StringAssert.IsMatch(@"^[0-9a-f]{32}$", definition.ResourceId);
             Assert.IsTrue(registry.TryResolve(definition.ResourceId, out var resolved));
@@ -256,8 +256,8 @@ namespace TruthCardGame.Tests
             so.FindProperty("timeline").objectReferenceValue = timeline;
             so.ApplyModifiedPropertiesWithoutUndo();
 
-            var first = (Content.CutsceneActionDefinition)action.ToDefinition(Builder());
-            var second = (Content.CutsceneActionDefinition)action.ToDefinition(Builder());
+            var first = (Content.CutsceneInstanceDefinition)action.ToDefinition(Builder());
+            var second = (Content.CutsceneInstanceDefinition)action.ToDefinition(Builder());
 
             Assert.AreEqual("cs:intro", first.ResourceId);
             Assert.AreEqual(first.ResourceId, second.ResourceId);
@@ -272,45 +272,10 @@ namespace TruthCardGame.Tests
             Assert.Throws<System.InvalidOperationException>(() => registry.Register("cs:dup", ScriptableObject.CreateInstance<TimelineAsset>()));
         }
 
-        // ---------- shared/duplicate collection ----------
-
-        [Test]
-        public void SharedAction_ReferencedTwice_ConvertedOnce()
-        {
-            var action = ScriptableObject.CreateInstance<DebugAction>();
-            Set(action, "message", "shared");
-            var card = ScriptableObject.CreateInstance<Card>();
-            card.EnsureId();
-            var so = new SerializedObject(card);
-            SetObjectList(so, "actions", new Object[] { action, action });
-
-            var builder = Builder();
-            var definition = card.ToDefinition(builder);
-
-            CollectionAssert.AreEqual(new[] { action.Id, action.Id }, definition.ActionIds.ToArray());
-            Assert.AreEqual(1, builder.Actions.Count);
-        }
-
-        [Test]
-        public void DuplicateId_AcrossDistinctAssets_FailsLoudly()
-        {
-            var first = ScriptableObject.CreateInstance<DebugAction>();
-            var second = ScriptableObject.CreateInstance<DebugAction>();
-            Set(first, "id", "same-id");
-            Set(second, "id", "same-id");
-            var card = ScriptableObject.CreateInstance<Card>();
-            card.EnsureId();
-            var so = new SerializedObject(card);
-            SetObjectList(so, "actions", new Object[] { first, second });
-
-            var builder = Builder();
-            Assert.Throws<System.InvalidOperationException>(() => card.ToDefinition(builder));
-        }
-
         // ---------- cards / deck / session ----------
 
         [Test]
-        public void Card_Converts_Title_Tags_ActionIds_Dense()
+        public void Card_Converts_OwnedSequence_WithDefaultProgress()
         {
             var debug = ScriptableObject.CreateInstance<DebugAction>();
             Set(debug, "message", "d");
@@ -327,7 +292,11 @@ namespace TruthCardGame.Tests
             Assert.AreEqual(card.Id, definition.Id);
             Assert.AreEqual("The Card", definition.Title);
             CollectionAssert.AreEqual(new[] { "party", "truth" }, definition.Tags.ToArray());
-            CollectionAssert.AreEqual(new[] { debug.Id }, definition.ActionIds.ToArray());
+            // Null entries skipped; the authored action becomes an instance; the
+            // v2 default progress instance is appended so phases can complete.
+            Assert.AreEqual(2, definition.Sequence.Instances.Count);
+            Assert.AreEqual(debug.Id, definition.Sequence.Instances[0].Id);
+            Assert.IsInstanceOf<Content.IncrementProgressInstanceDefinition>(definition.Sequence.Instances[1]);
         }
 
         [Test]
@@ -349,7 +318,7 @@ namespace TruthCardGame.Tests
         }
 
         [Test]
-        public void SessionAndPhases_Convert_ToSlots_WithCollectedPhases()
+        public void SessionAndPhases_Convert_ToReferenceGraph_WithCollectedPhases()
         {
             var phase = ScriptableObject.CreateInstance<Phase>();
             phase.EnsureId();
@@ -372,18 +341,43 @@ namespace TruthCardGame.Tests
             Assert.AreEqual(session.Id, definition.Id);
             Assert.AreEqual("Relaxing", definition.Title);
             CollectionAssert.AreEqual(new[] { "relaxing" }, definition.Tags.ToArray());
-            Assert.AreEqual(1, definition.PhaseSlots.Count);
-            StringAssert.StartsWith("legacy-slot:", definition.PhaseSlots[0].Id);
-            Assert.AreEqual("Warm Up", definition.PhaseSlots[0].Title);
-            Assert.AreEqual(1, definition.PhaseSlots[0].Candidates.Count);
-            Assert.AreEqual(phase.Id, definition.PhaseSlots[0].Candidates[0].PhaseId);
+
+            // One Start, one End, one PhaseReference with a projected Complete socket.
+            Assert.AreEqual(1, definition.Graph.Nodes.Count(n => n is Content.SessionStartNodeDefinition));
+            Assert.AreEqual(1, definition.Graph.Nodes.Count(n => n is Content.SessionEndNodeDefinition));
+            var reference = definition.Graph.Nodes.OfType<Content.PhaseReferenceNodeDefinition>().Single();
+            Assert.AreEqual(phase.Id, reference.PhaseId);
+            Assert.AreEqual(1, reference.Outputs.Count);
+            Assert.AreEqual(Content.GraphPortKind.PhaseExit, reference.Outputs[0].Kind);
+            Assert.AreEqual(2, definition.Graph.Edges.Count, "start->ref and ref-complete->end");
 
             var collected = builder.Phases.Single(p => p.Id == phase.Id);
             Assert.AreEqual("Warm Up", collected.Title);
-            Assert.AreEqual(2, collected.MinCards);
-            Assert.AreEqual(5, collected.MaxCards);
+            Assert.AreEqual(1, collected.Exits.Count);
+            Assert.AreEqual("Complete", collected.Exits[0].Name);
+            Assert.AreEqual(4, collected.Graph.Nodes.Count, "standard graph: entry, executor, check, goto");
+            Assert.Greater(collected.Graph.Edges.Count, 0);
             CollectionAssert.AreEqual(new[] { "solo" }, collected.MustIncludeTags.ToArray());
             CollectionAssert.AreEqual(new[] { "loud" }, collected.MustExcludeTags.ToArray());
+        }
+
+        [Test]
+        public void DuplicatePhaseId_AcrossDistinctAssets_FailsLoudly()
+        {
+            // Entity-level (Phase/Card) collection still dedups by ID and fails
+            // loudly on distinct assets claiming the same ID. Action instances
+            // are owned occurrences and never share, so only entities collide.
+            var first = ScriptableObject.CreateInstance<Phase>();
+            var second = ScriptableObject.CreateInstance<Phase>();
+            Set(first, "id", "same-id");
+            Set(second, "id", "same-id");
+            var session = ScriptableObject.CreateInstance<Session>();
+            session.EnsureId();
+            var so = new SerializedObject(session);
+            SetObjectList(so, "phases", new Object[] { first, second });
+
+            var builder = Builder();
+            Assert.Throws<System.InvalidOperationException>(() => session.ToDefinition(builder));
         }
 
         [Test]
@@ -418,8 +412,9 @@ namespace TruthCardGame.Tests
             Assert.AreEqual(1, content.Sessions.Count);
             Assert.AreEqual(1, content.Phases.Count);
             Assert.AreEqual(1, content.Cards.Count);
-            Assert.AreEqual(1, content.Actions.Count);
             Assert.AreEqual(1, content.Deck.CardIds.Count);
+            // Same SO referenced twice on one card -> two owned instances (never shared).
+            Assert.AreEqual(2, content.Cards[0].Sequence.Instances.Count(i => i.Id == debug.Id));
         }
     }
 }

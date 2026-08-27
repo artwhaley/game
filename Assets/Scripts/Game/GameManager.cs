@@ -59,13 +59,9 @@ namespace TruthCardGame
             var builder = new UnityContentGraphBuilder(_cutsceneRegistry);
             var content = builder.Build(SessionConfig.SelectedSession, deck);
 
-            _engine = new GameSessionEngine(
-                content,
-                SessionConfig.SelectedSession.Id,
-                () => SessionConfig.LengthModifier,
-                phaseLengthRng: new SystemRandomSource(),
-                cardRng: new UnityRandomSource(),
-                services);
+            // Default spawn: temperatures start at their authored defaults
+            // (Happiness 50) unless a host override is supplied.
+            _engine = new GameSessionEngine(content, SessionConfig.SelectedSession.Id, services);
 
             _engine.CardStarted += card => panel.ShowDrawing(card.Title);
             _engine.CardFinished += card => panel.ShowDone(card.Title);

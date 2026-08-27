@@ -35,7 +35,7 @@ namespace TruthCardGame
             EnsureResourceId();
         }
 
-        public override TruthCardGame.Content.GameActionDefinition ToDefinition(UnityContentGraphBuilder builder)
+        public override TruthCardGame.Content.ActionInstanceDefinition ToDefinition(UnityContentGraphBuilder builder)
         {
             if (builder == null)
             {
@@ -43,7 +43,7 @@ namespace TruthCardGame
                 {
                     Debug.LogError("[TruthCardGame] CutsceneAction has a timeline but no graph builder to bind it; converting as missing resource.");
                 }
-                return new TruthCardGame.Content.CutsceneActionDefinition
+                return new TruthCardGame.Content.CutsceneInstanceDefinition
                 {
                     Id = Id,
                     IsBlocking = IsBlocking,
@@ -54,7 +54,7 @@ namespace TruthCardGame
             builder.CollectCutscene(this);
 
             // Null/empty ResourceId preserves the current missing-timeline no-op behavior downstream.
-            return new TruthCardGame.Content.CutsceneActionDefinition
+            return new TruthCardGame.Content.CutsceneInstanceDefinition
             {
                 Id = Id,
                 IsBlocking = IsBlocking,

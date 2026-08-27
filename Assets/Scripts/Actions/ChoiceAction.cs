@@ -5,8 +5,8 @@ using UnityEngine;
 namespace TruthCardGame
 {
     /// <summary>
-    /// Presents the player with a choice and branches to one child action.
-    /// Data shell; execution lives in Game.Core.
+    /// Presents the player with a choice and executes the chosen option's
+    /// nested action. Data shell; execution lives in Game.Core.
     /// </summary>
     [CreateAssetMenu(fileName = "ChoiceAction", menuName = "TruthCardGame/Actions/Choice")]
     public sealed class ChoiceAction : CardAction
@@ -54,9 +54,9 @@ namespace TruthCardGame
             EnsureId();
         }
 
-        public override TruthCardGame.Content.GameActionDefinition ToDefinition(UnityContentGraphBuilder builder)
+        public override TruthCardGame.Content.ActionInstanceDefinition ToDefinition(UnityContentGraphBuilder builder)
         {
-            var definition = new TruthCardGame.Content.ChoiceActionDefinition
+            var definition = new TruthCardGame.Content.PromptChoiceInstanceDefinition
             {
                 Id = Id,
                 IsBlocking = IsBlocking,
@@ -68,19 +68,19 @@ namespace TruthCardGame
             {
                 if (option == null) continue;
 
-                string childId = null;
-                if (option.Action != null)
-                {
-                    builder?.CollectAction(option.Action);
-                    childId = option.Action.Id;
-                }
-
-                definition.Options.Add(new TruthCardGame.Content.ChoiceOptionDefinition
+                // Each option owns its own nested sequence; the child action
+                // becomes one instance inside it (instances are never shared).
+                var optionDefinition = new TruthCardGame.Content.PromptChoiceOptionDefinition
                 {
                     Id = option.Id,
                     Label = option.Label,
-                    ChildActionId = childId
-                });
+                    Sequence = new TruthCardGame.Content.ActionSequenceDefinition { Id = "seq-" + option.Id }
+                };
+                if (option.Action != null)
+                {
+                    optionDefinition.Sequence.Instances.Add(option.Action.ToDefinition(builder));
+                }
+                definition.Options.Add(optionDefinition);
             }
             return definition;
         }

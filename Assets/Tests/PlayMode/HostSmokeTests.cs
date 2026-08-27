@@ -12,10 +12,10 @@ using TruthCardGame.Content;
 namespace TruthCardGame.Tests
 {
     /// <summary>
-    /// Narrow PlayMode smoke test (Ticket 10): proves the portable Core runs
-    /// inside the live Unity runtime through the real host adapters — scaled
-    /// time delay, UnityEngine.Random-backed card draws, wrapper-to-definition
-    /// conversion — and completes with no unobserved background faults.
+    /// Narrow PlayMode smoke test (Ticket 11): proves the portable graph VM
+    /// runs inside the live Unity runtime through the real host adapters —
+    /// scaled time delay, wrapper-to-instance conversion, and the composed
+    /// session graph — and completes with no unobserved background faults.
     /// Deliberately independent of authored scenes/Timeline content.
     ///
     /// Advances are started on the main thread (no Task.Run anywhere): the
@@ -46,6 +46,71 @@ namespace TruthCardGame.Tests
             Assert.IsTrue(task.IsCompletedSuccessfully, failure);
         }
 
+        /// <summary>Standard single-exit phase graph: Entry -> Exec -> done(>=100): true -> GOTO; false -> Exec.</summary>
+        private static PhaseDefinition StandardPhase(string id, params string[] includeTags)
+        {
+            var phase = new PhaseDefinition { Id = id, Title = id };
+            if (includeTags != null) phase.MustIncludeTags.AddRange(includeTags);
+            var exitId = "px-" + id + "-complete";
+            phase.Exits.Add(new PhaseExitDefinition { Id = exitId, Name = "Complete" });
+
+            var entry = new PhaseEntryNodeDefinition { Id = "n-" + id + "-entry" };
+            entry.Outputs.Add(new GraphOutputDefinition { Id = entry.Id + "-out" });
+            var exec = new CardExecutorNodeDefinition { Id = "n-" + id + "-exec" };
+            exec.Outputs.Add(new GraphOutputDefinition { Id = exec.Id + "-out" });
+            var done = new VariableCheckNodeDefinition
+            {
+                Id = "n-" + id + "-done",
+                SourceKind = VariableSourceKind.PhaseProgress,
+                Operator = VariableCompareOperator.GreaterThanOrEqual,
+                CompareValue = 100f,
+            };
+            done.Outputs.Add(new GraphOutputDefinition { Id = done.Id + "-true", Kind = GraphPortKind.True });
+            done.Outputs.Add(new GraphOutputDefinition { Id = done.Id + "-false", Kind = GraphPortKind.False });
+            var gotoDone = new ActionNodeDefinition
+            {
+                Id = "n-" + id + "-goto",
+                Sequence = new ActionSequenceDefinition
+                {
+                    Id = "seq-" + id + "-goto",
+                    Instances = { new PhaseGotoInstanceDefinition { Id = "inst-" + id + "-goto", PhaseExitId = exitId } },
+                },
+            };
+            gotoDone.Outputs.Add(new GraphOutputDefinition { Id = gotoDone.Id + "-out" });
+
+            phase.Graph.Nodes.Add(entry);
+            phase.Graph.Nodes.Add(exec);
+            phase.Graph.Nodes.Add(done);
+            phase.Graph.Nodes.Add(gotoDone);
+            phase.Graph.Edges.Add(new GraphEdgeDefinition { Id = "e1", SourceOutputId = entry.Outputs[0].Id, TargetNodeId = exec.Id });
+            phase.Graph.Edges.Add(new GraphEdgeDefinition { Id = "e2", SourceOutputId = exec.Outputs[0].Id, TargetNodeId = done.Id });
+            phase.Graph.Edges.Add(new GraphEdgeDefinition { Id = "e3", SourceOutputId = done.Outputs[1].Id, TargetNodeId = exec.Id });
+            phase.Graph.Edges.Add(new GraphEdgeDefinition { Id = "e4", SourceOutputId = done.Outputs[0].Id, TargetNodeId = gotoDone.Id });
+            return phase;
+        }
+
+        /// <summary>Start -> ref(phase) -> End with the Complete socket wired to End.</summary>
+        private static SessionDefinition SinglePhaseSession(string id, string phaseId)
+        {
+            var session = new SessionDefinition { Id = id, Title = id, SessionTypeId = "type-standard" };
+            var start = new SessionStartNodeDefinition { Id = "n-" + id + "-start" };
+            start.Outputs.Add(new GraphOutputDefinition { Id = start.Id + "-out" });
+            var reference = new PhaseReferenceNodeDefinition { Id = "n-" + id + "-ref", PhaseId = phaseId };
+            reference.Outputs.Add(new GraphOutputDefinition
+            {
+                Id = reference.Id + "-complete",
+                Kind = GraphPortKind.PhaseExit,
+                PhaseExitId = "px-" + phaseId + "-complete",
+            });
+            var end = new SessionEndNodeDefinition { Id = "n-" + id + "-end" };
+            session.Graph.Nodes.Add(start);
+            session.Graph.Nodes.Add(reference);
+            session.Graph.Nodes.Add(end);
+            session.Graph.Edges.Add(new GraphEdgeDefinition { Id = "se1", SourceOutputId = start.Outputs[0].Id, TargetNodeId = reference.Id });
+            session.Graph.Edges.Add(new GraphEdgeDefinition { Id = "se2", SourceOutputId = reference.Outputs[0].Id, TargetNodeId = end.Id });
+            return session;
+        }
+
         [UnityTest]
         public IEnumerator PortableCore_RunsThroughUnityHostAdapters_AndCompletes()
         {
@@ -54,18 +119,16 @@ namespace TruthCardGame.Tests
             var log = new RecordingLog();
             var services = new CoreServices(new UnityGameDelay(), log);
 
-            var phase = new PhaseDefinition { Id = "phase-smoke", Title = "Smoke", MinCards = 1, MaxCards = 1 };
-            phase.MustIncludeTags.Add("smoke");
+            var phase = StandardPhase("phase-smoke", "smoke");
 
-            var stat = new StatIncreaseActionDefinition { Id = "action-stat", StatKey = "courage", Amount = 3 };
-            var debug = new DebugActionDefinition { Id = "action-debug", Message = "scaled-time beat", DelaySeconds = 0.05f };
+            var stat = new StatIncreaseInstanceDefinition { Id = "action-stat", StatKey = "courage", Amount = 3 };
+            var debug = new DebugInstanceDefinition { Id = "action-debug", Message = "scaled-time beat", DelaySeconds = 0.05f };
+            var card = new CardDefinition { Id = "card-smoke", Title = "Smoke Card", Tags = { "smoke" } };
+            card.Sequence.Instances.Add(stat);
+            card.Sequence.Instances.Add(debug);
+            card.Sequence.Instances.Add(new IncrementProgressInstanceDefinition { Id = "card-progress", Amount = 10f });
 
-            var card = new CardDefinition { Id = "card-smoke", Title = "Smoke Card", Tags = { "smoke" }, ActionIds = { stat.Id, debug.Id } };
-
-            var session = new SessionDefinition { Id = "session-smoke", Title = "Smoke Session" };
-            var slot = new PhaseSlotDefinition { Id = "slot-smoke", Title = "Smoke" };
-            slot.Candidates.Add(new PhaseSlotCandidateDefinition { Id = "cand-smoke", PhaseId = phase.Id });
-            session.PhaseSlots.Add(slot);
+            var session = SinglePhaseSession("session-smoke", phase.Id);
 
             var content = new GameContentDefinition
             {
@@ -73,28 +136,27 @@ namespace TruthCardGame.Tests
                 Sessions = { session },
                 Phases = { phase },
                 Cards = { card },
-                Actions = { stat, debug }
             };
 
-            var engine = new GameSessionEngine(
-                content,
-                session.Id,
-                () => 1f,
-                phaseLengthRng: new SystemRandomSource(42),
-                cardRng: new UnityRandomSource(),
-                services);
+            var engine = new GameSessionEngine(content, session.Id, services);
 
             var startTime = Time.time;
-            var advance = engine.AdvanceOneCardAsync(CancellationToken.None);
-            yield return Await(advance);
+            var cards = 0;
+            var guard = 0;
+            while (!engine.IsComplete && guard++ < 40)
+            {
+                var advance = engine.AdvanceOneCardAsync(CancellationToken.None);
+                yield return Await(advance);
+                AssertTaskSucceeded(advance);
+                if (advance.Result.Kind == AdvanceResultKind.CardCompleted) cards++;
+            }
 
-            AssertTaskSucceeded(advance);
-            Assert.AreEqual(AdvanceResultKind.SessionCompleted, advance.Result.Kind);
-            Assert.AreEqual("Smoke Card", advance.Result.Card.Title);
-            Assert.AreEqual(3, engine.Player.Stats.Get("courage"));
-
-            // The 0.05 s debug beat really consumed scaled game time via UnityGameDelay.
-            Assert.GreaterOrEqual(Time.time - startTime, 0.05f);
+            Assert.IsTrue(engine.IsComplete, "session completed");
+            // Ten +10 cards reach 100; the 10th card's advance transfers and
+            // completes the session in the same call, so 9 report CardCompleted.
+            Assert.AreEqual(9, cards, "nine card-completed advances plus the completing one");
+            Assert.AreEqual(30, engine.Player.Stats.Get("courage"), "3 per card × 10 cards");
+            Assert.GreaterOrEqual(Time.time - startTime, 0.05f, "the debug beat really consumed scaled game time");
 
             // Engine is idle again; no background work left; nothing faulted.
             Assert.IsFalse(engine.IsBusy);
@@ -161,21 +223,21 @@ namespace TruthCardGame.Tests
             var services = new CoreServices(new UnityGameDelay(), log);
             var builder = new UnityContentGraphBuilder(new CutsceneBindingRegistry());
             var content = builder.Build(sessionAsset, deckAsset);
-            var engine = new GameSessionEngine(
-                content,
-                sessionAsset.Id,
-                () => 1f,
-                phaseLengthRng: new SystemRandomSource(5),
-                cardRng: new SystemRandomSource(9),
-                services);
+            var engine = new GameSessionEngine(content, sessionAsset.Id, services);
 
-            var advance = engine.AdvanceOneCardAsync(CancellationToken.None);
-            yield return Await(advance);
+            var guard = 0;
+            while (!engine.IsComplete && guard++ < 40)
+            {
+                var advance = engine.AdvanceOneCardAsync(CancellationToken.None);
+                yield return Await(advance);
+                AssertTaskSucceeded(advance);
+            }
 
-            AssertTaskSucceeded(advance);
-            Assert.AreEqual(AdvanceResultKind.SessionCompleted, advance.Result.Kind);
-            Assert.AreEqual("The End", advance.Result.Card.Title);
-            Assert.AreEqual(1, engine.Player.Stats.Get("courage"));
+            Assert.IsTrue(engine.IsComplete, "converted session completed through the graph VM");
+            // minCards=1/maxCards=1 -> progress target 10 -> the +10 default
+            // progress instance completes the phase on the first card.
+            Assert.AreEqual(1, engine.Player.Stats.Get("courage"),
+                "the ending card's +1 stat ran on its single draw");
             Assert.IsFalse(engine.IsBusy);
             Assert.IsFalse(log.Entries.Exists(e => e.StartsWith("error:")));
         }
