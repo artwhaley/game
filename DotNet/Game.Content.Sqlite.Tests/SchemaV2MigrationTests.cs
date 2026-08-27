@@ -42,11 +42,11 @@ namespace TruthCardGame.Content.Sqlite.Tests
         // ---------- fresh install ----------
 
         [Test]
-        public void FreshDatabase_LandsAtV2_WithSeededDefaults()
+        public void FreshDatabase_LandsAtCurrentVersion_WithSeededDefaults()
         {
             using (var connection = OpenFresh())
             {
-                Assert.AreEqual(2, CoreMigrator.EnsureSchema(connection));
+                Assert.AreEqual(CoreMigrations.MaxVersion, CoreMigrator.EnsureSchema(connection));
 
                 Assert.AreEqual("Standard", Scalar(connection, "SELECT title FROM session_type WHERE id='type-standard'"));
                 Assert.AreEqual(50d, Convert.ToDouble(
@@ -54,6 +54,11 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 Assert.AreEqual(0L, Count(connection, "action_instance"));
                 Assert.AreEqual(0L, Count(connection, "phase_graph_node"));
                 Assert.AreEqual(0L, Count(connection, "session_graph_node"));
+                // v3 WPF authoring layout tables exist on a fresh db.
+                Assert.Greater(Count(connection, "sqlite_master"), 0);
+                AssertTableExists(connection, "wpf_session_node_layout");
+                AssertTableExists(connection, "wpf_phase_node_layout");
+                AssertTableExists(connection, "wpf_viewport_state");
             }
         }
 
@@ -62,8 +67,8 @@ namespace TruthCardGame.Content.Sqlite.Tests
         {
             using (var connection = OpenFresh())
             {
-                Assert.AreEqual(2, CoreMigrator.EnsureSchema(connection));
-                Assert.AreEqual(2, CoreMigrator.EnsureSchema(connection));
+                Assert.AreEqual(CoreMigrations.MaxVersion, CoreMigrator.EnsureSchema(connection));
+                Assert.AreEqual(CoreMigrations.MaxVersion, CoreMigrator.EnsureSchema(connection));
             }
         }
 
@@ -90,7 +95,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
 
             using (var connection = OpenFresh())
             {
-                Assert.AreEqual(2, CoreMigrator.EnsureSchema(connection));
+                Assert.AreEqual(CoreMigrations.MaxVersion, CoreMigrator.EnsureSchema(connection));
 
                 using (var command = connection.CreateCommand())
                 {
@@ -359,6 +364,16 @@ namespace TruthCardGame.Content.Sqlite.Tests
         }
 
         // ---------- helpers ----------
+
+        private static void AssertTableExists(SqliteConnection connection, string name)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=@name;";
+                command.Parameters.AddWithValue("@name", name);
+                Assert.AreEqual(1L, Convert.ToInt64(command.ExecuteScalar()), "table missing: " + name);
+            }
+        }
 
         private static object Scalar(SqliteConnection connection, string sql)
         {

@@ -41,7 +41,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
             ConnectionInitializer.Initialize(_connection);
             var version = CoreMigrator.EnsureSchema(_connection);
 
-            Assert.AreEqual(2, version, "both migrations apply on a fresh database");
+            Assert.GreaterOrEqual(version, 2, "all core migrations apply on a fresh database");
             Assert.IsTrue(TableExists(_connection, "session"));
             Assert.IsTrue(TableExists(_connection, "phase_slot"));
             Assert.IsTrue(TableExists(_connection, "phase_slot_candidate"));
@@ -52,6 +52,10 @@ namespace TruthCardGame.Content.Sqlite.Tests
             Assert.IsTrue(TableExists(_connection, "action_instance"));
             Assert.IsTrue(TableExists(_connection, "phase_graph_edge"));
             Assert.IsTrue(TableExists(_connection, "session_graph_node"));
+            // v3 WPF authoring additions:
+            Assert.IsTrue(TableExists(_connection, "wpf_session_node_layout"));
+            Assert.IsTrue(TableExists(_connection, "wpf_phase_node_layout"));
+            Assert.IsTrue(TableExists(_connection, "wpf_viewport_state"));
         }
 
         [Test]
@@ -65,7 +69,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
             using (var reopened = OpenNewConnection())
             {
                 CoreMigrator.EnsureSchema(reopened);
-                Assert.AreEqual(2, MigrationRowCount(reopened), "one ledger row per migration");
+                Assert.AreEqual(3, MigrationRowCount(reopened), "one ledger row per migration");
             }
         }
 
@@ -116,6 +120,9 @@ namespace TruthCardGame.Content.Sqlite.Tests
                     Assert.IsTrue(reader.Read());
                     Assert.AreEqual(2, reader.GetInt32(0));
                     Assert.AreEqual("core-graph-schema-v2", reader.GetString(1));
+                    Assert.IsTrue(reader.Read());
+                    Assert.AreEqual(3, reader.GetInt32(0));
+                    Assert.AreEqual("wpf-authoring-layout", reader.GetString(1));
                     Assert.IsFalse(reader.Read());
                 }
             }

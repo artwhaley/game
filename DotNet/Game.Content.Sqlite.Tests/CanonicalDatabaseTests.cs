@@ -41,7 +41,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
         }
 
         [Test]
-        public void CanonicalDatabase_IsMigrationV2()
+        public void CanonicalDatabase_IsAtCurrentMigration()
         {
             using (var connection = new SqliteConnection("Data Source=" + CanonicalPath() + ";Mode=ReadOnly"))
             {
@@ -50,7 +50,8 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 using (var command = connection.CreateCommand())
                 {
                     command.CommandText = "SELECT MAX(version) FROM core_schema_migration;";
-                    Assert.AreEqual(2L, command.ExecuteScalar(), "canonical DB must be at core schema v2");
+                    Assert.AreEqual(CoreMigrations.MaxVersion, Convert.ToInt32(command.ExecuteScalar()),
+                        "canonical DB must be at the current core schema version");
                 }
 
                 // v1 slot structures must be emptied by migration 2.

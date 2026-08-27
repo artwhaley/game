@@ -15,6 +15,7 @@
   <ItemGroup>
     <EmbeddedResource Include="SQLITE-SCHEMA-V1.sql" />
     <EmbeddedResource Include="SQLITE-SCHEMA-V2.sql" />
+    <EmbeddedResource Include="SQLITE-SCHEMA-V3-WPF-AUTHORING.sql" />
   </ItemGroup>
 
 </Project>

@@ -14,12 +14,28 @@ namespace TruthCardGame.Content.Sqlite
     /// </summary>
     public static class CoreMigrations
     {
+        /// <summary>Highest applied schema version (the last registered migration).</summary>
+        public static int MaxVersion
+        {
+            get
+            {
+                var max = 0;
+                foreach (var migration in All)
+                {
+                    if (migration.Version > max) max = migration.Version;
+                }
+                return max;
+            }
+        }
+
         public static IReadOnlyList<CoreMigration> All { get; } = new List<CoreMigration>
         {
             new CoreMigration(1, "core-schema-v1", LoadEmbeddedScript("SQLITE-SCHEMA-V1.sql")),
             new CoreMigration(2, "core-graph-schema-v2",
                 LoadEmbeddedScript("SQLITE-SCHEMA-V2.sql"),
-                Migration2Transform.Transform)
+                Migration2Transform.Transform),
+            new CoreMigration(3, "wpf-authoring-layout",
+                LoadEmbeddedScript("SQLITE-SCHEMA-V3-WPF-AUTHORING.sql"))
         };
 
         private static string LoadEmbeddedScript(string resourceName)
