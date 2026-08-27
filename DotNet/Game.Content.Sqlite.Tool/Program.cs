@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using Microsoft.Data.Sqlite;
-using TruthCardGame.Content.Samples;
 using TruthCardGame.Content.Sqlite;
 
 namespace TruthCardGame.Content.Sqlite.Tool
@@ -9,8 +8,11 @@ namespace TruthCardGame.Content.Sqlite.Tool
     /// <summary>
     /// Seeds the canonical Content/GameContent.db from SampleContent.
     /// Usage: dotnet run --project DotNet/Game.Content.Sqlite.Tool [--db &lt;path&gt;]
-    /// Default path is Content/GameContent.db relative to the working directory.
-    /// Refuses to touch a database that already has core content.
+    ///
+    /// INTERIM Graph Workbench migration state: with the portable model on the v2
+    /// graph shape but the database still at schema v1, this tool runs migrations
+    /// only and reports that seeding returns in Ticket 04
+    /// (Docs/GraphWorkbench/05-implementation-map.md).
     /// </summary>
     public static class Program
     {
@@ -32,8 +34,10 @@ namespace TruthCardGame.Content.Sqlite.Tool
                 {
                     ConnectionInitializer.Initialize(connection);
                     var version = CoreMigrator.EnsureSchema(connection);
-                    DatabaseInitializer.InitializeEmptyDatabaseFromSnapshot(connection, SampleContent.Build());
-                    Console.WriteLine($"Seeded '{fullPath}' (core schema v{version}) from SampleContent.");
+                    Console.WriteLine(
+                        $"Ensured core schema v{version} on '{fullPath}'. " +
+                        "Snapshot seeding is suspended until Graph Workbench Ticket 04 lands " +
+                        "(v2 schema migration + graph persistence).");
                 }
 
                 return 0;

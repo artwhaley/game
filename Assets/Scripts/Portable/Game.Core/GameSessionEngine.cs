@@ -6,30 +6,22 @@ using TruthCardGame.Content;
 namespace TruthCardGame.Core
 {
     /// <summary>
-    /// User-paced session orchestration: one AdvanceOneCardAsync call advances
-    /// at most one ordinary drawn card, skipping no-match phases within the
-    /// same request. Construction is inert — hosts invoke the first advance at
-    /// session start (matching Unity's automatic first draw) and later only
-    /// from explicit Draw Next input.
+    /// Session-run facade. INTERIM state of the Graph Workbench migration
+    /// (Docs/GraphWorkbench/05-implementation-map.md): content construction and
+    /// event surfaces exist so hosts keep compiling, while execution internals are
+    /// being replaced by the two-level graph VM.
     ///
-    /// Core owns all rules: phase targets, card eligibility, no-match phase
-    /// advancement, blocking/nonblocking action sequencing, and completion.
-    /// Hosts observe through the synchronous lifecycle events below and never
-    /// reimplement game rules. The end-of-session presentation delay/scene
-    /// change remains host behavior.
-    ///
-    /// The engine executes an in-memory snapshot (GameContentDefinition via
-    /// ContentCatalog); it never issues SQL and never reads the database
-    /// during a running preview.
+    /// - Ticket 06 installs Temperatures / SessionSpawnOptions / PhaseRun RNG seams.
+    /// - Tickets 07-09 implement Phase-local stepping, GOTO/RETURN continuation,
+    ///   and session-graph decisions on top; this facade then forwards real
+    ///   semantics again and the advance methods stop throwing.
     /// </summary>
     public sealed class GameSessionEngine
     {
-        private readonly SessionDriver _driver;
-        private readonly CardSelector _selector;
-        private readonly ActionExecutor _executor;
-        private readonly BackgroundActionTracker _tracker;
+        private readonly ContentCatalog _catalog;
+        private readonly SessionDefinition _session;
         private readonly CoreServices _services;
-        private readonly IRandomSource _cardRng;
+        private readonly BackgroundActionTracker _tracker;
 
         private bool _busy;
 
@@ -37,43 +29,30 @@ namespace TruthCardGame.Core
 
         public event Action<CardDefinition> CardStarted;
         public event Action<CardDefinition> CardFinished;
-        public event Action<int, int> PhaseChanged;
+        public event Action<string> PhaseEntered;
         public event Action SessionCompleted;
 
-        public GameSessionEngine(
-            GameContentDefinition content,
-            string sessionId,
-            Func<float> lengthModifier,
-            IRandomSource phaseLengthRng,
-            IRandomSource cardRng,
-            CoreServices services)
+        public GameSessionEngine(GameContentDefinition content, string sessionId, CoreServices services)
         {
             if (content == null) throw new ArgumentNullException(nameof(content));
             if (string.IsNullOrEmpty(sessionId)) throw new ArgumentNullException(nameof(sessionId));
-            if (lengthModifier == null) throw new ArgumentNullException(nameof(lengthModifier));
-            if (phaseLengthRng == null) throw new ArgumentNullException(nameof(phaseLengthRng));
-            if (cardRng == null) throw new ArgumentNullException(nameof(cardRng));
             _services = services ?? throw new ArgumentNullException(nameof(services));
 
-            var catalog = new ContentCatalog(content);
-            var session = catalog.SessionById(sessionId);
-
-            _cardRng = cardRng;
+            _catalog = new ContentCatalog(content);
+            _session = _catalog.SessionById(sessionId);
             _tracker = new BackgroundActionTracker(_services.Log);
-            _executor = new ActionExecutor(catalog, _tracker);
-            _selector = new CardSelector(content.Deck, catalog);
-            _driver = new SessionDriver(session, catalog, lengthModifier, _services.Log, phaseLengthRng);
             Player = new Player("Player");
         }
 
+        public ContentCatalog Catalog => _catalog;
+
+        public string SessionId => _session.Id;
+        public string SessionTitle => _session.Title;
+
         // ---------- host-observable state ----------
 
-        public bool IsComplete => _driver.IsComplete;
+        public bool IsComplete { get; private set; }
         public bool IsBusy => _busy;
-        public int PhaseIndex => _driver.PhaseIndex;
-        public string PhaseTitle => _driver.CurrentPhaseTitle;
-        public int CurrentTarget() => _driver.CurrentTarget();
-        public int Remaining() => _driver.Remaining();
 
         /// <summary>Active background ("continuous") work; hosts may drain on shutdown.</summary>
         public Task DrainBackgroundAsync() => _tracker.DrainAsync();
@@ -81,11 +60,16 @@ namespace TruthCardGame.Core
         /// <summary>How many background actions are still running.</summary>
         public int PendingBackgroundCount => _tracker.ActiveCount;
 
-        // ---------- the one user-paced operation ----------
+        // ---------- the user-paced operation ----------
 
+        /// <summary>
+        /// Advances at most one executed Card per request once the graph VM is in place.
+        /// Until Tickets 07-09 land it fails loudly instead of pretending progress:
+        /// no silent fake playback exists between the model and runtime tickets.
+        /// </summary>
         public async Task<AdvanceResult> AdvanceOneCardAsync(CancellationToken cancellationToken)
         {
-            if (_driver.IsComplete)
+            if (IsComplete)
             {
                 return new AdvanceResult(AdvanceResultKind.SessionCompleted);
             }
@@ -96,65 +80,14 @@ namespace TruthCardGame.Core
             _busy = true;
             try
             {
-                while (true)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    var found = _selector.TryDrawCard(
-                        _driver.CurrentMustInclude,
-                        _driver.CurrentMustExclude,
-                        _cardRng,
-                        out var card);
-
-                    if (!found)
-                    {
-                        // No matching card: warn + advance, then retry within the same request.
-                        var previous = _driver.PhaseIndex;
-                        _driver.OnNoMatchingCard();
-                        NotifyPhaseChanged(previous);
-                        if (_driver.IsComplete)
-                        {
-                            SessionCompleted?.Invoke();
-                            return new AdvanceResult(AdvanceResultKind.SessionCompleted);
-                        }
-                        continue;
-                    }
-
-                    CardStarted?.Invoke(card);
-
-                    var context = new GameContext(Player, _services);
-                    await _executor.ExecuteCardAsync(card, context, cancellationToken);
-
-                    // Commit boundary: a cancelled advance must never emit
-                    // completion events or progress the session, even if a
-                    // host service swallowed its cancellation.
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    CardFinished?.Invoke(card);
-
-                    var beforePhase = _driver.PhaseIndex;
-                    _driver.OnCardCompleted();
-                    NotifyPhaseChanged(beforePhase);
-
-                    if (_driver.IsComplete)
-                    {
-                        SessionCompleted?.Invoke();
-                        return new AdvanceResult(AdvanceResultKind.SessionCompleted, card);
-                    }
-                    return new AdvanceResult(AdvanceResultKind.CardCompleted, card);
-                }
+                cancellationToken.ThrowIfCancellationRequested();
+                throw new NotSupportedException(
+                    "Graph VM execution lands in Docs/GraphWorkbench tickets 07-09; " +
+                    "session '" + _session.Id + "' cannot be advanced yet.");
             }
             finally
             {
                 _busy = false;
-            }
-        }
-
-        private void NotifyPhaseChanged(int previous)
-        {
-            if (_driver.PhaseIndex != previous)
-            {
-                PhaseChanged?.Invoke(previous, _driver.PhaseIndex);
             }
         }
     }

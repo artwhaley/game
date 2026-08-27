@@ -13,12 +13,11 @@ using TruthCardGame.Core;
 namespace TruthCardGame.ReferenceHost.Wpf
 {
     /// <summary>
-    /// Thin reference player: loads the canonical SQLite content DB, feeds it
-    /// to the portable GameSessionEngine, and mirrors Core state. Every
-    /// gameplay rule (tag matching, draw selection, no-match skipping, action
-    /// sequencing, blocking/background semantics, completion) lives in
-    /// Game.Core — this window only hosts UI services and forwards Draw Next
-    /// clicks. This is the seed of the future WPF authoring workstation.
+    /// Thin reference player shell over the canonical SQLite content DB. INTERIM
+    /// Graph Workbench state: content loads through the portable snapshot path and
+    /// this window remains the seed of the Workbench (Tickets 12+ build out the
+    /// Nodify four-pane authoring surfaces here). Actual playback is suspended
+    /// while the graph VM lands (tickets 07-09); advancing reports that loudly.
     /// </summary>
     public partial class MainWindow : Window
     {
@@ -99,13 +98,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     prompts: new UiPromptService(this),
                     cutscene: new UiCutsceneService(this));
 
-                _engine = new GameSessionEngine(
-                    _content,
-                    selected.Id,
-                    () => _lengthModifier,
-                    phaseLengthRng: new SystemRandomSource(7),
-                    cardRng: new SystemRandomSource(11),
-                    services);
+                _engine = new GameSessionEngine(_content, selected.Id, services);
 
                 SubscribeEngine();
 
@@ -188,10 +181,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 Log($"card finished: {card.Title}");
                 RefreshProgress();
             };
-            _engine.PhaseChanged += (previous, current) =>
+            _engine.PhaseEntered += phaseTitle =>
             {
-                PhaseTitle.Text = PhaseTitleSafe(_engine);
-                Log($"phase {previous} → {current}");
+                PhaseTitle.Text = string.IsNullOrEmpty(phaseTitle) ? "(unnamed)" : phaseTitle;
+                Log($"phase entered: {phaseTitle}");
             };
             _engine.SessionCompleted += () =>
             {
@@ -199,15 +192,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
             };
         }
 
-        private static string PhaseTitleSafe(GameSessionEngine engine) => engine.PhaseTitle ?? "(complete)";
-
         private void RefreshProgress()
         {
             if (_engine == null) return;
-            ProgressText.Text = _engine.IsComplete
-                ? "complete"
-                : $"{_engine.CurrentTarget() - _engine.Remaining()} / {_engine.CurrentTarget()}";
-            PhaseTitle.Text = PhaseTitleSafe(_engine);
+            // Slot-era targets/remaining are gone; run-state visualization returns
+            // with the graph VM preview (Docs/GraphWorkbench ticket 19).
+            ProgressText.Text = _engine.IsComplete ? "complete" : "—";
         }
 
         // ---------- live length modifier ----------

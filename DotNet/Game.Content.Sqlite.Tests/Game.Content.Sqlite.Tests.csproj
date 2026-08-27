@@ -14,6 +14,22 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
   </ItemGroup>
 
+  <!--
+    Ticket 02 interim (Docs/GraphWorkbench/05-implementation-map.md): the portable
+    model is on the v2 graph shape while the schema/loader/repositories are still
+    pre-Ticket-03/04. These suites exercise slot-era persistence surfaces that are
+    being replaced; they re-enter compilation as their replacements land:
+      - AuthoringRepositoryTests / HostExtensionSafetyTests -> Ticket 04 (v2 repos) + 03 (constraint tests)
+      - SnapshotRoundTripTests                              -> Ticket 04 (v2 loader)
+      - EngineIntegrationTests                              -> Ticket 09 (graph VM end-to-end)
+  -->
+  <ItemGroup>
+    <Compile Remove="AuthoringRepositoryTests.cs" />
+    <Compile Remove="HostExtensionSafetyTests.cs" />
+    <Compile Remove="SnapshotRoundTripTests.cs" />
+    <Compile Remove="EngineIntegrationTests.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Game.Content.Sqlite\Game.Content.Sqlite.csproj" />
     <ProjectReference Include="..\Game.Content\Game.Content.csproj" />

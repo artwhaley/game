@@ -2,19 +2,22 @@ using System.Collections.Generic;
 
 namespace TruthCardGame.Content
 {
+    /// <summary>
+    /// One authored Card: presentation metadata, eligibility tags, and exactly one
+    /// owned Action sequence. There are no reusable configured Action entities and
+    /// no cross-card ID references — every occurrence is this card's own instance
+    /// with its own values. New cards default to a single
+    /// IncrementProgress(+10) instance that authors may edit or delete.
+    /// </summary>
     public sealed class CardDefinition
     {
-        /// <summary>Stable content ID, minted once at authoring time. Never regenerated; used by cross-host references.</summary>
         public string Id { get; set; } = "";
-
         public string Title { get; set; } = "";
+
+        /// <summary>Eligibility tags evaluated against a Phase's must-include/must-exclude lists.</summary>
         public List<string> Tags { get; set; } = new List<string>();
 
-        /// <summary>
-        /// Executed in order. Entries are IDs of top-level Actions; the same
-        /// Action ID may appear more than once. Dense lists: null/empty
-        /// entries are skipped defensively, but normal content has none.
-        /// </summary>
-        public List<string> ActionIds { get; set; } = new List<string>();
+        /// <summary>This card's owned sequence of Action Instances.</summary>
+        public ActionSequenceDefinition Sequence { get; set; } = new ActionSequenceDefinition();
     }
 }
