@@ -5,11 +5,11 @@
         Title="TruthCard Game — Graph Workbench"
         Width="1600" Height="900"
         WindowStartupLocation="CenterScreen"
+        Background="#FF1B1B1C" Foreground="#FFDDDDDD"
         Loaded="OnLoaded" Closing="OnClosing">
     <Window.Resources>
         <!-- Shared node template used by both graph editors. Input/output
-             connector templates give every node its connection points; the
-             double-click binding loads a referenced phase into the Phase pane. -->
+             connector templates give every node its connection points. -->
         <DataTemplate x:Key="NodeTemplate">
             <Grid>
                 <Grid.InputBindings>
@@ -44,13 +44,17 @@
         </DataTemplate>
     </Window.Resources>
 
-    <DockPanel x:Name="Root">
+    <DockPanel x:Name="Root" Background="#FF1B1B1C">
         <!-- Top command bar -->
-        <Border DockPanel.Dock="Top" Background="#FF2B2B2B" Padding="8,5">
+        <Border DockPanel.Dock="Top" Background="#FF2B2B2B" Padding="8,5"
+                BorderBrush="#FF3A3A3E" BorderThickness="0,0,0,1">
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Graph Workbench" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"/>
-                <Button Content="Run Session" Margin="16,0,0,0" Padding="10,3" Click="OnRunSession"/>
-                <Button Content="Reset Layout" Margin="6,0,0,0" Padding="10,3" Click="OnResetLayout"/>
+                <TextBlock Text="Graph Workbench" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"
+                           Foreground="#FFDDDDDD"/>
+                <Button Content="Run Session" Margin="16,0,0,0" Padding="10,3" Style="{StaticResource DarkButton}"
+                        Click="OnRunSession"/>
+                <Button Content="Reset Layout" Margin="6,0,0,0" Padding="10,3" Style="{StaticResource DarkButton}"
+                        Click="OnResetLayout"/>
                 <TextBlock x:Name="StatusText" Text="Loading content…" VerticalAlignment="Center"
                            Margin="16,0,0,0" Foreground="#FF9CCC65"/>
             </StackPanel>
@@ -58,7 +62,7 @@
 
         <!-- Four panes with three GridSplitters. Ratios are applied in code-behind
              so they are driven by the persisted WorkbenchLayout model. -->
-        <Grid x:Name="PaneGrid">
+        <Grid x:Name="PaneGrid" Background="#FF1B1B1C">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" MinWidth="120"/>
                 <ColumnDefinition Width="Auto"/>
@@ -70,37 +74,30 @@
             </Grid.ColumnDefinitions>
 
             <!-- Pane 1: Library -->
-            <DockPanel Grid.Column="0" Margin="4,4,2,4">
-                <Border DockPanel.Dock="Top" Background="#FF2B2B2B" Padding="6,4">
-                    <TextBlock Text="Library" FontWeight="Bold"/>
+            <DockPanel Grid.Column="0" Margin="4,4,2,4" Background="#FF212226">
+                <Border DockPanel.Dock="Top" Background="#FF2B2B2B" Padding="6,4"
+                        BorderBrush="#FF3A3A3E" BorderThickness="0,0,0,1">
+                    <TextBlock Text="Library" FontWeight="Bold" Foreground="#FFDDDDDD"/>
                 </Border>
-                <Grid Margin="6,4,6,4">
+                <Grid Margin="6,4,6,4" Background="#FF212226">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <ListBox x:Name="SessionList" Grid.Column="0" Margin="0,0,3,0"
-                             SelectionChanged="OnSessionListChanged">
-                        <ListBox.Template>
-                            <ControlTemplate>
-                                <StackPanel>
-                                    <TextBlock Text="Sessions" FontWeight="Bold" Margin="2,0,2,4"/>
-                                    <ItemsPresenter/>
-                                </StackPanel>
-                            </ControlTemplate>
-                        </ListBox.Template>
-                    </ListBox>
-                    <ListBox x:Name="PhaseList" Grid.Column="1" Margin="3,0,0,0"
-                             SelectionChanged="OnPhaseListChanged">
-                        <ListBox.Template>
-                            <ControlTemplate>
-                                <StackPanel>
-                                    <TextBlock Text="Phases" FontWeight="Bold" Margin="2,0,2,4"/>
-                                    <ItemsPresenter/>
-                                </StackPanel>
-                            </ControlTemplate>
-                        </ListBox.Template>
-                    </ListBox>
+                    <DockPanel Grid.Column="0" Margin="0,0,3,0">
+                        <TextBlock DockPanel.Dock="Top" Text="Sessions" FontWeight="Bold" Margin="2,0,2,4"
+                                   Foreground="#FFBBBBBB"/>
+                        <ListBox x:Name="SessionList" Style="{StaticResource DarkListBox}"
+                                 ItemContainerStyle="{StaticResource DarkListBoxItem}"
+                                 SelectionChanged="OnSessionListChanged"/>
+                    </DockPanel>
+                    <DockPanel Grid.Column="1" Margin="3,0,0,0">
+                        <TextBlock DockPanel.Dock="Top" Text="Phases" FontWeight="Bold" Margin="2,0,2,4"
+                                   Foreground="#FFBBBBBB"/>
+                        <ListBox x:Name="PhaseList" Style="{StaticResource DarkListBox}"
+                                 ItemContainerStyle="{StaticResource DarkListBoxItem}"
+                                 SelectionChanged="OnPhaseListChanged"/>
+                    </DockPanel>
                 </Grid>
             </DockPanel>
 
@@ -109,15 +106,21 @@
                           DragCompleted="OnSplitterDragCompleted"/>
 
             <!-- Pane 2: Session Graph -->
-            <DockPanel Grid.Column="2" Margin="2,4,2,4">
-                <Border DockPanel.Dock="Top" Background="#FF2B2B2B" Padding="6,4">
+            <DockPanel Grid.Column="2" Margin="2,4,2,4" Background="#FF212226">
+                <Border DockPanel.Dock="Top" Background="#FF2B2B2B" Padding="6,4"
+                        BorderBrush="#FF3A3A3E" BorderThickness="0,0,0,1">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock x:Name="SessionHeader" Text="Session Graph" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="SessionHeader" Text="Session Graph" FontWeight="Bold"
+                                   VerticalAlignment="Center" Foreground="#FFDDDDDD"/>
                         <StackPanel Orientation="Horizontal" Margin="14,0,0,0">
-                            <Button Content="+ Start" Click="OnAddSessionStart" Padding="6,1" Margin="0,0,3,0" ToolTip="Add SessionStart (singular)"/>
-                            <Button Content="+ Phase" Click="OnAddPhaseReference" Padding="6,1" Margin="0,0,3,0"/>
-                            <Button Content="+ Decision" Click="OnAddSessionDecision" Padding="6,1" Margin="0,0,3,0"/>
-                            <Button Content="+ End" Click="OnAddSessionEnd" Padding="6,1"/>
+                            <Button Content="+ Start" Click="OnAddSessionStart" Padding="6,1" Margin="0,0,3,0"
+                                    Style="{StaticResource DarkButton}" ToolTip="Add SessionStart (singular)"/>
+                            <Button Content="+ Phase" Click="OnAddPhaseReference" Padding="6,1" Margin="0,0,3,0"
+                                    Style="{StaticResource DarkButton}"/>
+                            <Button Content="+ Decision" Click="OnAddSessionDecision" Padding="6,1" Margin="0,0,3,0"
+                                    Style="{StaticResource DarkButton}"/>
+                            <Button Content="+ End" Click="OnAddSessionEnd" Padding="6,1"
+                                    Style="{StaticResource DarkButton}"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -127,7 +130,7 @@
                                      PendingConnection="{Binding SessionGraph.PendingConnection}"
                                      DisconnectConnectorCommand="{Binding SessionGraph.DisconnectConnectorCommand}"
                                      ItemTemplate="{StaticResource NodeTemplate}"
-                                     Background="#FF1E1E1E" Margin="2,4,2,2">
+                                     Background="#FF1B1B1C" Margin="2,4,2,2">
                     <nodify:NodifyEditor.ConnectionTemplate>
                         <DataTemplate>
                             <nodify:LineConnection Source="{Binding Source.Anchor}"
@@ -150,17 +153,25 @@
                           DragCompleted="OnSplitterDragCompleted"/>
 
             <!-- Pane 3: Phase Graph -->
-            <DockPanel Grid.Column="4" Margin="2,4,2,4">
-                <Border DockPanel.Dock="Top" Background="#FF2B2B2B" Padding="6,4">
+            <DockPanel Grid.Column="4" Margin="2,4,2,4" Background="#FF212226">
+                <Border DockPanel.Dock="Top" Background="#FF2B2B2B" Padding="6,4"
+                        BorderBrush="#FF3A3A3E" BorderThickness="0,0,0,1">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock x:Name="PhaseHeader" Text="Phase Graph" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="PhaseHeader" Text="Phase Graph" FontWeight="Bold"
+                                   VerticalAlignment="Center" Foreground="#FFDDDDDD"/>
                         <StackPanel Orientation="Horizontal" Margin="14,0,0,0">
-                            <Button Content="+ Entry" Click="OnAddPhaseEntry" Padding="6,1" Margin="0,0,3,0" ToolTip="Add PhaseEntry (singular)"/>
-                            <Button Content="+ Draw" Click="OnAddCardExecutor" Padding="6,1" Margin="0,0,3,0"/>
-                            <Button Content="+ Check" Click="OnAddVariableCheck" Padding="6,1" Margin="0,0,3,0"/>
-                            <Button Content="+ Action" Click="OnAddActionNode" Padding="6,1" Margin="0,0,3,0"/>
-                            <Button Content="+ Decision" Click="OnAddPhaseDecision" Padding="6,1" Margin="0,0,3,0"/>
-                            <Button Content="+ Return" Click="OnAddReturn" Padding="6,1"/>
+                            <Button Content="+ Entry" Click="OnAddPhaseEntry" Padding="6,1" Margin="0,0,3,0"
+                                    Style="{StaticResource DarkButton}" ToolTip="Add PhaseEntry (singular)"/>
+                            <Button Content="+ Draw" Click="OnAddCardExecutor" Padding="6,1" Margin="0,0,3,0"
+                                    Style="{StaticResource DarkButton}"/>
+                            <Button Content="+ Check" Click="OnAddVariableCheck" Padding="6,1" Margin="0,0,3,0"
+                                    Style="{StaticResource DarkButton}"/>
+                            <Button Content="+ Action" Click="OnAddActionNode" Padding="6,1" Margin="0,0,3,0"
+                                    Style="{StaticResource DarkButton}"/>
+                            <Button Content="+ Decision" Click="OnAddPhaseDecision" Padding="6,1" Margin="0,0,3,0"
+                                    Style="{StaticResource DarkButton}"/>
+                            <Button Content="+ Return" Click="OnAddReturn" Padding="6,1"
+                                    Style="{StaticResource DarkButton}"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -170,7 +181,7 @@
                                      PendingConnection="{Binding PhaseGraph.PendingConnection}"
                                      DisconnectConnectorCommand="{Binding PhaseGraph.DisconnectConnectorCommand}"
                                      ItemTemplate="{StaticResource NodeTemplate}"
-                                     Background="#FF1E1E1E" Margin="2,4,2,2">
+                                     Background="#FF1B1B1C" Margin="2,4,2,2">
                     <nodify:NodifyEditor.ConnectionTemplate>
                         <DataTemplate>
                             <nodify:LineConnection Source="{Binding Source.Anchor}"
@@ -193,16 +204,17 @@
                           DragCompleted="OnSplitterDragCompleted"/>
 
             <!-- Pane 4: Inspector -->
-            <DockPanel Grid.Column="6" Margin="2,4,4,4">
-                <Border DockPanel.Dock="Top" Background="#FF2B2B2B" Padding="6,4">
-                    <TextBlock Text="Inspector" FontWeight="Bold"/>
+            <DockPanel Grid.Column="6" Margin="2,4,4,4" Background="#FF212226">
+                <Border DockPanel.Dock="Top" Background="#FF2B2B2B" Padding="6,4"
+                        BorderBrush="#FF3A3A3E" BorderThickness="0,0,0,1">
+                    <TextBlock Text="Inspector" FontWeight="Bold" Foreground="#FFDDDDDD"/>
                 </Border>
-                <StackPanel Margin="8,6,8,6">
-                    <TextBlock Text="Selection" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                    <TextBlock x:Name="InspTitle" Text="(none)" FontWeight="Bold" TextWrapping="Wrap"/>
+                <StackPanel Margin="8,6,8,6" Background="Transparent">
+                    <TextBlock Text="Selection" FontWeight="SemiBold" Margin="0,0,0,4" Foreground="#FFDDDDDD"/>
+                    <TextBlock x:Name="InspTitle" Text="(none)" FontWeight="Bold" TextWrapping="Wrap" Foreground="#FFDDDDDD"/>
                     <TextBlock x:Name="InspId" Text="" FontFamily="Consolas" FontSize="10" Foreground="#FFB0B0B0" Margin="0,2,0,0" TextWrapping="Wrap"/>
                     <TextBlock x:Name="InspKind" Text="" FontFamily="Consolas" FontSize="10" Foreground="#FF808080" Margin="0,2,0,0"/>
-                    <TextBlock Text="Hint" FontWeight="SemiBold" Margin="0,16,0,4"/>
+                    <TextBlock Text="Hint" FontWeight="SemiBold" Margin="0,16,0,4" Foreground="#FFDDDDDD"/>
                     <TextBlock Text="Pan: right-drag · Zoom: mouse wheel
 Select: left-click node · Move: drag node
 Connect: drag from an output connector to an input

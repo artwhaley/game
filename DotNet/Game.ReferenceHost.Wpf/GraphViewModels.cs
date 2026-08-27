@@ -323,9 +323,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
             foreach (var node in session.Graph.Nodes)
             {
                 var vm = nodes[node.Id];
+                var phaseRefId = (node as PhaseReferenceNodeDefinition)?.PhaseId;
                 foreach (var output in node.Outputs)
                 {
-                    var (label, kind, tag) = DescribeSessionOutput(output);
+                    var (label, kind, tag) = DescribeSessionOutput(output, phaseRefId);
                     outputsByNode[output.Id] = Output(vm, output.Id, label, kind, tag);
                 }
             }
@@ -340,11 +341,25 @@ namespace TruthCardGame.ReferenceHost.Wpf
             Populate(nodes.Values, connections);
         }
 
-        /// <summary>Palette: adds a PhaseReference targeting the given phase id.</summary>
+        /// <summary>Palette: adds a PhaseReference targeting the given phase id (title resolved for readable display).</summary>
         public GraphNodeViewModel AddPhaseReference(string phaseId, Point location)
         {
             var id = "phase-ref-" + (Nodes.Count + 1);
-            var node = AddNode(id, "Phase Reference", phaseId, "phase-reference", location);
+            PhaseDefinition phase = null;
+            try
+            {
+                if (PhaseResolver != null) phase = PhaseResolver(phaseId);
+            }
+            catch
+            {
+                // Unknown reference; fall back to the id.
+            }
+            var title = $"Phase: {phase?.Title ?? phaseId}";
+            var subtitle = phase?.Exits != null && phase.Exits.Count > 0
+                ? $"{phase.Exits.Count} exit{(phase.Exits.Count == 1 ? "" : "s")}: {string.Join(", ", phase.Exits.Select(e => string.IsNullOrEmpty(e.Name) ? e.Id : e.Name))}"
+                : "no exits";
+            var node = AddNode(id, title, subtitle, "phase-reference", location);
+            node.RefId = phaseId;
             Output(node, id + "-out", "out", "normal", "");
             return node;
         }
@@ -403,19 +418,43 @@ namespace TruthCardGame.ReferenceHost.Wpf
             return ($"Phase: {title}", subtitle, "phase-reference", reference.PhaseId);
         }
 
-        private static (string, string, string) DescribeSessionOutput(GraphOutputDefinition output)
+        private (string, string, string) DescribeSessionOutput(GraphOutputDefinition output, string phaseRefId)
         {
             switch (output.Kind)
             {
                 case GraphPortKind.Normal:
                     return ("out", "normal", "");
                 case GraphPortKind.PhaseExit:
-                    return (string.IsNullOrEmpty(output.Label) ? "exit" : output.Label, "phase_exit", output.PhaseExitId);
+                {
+                    var label = output.Label;
+                    if (string.IsNullOrEmpty(label))
+                    {
+                        label = ExitLabel(output.PhaseExitId, phaseRefId) ?? "exit";
+                    }
+                    return (label, "phase_exit", output.PhaseExitId);
+                }
                 case GraphPortKind.SessionGoto:
                     return (string.IsNullOrEmpty(output.Label) ? "goto" : output.Label, "session_goto", output.SessionGotoActionInstanceId);
                 default:
                     return (output.Kind.ToString(), "normal", "");
             }
+        }
+
+        /// <summary>Resolves an exit id to its author-facing name ("Complete" / "Fail") via the referenced phase.</summary>
+        private string ExitLabel(string exitId, string phaseRefId)
+        {
+            if (string.IsNullOrEmpty(exitId)) return null;
+            PhaseDefinition phase = null;
+            try { if (PhaseResolver != null && !string.IsNullOrEmpty(phaseRefId)) phase = PhaseResolver(phaseRefId); }
+            catch { return null; }
+            if (phase?.Exits != null)
+            {
+                foreach (var exit in phase.Exits)
+                {
+                    if (exit.Id == exitId) return string.IsNullOrEmpty(exit.Name) ? exitId : exit.Name;
+                }
+            }
+            return exitId;
         }
     }
 
@@ -439,11 +478,18 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var nodes = new Dictionary<string, GraphNodeViewModel>();
             var connections = new List<ConnectionViewModel>();
 
+            // Exit lookup for readable PhaseGoto Action node titles.
+            var exitNameById = new Dictionary<string, string>();
+            foreach (var exit in phase.Exits ?? new List<PhaseExitDefinition>())
+            {
+                exitNameById[exit.Id] = string.IsNullOrEmpty(exit.Name) ? exit.Id : exit.Name;
+            }
+
             var column = 0.0;
             var row = 0.0;
             foreach (var node in phase.Graph.Nodes)
             {
-                var (title, subtitle, kind) = DescribePhaseNode(node);
+                var (title, subtitle, kind) = DescribePhaseNode(node, exitNameById);
                 var vm = new GraphNodeViewModel
                 {
                     Id = node.Id,
@@ -524,7 +570,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             return node;
         }
 
-        private static (string, string, string) DescribePhaseNode(GraphNodeDefinition node)
+        private static (string, string, string) DescribePhaseNode(GraphNodeDefinition node, Dictionary<string, string> exitNameById)
         {
             switch (node)
             {
@@ -535,7 +581,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case VariableCheckNodeDefinition check:
                     return ("Check", $"{check.SourceKind} {check.Operator} {check.CompareValue}", "check");
                 case ActionNodeDefinition action:
-                    return ("Action", action.Id, "action");
+                    return DescribeActionNode(action, exitNameById);
                 case PhaseDecisionNodeDefinition decision:
                     return ("Decision", decision.Prompt, "decision");
                 case ReturnNodeDefinition:
@@ -543,6 +589,36 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 default:
                     return (node.GetType().Name, node.Id, "unknown");
             }
+        }
+
+        /// <summary>
+        /// Names an Action node by its flow effect: a PhaseGoto becomes
+        /// "Exit: Complete / Fail" instead of a raw uuid. Other action types
+        /// keep a generic title.
+        /// </summary>
+        private static (string, string, string) DescribeActionNode(ActionNodeDefinition action, Dictionary<string, string> exitNameById)
+        {
+            var exportsExit = false;
+            string exitName = null;
+            if (action.Sequence?.Instances != null)
+            {
+                foreach (var instance in action.Sequence.Instances)
+                {
+                    if (instance is PhaseGotoInstanceDefinition gotoInstance)
+                    {
+                        exportsExit = true;
+                        exitName = exitNameById.TryGetValue(gotoInstance.PhaseExitId, out var name)
+                            ? name
+                            : (string.IsNullOrEmpty(gotoInstance.PhaseExitId) ? "" : gotoInstance.PhaseExitId);
+                        break;
+                    }
+                }
+            }
+            if (exportsExit)
+            {
+                return ($"Exit: {exitName}", "phase_goto", "action");
+            }
+            return ("Action", action.Id, "action");
         }
 
         private static (string, string, string) DescribePhaseOutput(GraphOutputDefinition output)
