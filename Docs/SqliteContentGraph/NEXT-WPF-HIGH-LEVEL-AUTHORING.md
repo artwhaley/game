@@ -1,5 +1,14 @@
 # Next WPF High-Level Authoring — Handoff
 
+> **SUPERSEDED (Graph Workbench stack).** This document is retained as a design-era
+> record only. The current architecture is `Docs/GraphWorkbench/` (01-architecture-decisions,
+> 02-execution-semantics, 03-schema-v2-design, 04-wpf-authoring-spec). Specifically:
+> PhaseSlots / candidate selection / min-max-card completion are **superseded** — the
+> exact Phase-reference Session graph with `SessionStart` → `PhaseReference` →
+> `SessionEnd` nodes, reusable Phases that *are* their executable graph, exported stable
+> PhaseExits, GOTO/RETURN continuation semantics, and owned Action Instances replacing
+> reusable configured Actions are the authoritative direction. Do not implement from this page.
+
 The next UI milestone begins at the top of this document. This is a **handoff
 doc, not a spec**: it states what exists, what the next milestone should build
 in order, and which design decisions must be resolved **with the user** before
