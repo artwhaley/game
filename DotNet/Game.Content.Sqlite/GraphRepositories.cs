@@ -57,6 +57,53 @@ namespace TruthCardGame.Content.Sqlite
                 ("node", nodeId), ("phase", phaseId));
         }
 
+        /// <summary>
+        /// Writes one new phase node (row + subtype rows + output sockets) as an
+        /// atomic unit, reusing the shared initializer writer. Node ids are
+        /// authored by the caller and must be unique within the phase.
+        /// </summary>
+        public static void AddNode(DbConnection connection, string phaseId, PhaseGraphNodeDefinition node)
+        {
+            if (node == null) throw new ArgumentNullException(nameof(node));
+
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    DatabaseInitializer.WritePhaseNode(connection, transaction, phaseId, node);
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+
+        /// <summary>Deletes every edge leaving the given output socket (disconnect persistence).</summary>
+        public static void RemoveEdgesFromSource(DbConnection connection, string sourceOutputId)
+        {
+            if (string.IsNullOrEmpty(sourceOutputId)) return;
+            Sql.Execute(connection, null,
+                "DELETE FROM phase_graph_edge WHERE source_port_id = @source;",
+                ("source", sourceOutputId));
+        }
+
+        /// <summary>Updates a VariableCheck node's comparison fields in place.</summary>
+        public static void UpdateVariableCheck(DbConnection connection, string nodeId,
+            VariableSourceKind sourceKind, string variableKey, VariableCompareOperator op, float compareValue)
+        {
+            Sql.Execute(connection, null,
+                "UPDATE phase_node_variable_check SET source_kind = @kind, variable_key = @key, " +
+                "compare_operator = @op, compare_value = @value WHERE node_id = @node;",
+                ("kind", DatabaseInitializer.SourceKindName(sourceKind)),
+                ("key", string.IsNullOrEmpty(variableKey) ? DBNull.Value : (object)variableKey),
+                ("op", DatabaseInitializer.OperatorName(op)),
+                ("value", (double)compareValue),
+                ("node", nodeId));
+        }
+
         public static void AddEdge(DbConnection connection, string phaseId, GraphEdgeDefinition edge)
         {
             if (edge == null) throw new ArgumentNullException(nameof(edge));

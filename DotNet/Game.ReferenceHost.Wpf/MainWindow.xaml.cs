@@ -26,11 +26,27 @@ namespace TruthCardGame.ReferenceHost.Wpf
     /// persist in the wpf_* layout tables, and a Phase dragged from the Library
     /// onto the Session canvas becomes a PhaseReference placement.
     /// </summary>
+    /// <summary>Collapses when the bound value is null (inline check editors).</summary>
+    public sealed class NullToCollapsedConverter : System.Windows.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            return value == null ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
     public partial class MainWindow : Window
     {
         private readonly WorkbenchViewModel _vm;
         private bool _loaded;
         private bool _syncingSessionMeta;
+        private bool _syncingPhaseMeta;
+        private bool _loadingPlacementPhase;
 
         public MainWindow()
         {
@@ -41,8 +57,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             NodeDoubleClickCommand = new DelegateCommand<GraphNodeViewModel>(OnNodeDoubleClicked);
 
             // Inspector pane follows whichever editor has a selection.
-            _vm.SessionGraph.SelectionChanged += (_, _) => UpdateInspector(_vm.SessionGraph.SelectedNode);
-            _vm.PhaseGraph.SelectionChanged += (_, _) => UpdateInspector(_vm.PhaseGraph.SelectedNode);
+            _vm.SessionGraph.SelectionChanged += (_, _) => UpdateInspector(_vm.SessionGraph.SelectedNode, fromSession: true);
+            _vm.PhaseGraph.SelectionChanged += (_, _) => UpdateInspector(_vm.PhaseGraph.SelectedNode, fromSession: false);
 
             WireAuthoringEvents();
         }
@@ -100,6 +116,93 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 AuthoringLayoutRepository.SaveViewport(connection, "session", _vm.SelectedSession.Id,
                     _vm.SessionGraph.ViewportZoom, _vm.SessionGraph.ViewportLocation.X, _vm.SessionGraph.ViewportLocation.Y);
             });
+
+            // ---- phase editor authoring (ticket 14) ----
+
+            _vm.PhaseGraph.NodeMoved += node => WithConnection(connection =>
+            {
+                if (_vm.SelectedPhase == null) return;
+                AuthoringLayoutRepository.SavePhaseNodePosition(
+                    connection, _vm.SelectedPhase.Id, node.Id, node.Location.X, node.Location.Y);
+            });
+
+            _vm.PhaseGraph.ConnectionCreated += (source, target) => WithConnection(connection =>
+            {
+                if (_vm.SelectedPhase == null || source?.Owner == null || target?.Owner == null) return;
+
+                if (source.IsConnected)
+                {
+                    PhaseGraphRepository.RemoveEdgesFromSource(connection, source.Id);
+                }
+
+                var edge = new GraphEdgeDefinition
+                {
+                    Id = "pe-" + Guid.NewGuid().ToString("N"),
+                    SourceOutputId = source.Id,
+                    TargetNodeId = target.Owner.Id,
+                };
+                PhaseGraphRepository.AddEdge(connection, _vm.SelectedPhase.Id, edge);
+            });
+
+            _vm.PhaseGraph.ConnectionRemoved += connection => WithConnection(conn =>
+            {
+                if (connection?.Source == null) return;
+                PhaseGraphRepository.RemoveEdgesFromSource(conn, connection.Source.Id);
+            });
+
+            _vm.PhaseGraph.NodeDeleted += node => WithConnection(connection =>
+            {
+                if (_vm.SelectedPhase == null) return;
+                PhaseGraphRepository.RemoveNode(connection, _vm.SelectedPhase.Id, node.Id);
+                AuthoringLayoutRepository.DeletePhaseNodePosition(connection, _vm.SelectedPhase.Id, node.Id);
+            });
+
+            _vm.PhaseGraph.CheckChanged += node => WithConnection(connection =>
+            {
+                if (_vm.SelectedPhase == null || node?.Check == null) return;
+                PhaseGraphRepository.UpdateVariableCheck(connection, node.Id,
+                    ParseSourceKind(node.Check.Source),
+                    node.Check.Source == "progress" ? "" : node.Check.Key,
+                    ParseOperator(node.Check.Operator),
+                    ParseFloat(node.Check.ValueText));
+            });
+
+            _vm.PhaseGraph.ViewportChanged += () => WithConnection(connection =>
+            {
+                if (_vm.SelectedPhase == null) return;
+                AuthoringLayoutRepository.SaveViewport(connection, "phase", _vm.SelectedPhase.Id,
+                    _vm.PhaseGraph.ViewportZoom, _vm.PhaseGraph.ViewportLocation.X, _vm.PhaseGraph.ViewportLocation.Y);
+            });
+        }
+
+        private static VariableSourceKind ParseSourceKind(string source)
+        {
+            switch (source)
+            {
+                case "temperature": return VariableSourceKind.Temperature;
+                case "stat": return VariableSourceKind.Stat;
+                default: return VariableSourceKind.PhaseProgress;
+            }
+        }
+
+        private static VariableCompareOperator ParseOperator(string op)
+        {
+            switch (op)
+            {
+                case "<": return VariableCompareOperator.LessThan;
+                case "<=": return VariableCompareOperator.LessThanOrEqual;
+                case "==": return VariableCompareOperator.Equal;
+                case "!=": return VariableCompareOperator.NotEqual;
+                case ">": return VariableCompareOperator.GreaterThan;
+                default: return VariableCompareOperator.GreaterThanOrEqual;
+            }
+        }
+
+        private static float ParseFloat(string text)
+        {
+            if (float.TryParse(text, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var value)) return value;
+            return 0f;
         }
 
         private void OnNodeDoubleClicked(GraphNodeViewModel node)
@@ -137,14 +240,18 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
         }
 
-        private void UpdateInspector(GraphNodeViewModel node)
+        private void UpdateInspector(GraphNodeViewModel node, bool fromSession)
         {
             if (node == null)
             {
+                // While a placement is loading the phase editor repopulates and
+                // fires a null-selection event; don't blank the Inspector then.
+                if (_loadingPlacementPhase) return;
                 InspTitle.Text = "(none)";
                 InspId.Text = "";
                 InspKind.Text = "";
                 SessionMetaPanel.Visibility = Visibility.Collapsed;
+                PhaseMetaPanel.Visibility = Visibility.Collapsed;
                 return;
             }
             InspTitle.Text = node.Title;
@@ -159,6 +266,87 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 SyncSessionMetaPanel();
             }
+
+            // Selecting the Entry node exposes the Phase metadata (title + tags).
+            PhaseMetaPanel.Visibility = node.Kind == "entry" ? Visibility.Visible : Visibility.Collapsed;
+            if (node.Kind == "entry")
+            {
+                SyncPhaseMetaPanel();
+            }
+
+            // Selecting a PhaseReference in the Session canvas loads that exact
+            // Phase below and establishes placement context (Ticket 14).
+            if (fromSession && node.Kind == "phase-reference" && !string.IsNullOrEmpty(node.RefId))
+            {
+                if (_loadingPlacementPhase) return;
+                _loadingPlacementPhase = true;
+                try
+                {
+                    if (_vm.SelectPhaseById(node.RefId))
+                    {
+                        _vm.PhaseGraph.HasPlacementContext = true;
+                        SyncPhaseListSelection(node.RefId);
+                        ReloadPhaseEditor();
+                        UpdatePhaseHeader();
+                    }
+                }
+                finally
+                {
+                    _loadingPlacementPhase = false;
+                }
+            }
+        }
+
+        private void SyncPhaseMetaPanel()
+        {
+            if (_vm.SelectedPhase == null) return;
+            _syncingPhaseMeta = true;
+            try
+            {
+                PhaseTitleBox.Text = _vm.SelectedPhase.Title;
+                PhaseIncludeTagsBox.Text = string.Join(", ", _vm.SelectedPhase.MustIncludeTags);
+                PhaseExcludeTagsBox.Text = string.Join(", ", _vm.SelectedPhase.MustExcludeTags);
+            }
+            finally
+            {
+                _syncingPhaseMeta = false;
+            }
+        }
+
+        private void OnPhaseTitleChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_syncingPhaseMeta || _vm.SelectedPhase == null) return;
+            WithConnection(connection => PhaseRepository.Rename(connection, _vm.SelectedPhase.Id, PhaseTitleBox.Text));
+            _vm.SelectedPhase.Title = PhaseTitleBox.Text;
+            PhaseHeader.Text = "Phase Graph — " + PhaseTitleBox.Text;
+            BindPhaseList();
+        }
+
+        private void OnPhaseTagsChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_syncingPhaseMeta || _vm.SelectedPhase == null) return;
+            var include = SplitTags(PhaseIncludeTagsBox.Text);
+            var exclude = SplitTags(PhaseExcludeTagsBox.Text);
+            WithConnection(connection =>
+            {
+                PhaseRepository.ReplaceRequiredTags(connection, _vm.SelectedPhase.Id, include);
+                PhaseRepository.ReplaceExcludedTags(connection, _vm.SelectedPhase.Id, exclude);
+            });
+            _vm.SelectedPhase.MustIncludeTags = include;
+            _vm.SelectedPhase.MustExcludeTags = exclude;
+            StatusText.Text = "Phase tags updated.";
+        }
+
+        private static List<string> SplitTags(string text)
+        {
+            var result = new List<string>();
+            if (string.IsNullOrWhiteSpace(text)) return result;
+            foreach (var part in text.Split(','))
+            {
+                var tag = part.Trim();
+                if (tag.Length > 0) result.Add(tag);
+            }
+            return result;
         }
 
         private void SyncSessionMetaPanel()
@@ -244,9 +432,24 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void BindLibrary()
         {
             BindSessionList();
-            PhaseList.ItemsSource = _vm.Content.Phases;
+            BindPhaseList();
+        }
+
+        private void BindPhaseList()
+        {
+            var filter = (PhaseFilter.Text ?? "").Trim();
+            var phases = _vm.Content.Phases;
+            var shown = string.IsNullOrEmpty(filter)
+                ? phases
+                : phases.Where(p => p.Title.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+            PhaseList.ItemsSource = shown;
             PhaseList.DisplayMemberPath = nameof(PhaseDefinition.Title);
-            if (PhaseList.Items.Count > 0) PhaseList.SelectedIndex = 0;
+            if (PhaseList.Items.Count > 0 && PhaseList.SelectedItem == null) PhaseList.SelectedIndex = 0;
+        }
+
+        private void OnPhaseFilterChanged(object sender, TextChangedEventArgs e)
+        {
+            BindPhaseList();
         }
 
         private void BindSessionList()
@@ -280,9 +483,30 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (PhaseList.SelectedItem is PhaseDefinition phase)
             {
                 _vm.SelectPhase(phase);
+                _vm.PhaseGraph.HasPlacementContext = false;
                 PhaseHeader.Text = "Phase Graph — " + phase.Title;
                 ReloadPhaseEditor();
+                UpdatePhaseHeader();
             }
+        }
+
+        /// <summary>Refreshes the Phase header readout: name, usage, exits shell.</summary>
+        private void UpdatePhaseHeader()
+        {
+            if (_vm.SelectedPhase == null)
+            {
+                PhaseUsageText.Text = "";
+                PhaseExitsText.Text = "";
+                return;
+            }
+            var (sessions, placements) = WithConnectionResult(connection =>
+                PhaseRepository.Usage(connection, _vm.SelectedPhase.Id));
+            var placement = _vm.PhaseGraph.HasPlacementContext ? " · placed in session" : "";
+            PhaseUsageText.Text = $"used in {sessions} session(s) · {placements} placement(s){placement}";
+            var exits = _vm.SelectedPhase.Exits.Count == 0
+                ? "no exits"
+                : string.Join(", ", _vm.SelectedPhase.Exits.Select(x => string.IsNullOrEmpty(x.Name) ? x.Id : x.Name));
+            PhaseExitsText.Text = "Exits: " + exits;
         }
 
         /// <summary>
@@ -552,7 +776,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void OnDeleteSelectedNode(object sender, RoutedEventArgs e)
         {
-            DeleteSelectedNode(_vm.SessionGraph.SelectedNode);
+            if (_vm.SessionGraph.SelectedNode != null) DeleteSelectedNode(_vm.SessionGraph.SelectedNode);
+            else if (_vm.PhaseGraph.SelectedNode != null) DeleteSelectedNode(_vm.PhaseGraph.SelectedNode);
         }
 
         private void OnEditorKeyDown(object sender, KeyEventArgs e)
@@ -575,28 +800,178 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 _vm.SessionGraph.DeleteNode(node);
                 StatusText.Text = "Deleted node " + node.Id + ".";
             }
+            else if (_vm.PhaseGraph.Nodes.Contains(node))
+            {
+                if (node.Kind == "entry")
+                {
+                    StatusText.Text = "The Entry node cannot be deleted (singular).";
+                    return;
+                }
+                _vm.PhaseGraph.DeleteNode(node);
+                StatusText.Text = "Deleted node " + node.Id + ".";
+            }
         }
 
-        // ---------- phase palette (unsaved placeholders; Ticket 14 persists them) ----------
+        // ---------- phase palette (persisted authoring, ticket 14) ----------
 
         private void OnAddPhaseEntry(object sender, RoutedEventArgs e)
         {
+            if (_vm.SelectedPhase == null) { StatusText.Text = "Select a phase first."; return; }
             if (_vm.PhaseHasEntry())
             {
                 StatusText.Text = "Phase already has an Entry node (singular).";
                 return;
             }
-            _vm.PhaseGraph.AddNode(
-                "entry-" + (_vm.PhaseGraph.Nodes.Count + 1),
-                "Entry", "", "entry", new Point(40, 40));
-            StatusText.Text = "Added Entry node (phase persistence arrives with Ticket 14).";
+            var id = "pn-" + _vm.SelectedPhase.Id + "-entry";
+            var node = new PhaseEntryNodeDefinition { Id = id };
+            node.Outputs.Add(new GraphOutputDefinition { Id = id + "-out", Kind = GraphPortKind.Normal });
+            PersistPhaseNode(node);
+            StatusText.Text = "Added Entry node.";
         }
 
-        private void OnAddCardExecutor(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddCardExecutor(new Point(80, 60)); StatusText.Text = "Added Draw Card node (phase persistence arrives with Ticket 14)."; }
-        private void OnAddVariableCheck(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddVariableCheck(new Point(120, 60)); StatusText.Text = "Added Check node (phase persistence arrives with Ticket 14)."; }
-        private void OnAddActionNode(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddActionNode(new Point(160, 60)); StatusText.Text = "Added Action node (phase persistence arrives with Ticket 14)."; }
-        private void OnAddPhaseDecision(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddPhaseDecision(new Point(200, 60)); StatusText.Text = "Added Decision node (phase persistence arrives with Ticket 14)."; }
-        private void OnAddReturn(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddReturn(new Point(240, 60)); StatusText.Text = "Added Return node (phase persistence arrives with Ticket 14)."; }
+        private void OnAddCardExecutor(object sender, RoutedEventArgs e)
+        {
+            if (_vm.SelectedPhase == null) { StatusText.Text = "Select a phase first."; return; }
+            var id = "pn-" + _vm.SelectedPhase.Id + "-card-" + Guid.NewGuid().ToString("N").Substring(0, 6);
+            var node = new CardExecutorNodeDefinition { Id = id };
+            node.Outputs.Add(new GraphOutputDefinition { Id = id + "-out", Kind = GraphPortKind.Normal });
+            PersistPhaseNode(node);
+            StatusText.Text = "Added Draw Card node.";
+        }
+
+        private void OnAddVariableCheck(object sender, RoutedEventArgs e)
+        {
+            if (_vm.SelectedPhase == null) { StatusText.Text = "Select a phase first."; return; }
+            var id = "pn-" + _vm.SelectedPhase.Id + "-check-" + Guid.NewGuid().ToString("N").Substring(0, 6);
+            var node = new VariableCheckNodeDefinition
+            {
+                Id = id,
+                SourceKind = VariableSourceKind.PhaseProgress,
+                Operator = VariableCompareOperator.GreaterThanOrEqual,
+                CompareValue = 3f,
+            };
+            node.Outputs.Add(new GraphOutputDefinition { Id = id + "-true", Kind = GraphPortKind.True });
+            node.Outputs.Add(new GraphOutputDefinition { Id = id + "-false", Kind = GraphPortKind.False });
+            PersistPhaseNode(node);
+            StatusText.Text = "Added Check node — edit source/operator/literal inline.";
+        }
+
+        private void OnAddActionNode(object sender, RoutedEventArgs e)
+        {
+            if (_vm.SelectedPhase == null) { StatusText.Text = "Select a phase first."; return; }
+            var id = "pn-" + _vm.SelectedPhase.Id + "-action-" + Guid.NewGuid().ToString("N").Substring(0, 6);
+            var node = new ActionNodeDefinition
+            {
+                Id = id,
+                Sequence = new ActionSequenceDefinition { Id = id + "-seq" },
+            };
+            node.Outputs.Add(new GraphOutputDefinition { Id = id + "-out", Kind = GraphPortKind.Normal });
+            PersistPhaseNode(node);
+            StatusText.Text = "Added Action node (action UX arrives with Ticket 15/16).";
+        }
+
+        private void OnAddPhaseDecision(object sender, RoutedEventArgs e)
+        {
+            if (_vm.SelectedPhase == null) { StatusText.Text = "Select a phase first."; return; }
+            var id = "pn-" + _vm.SelectedPhase.Id + "-decision-" + Guid.NewGuid().ToString("N").Substring(0, 6);
+            var node = new PhaseDecisionNodeDefinition { Id = id, Prompt = "Choose…" };
+            node.Outputs.Add(new GraphOutputDefinition { Id = id + "-out", Kind = GraphPortKind.Normal });
+            PersistPhaseNode(node);
+            StatusText.Text = "Added Decision node (options arrive with Ticket 16).";
+        }
+
+        private void OnAddReturn(object sender, RoutedEventArgs e)
+        {
+            if (_vm.SelectedPhase == null) { StatusText.Text = "Select a phase first."; return; }
+            var id = "pn-" + _vm.SelectedPhase.Id + "-return-" + Guid.NewGuid().ToString("N").Substring(0, 6);
+            PersistPhaseNode(new ReturnNodeDefinition { Id = id });
+            StatusText.Text = "Added Return node.";
+        }
+
+        private void PersistPhaseNode(PhaseGraphNodeDefinition node, Point? location = null)
+        {
+            var point = location ?? NextPhasePosition();
+            WithConnection(connection =>
+            {
+                PhaseGraphRepository.AddNode(connection, _vm.SelectedPhase.Id, node);
+                AuthoringLayoutRepository.SavePhaseNodePosition(connection, _vm.SelectedPhase.Id, node.Id, point.X, point.Y);
+            });
+            ReloadPhaseEditor();
+        }
+
+        private Point NextPhasePosition()
+        {
+            var offset = 60.0 + _vm.PhaseGraph.Nodes.Count * 30;
+            return new Point(offset, offset);
+        }
+
+        // ---------- phase library CRUD + header ----------
+
+        private void OnNewPhase(object sender, RoutedEventArgs e)
+        {
+            var phase = new PhaseDefinition
+            {
+                Id = "phase-" + Guid.NewGuid().ToString("N").Substring(0, 12),
+                Title = "New Phase",
+            };
+            WithConnection(connection => PhaseRepository.Create(connection, phase.Id, phase.Title));
+            _vm.Content.Phases.Add(phase);
+            BindPhaseList();
+            PhaseList.SelectedItem = phase;
+            StatusText.Text = "Created phase '" + phase.Title + "' — add an Entry node to begin.";
+        }
+
+        private void OnDeletePhase(object sender, RoutedEventArgs e)
+        {
+            if (_vm.SelectedPhase == null) return;
+            var phase = _vm.SelectedPhase;
+
+            var (sessions, _) = WithConnectionResult(connection => PhaseRepository.Usage(connection, phase.Id));
+            if (sessions > 0)
+            {
+                MessageBox.Show(this,
+                    "Phase '" + phase.Title + "' is referenced by " + sessions + " session(s). " +
+                    "Delete those placements first (schema RESTRICT).",
+                    "Cannot Delete Phase", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var confirm = MessageBox.Show(this,
+                "Delete phase '" + phase.Title + "'? Its low-level graph and layout are removed.",
+                "Delete Phase", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            WithConnection(connection => PhaseRepository.Delete(connection, phase.Id));
+            _vm.Content.Phases.Remove(phase);
+            BindPhaseList();
+            if (_vm.Content.Phases.Count > 0) PhaseList.SelectedIndex = 0;
+            else _vm.SelectPhase(null);
+            StatusText.Text = "Deleted phase '" + phase.Title + "'.";
+        }
+
+        private void OnDuplicatePhase(object sender, RoutedEventArgs e)
+        {
+            StatusText.Text = "Duplicate Phase arrives with Ticket 17 (reuse/copy/make-unique).";
+        }
+
+        private void OnShowSessions(object sender, RoutedEventArgs e)
+        {
+            if (_vm.SelectedPhase == null) return;
+            var titles = WithConnectionResult(connection =>
+                PhaseRepository.ReferencingSessionTitles(connection, _vm.SelectedPhase.Id));
+            var (sessions, placements) = WithConnectionResult(connection =>
+                PhaseRepository.Usage(connection, _vm.SelectedPhase.Id));
+            var body = titles.Count == 0
+                ? "(no session references)"
+                : string.Join("\n", titles);
+            MessageBox.Show(this, $"Referenced by {sessions} session(s) · {placements} placement(s):\n\n{body}",
+                "Sessions Using Phase", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void OnMakeUnique(object sender, RoutedEventArgs e)
+        {
+            StatusText.Text = "Make Unique arrives with Ticket 17.";
+        }
 
         // ---------- drag a Phase from the Library onto the Session canvas ----------
 
@@ -635,6 +1010,27 @@ namespace TruthCardGame.ReferenceHost.Wpf
         }
 
         // ---------- DB helper ----------
+
+        private T WithConnectionResult<T>(Func<SqliteConnection, T> action)
+        {
+            try
+            {
+                var path = ReferencePlayerWindow.ResolveDatabasePath();
+                using (var connection = new SqliteConnection("Data Source=" + path))
+                {
+                    connection.Open();
+                    ConnectionInitializer.Initialize(connection);
+                    return action(connection);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "Persistence error";
+                MessageBox.Show(this, "Database read failed:\n\n" + ex.Message,
+                    "Workbench", MessageBoxButton.OK, MessageBoxImage.Error);
+                return default;
+            }
+        }
 
         private void WithConnection(Action<SqliteConnection> action)
         {

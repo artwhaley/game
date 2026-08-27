@@ -85,6 +85,84 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
         }
 
+        /// <summary>Inline VariableCheck editor data (null for non-check nodes).</summary>
+        public VariableCheckData Check { get; set; }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+    }
+
+    /// <summary>
+    /// Editable fields of an inline VariableCheck node. Persisted through the
+    /// owning editor's CheckChanged event when any field changes.
+    /// </summary>
+    public sealed class VariableCheckData : INotifyPropertyChanged
+    {
+        private string _source = "progress";
+        private string _op = ">=";
+        private string _valueText = "0";
+        private string _key = "";
+
+        /// <summary>Temperature id / stat key for non-progress sources; preserved on edit.</summary>
+        public string Key
+        {
+            get => _key;
+            set
+            {
+                if (_key != value)
+                {
+                    _key = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Key)));
+                }
+            }
+        }
+
+        public string Source
+        {
+            get => _source;
+            set
+            {
+                if (_source != value)
+                {
+                    _source = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Source)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Summary)));
+                }
+            }
+        }
+
+        public string Operator
+        {
+            get => _op;
+            set
+            {
+                if (_op != value)
+                {
+                    _op = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Operator)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Summary)));
+                }
+            }
+        }
+
+        public string ValueText
+        {
+            get => _valueText;
+            set
+            {
+                if (_valueText != value)
+                {
+                    _valueText = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ValueText)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Summary)));
+                }
+            }
+        }
+
+        public string Summary => Source + " " + Operator + " " + ValueText;
+
+        public static readonly string[] Sources = { "progress", "temperature", "stat" };
+        public static readonly string[] Operators = { "<", "<=", "==", "!=", ">=", ">" };
+
         public event PropertyChangedEventHandler PropertyChanged;
     }
 
@@ -227,6 +305,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// <summary>A node was deleted from the editor (persist node + cascade).</summary>
         public event Action<GraphNodeViewModel> NodeDeleted;
 
+        /// <summary>An inline VariableCheck field changed (persist the comparison).</summary>
+        public event Action<GraphNodeViewModel> CheckChanged;
+
         /// <summary>Pan or zoom changed (persist the viewport row).</summary>
         public event Action ViewportChanged;
 
@@ -259,6 +340,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
             foreach (var node in nodes)
             {
                 node.PropertyChanged += OnNodePropertyChanged;
+                if (node.Check != null)
+                {
+                    node.Check.PropertyChanged += (_, _) => CheckChanged?.Invoke(node);
+                }
                 Nodes.Add(node);
             }
             foreach (var connection in connections) Connections.Add(connection);
@@ -572,6 +657,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// <summary>The phase being authored (null until loaded).</summary>
         public PhaseDefinition LoadedPhase => _loaded;
 
+        /// <summary>
+        /// True when this phase was opened from a PhaseReference placement in the
+        /// Session canvas (Ticket 14). Enables placement-scoped actions like
+        /// Make Unique (Ticket 17); false when selected directly in the Library.
+        /// </summary>
+        public bool HasPlacementContext { get; set; }
+
         public void LoadFromDefinition(PhaseDefinition phase, Dictionary<string, (double X, double Y)> layout = null, (double Zoom, double X, double Y)? viewport = null)
         {
             _loaded = phase;
@@ -607,6 +699,16 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     Kind = kind,
                     Location = point,
                 };
+                if (node is VariableCheckNodeDefinition check)
+                {
+                    vm.Check = new VariableCheckData
+                    {
+                        Source = SourceKindName(check.SourceKind),
+                        Operator = OperatorName(check.Operator),
+                        ValueText = check.CompareValue.ToString("0.#"),
+                        Key = check.VariableKey ?? "",
+                    };
+                }
                 var input = new ConnectorViewModel { Id = node.Id + "-input", Title = "" };
                 input.Owner = vm;
                 vm.Inputs.Add(input);
@@ -684,6 +786,31 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var id = "return-" + (Nodes.Count + 1);
             var node = AddNode(id, "Return", "", "return", location);
             return node;
+        }
+
+        private static string SourceKindName(VariableSourceKind kind)
+        {
+            switch (kind)
+            {
+                case VariableSourceKind.PhaseProgress: return "progress";
+                case VariableSourceKind.Temperature: return "temperature";
+                case VariableSourceKind.Stat: return "stat";
+                default: return "progress";
+            }
+        }
+
+        private static string OperatorName(VariableCompareOperator op)
+        {
+            switch (op)
+            {
+                case VariableCompareOperator.LessThan: return "<";
+                case VariableCompareOperator.LessThanOrEqual: return "<=";
+                case VariableCompareOperator.Equal: return "==";
+                case VariableCompareOperator.NotEqual: return "!=";
+                case VariableCompareOperator.GreaterThanOrEqual: return ">=";
+                case VariableCompareOperator.GreaterThan: return ">";
+                default: return ">=";
+            }
         }
 
         private static (string, string, string) DescribePhaseNode(GraphNodeDefinition node, Dictionary<string, string> exitNameById)
