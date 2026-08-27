@@ -58,6 +58,12 @@ namespace TruthCardGame.Core
         public string SessionId => _session.Id;
         public string SessionTitle => _session.Title;
 
+        /// <summary>Phase id of the currently-active phase run (null before the first advance).</summary>
+        public string CurrentPhaseId => _vm?.CurrentPhaseId;
+
+        /// <summary>Phase-local progress of the currently-active run (0 before the first advance).</summary>
+        public float CurrentProgress => _vm?.CurrentProgress ?? 0f;
+
         // ---------- host-observable state ----------
 
         public bool IsComplete { get; private set; }

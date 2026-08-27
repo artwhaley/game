@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
+using System.Linq;
 using TruthCardGame.Content;
 using TruthCardGame.Core;
 
@@ -48,6 +49,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public string Title { get; set; } = "";
         public string Subtitle { get; set; } = "";
         public string Kind { get; set; } = "";
+
+        /// <summary>Domain reference for the node kind (e.g. the referenced phase id of a PhaseReference).</summary>
+        public string RefId { get; set; } = "";
 
         public bool IsSelected
         {
@@ -273,6 +277,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
     {
         private SessionDefinition _loaded;
 
+        /// <summary>
+        /// Resolves a referenced phase id to its definition (for readable node
+        /// titles + exit summaries). Set by the shell from the loaded content.
+        /// </summary>
+        public Func<string, PhaseDefinition> PhaseResolver { get; set; }
+
         /// <summary>The session being authored (null until loaded).</summary>
         public SessionDefinition LoadedSession => _loaded;
 
@@ -293,13 +303,14 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var row = 0.0;
             foreach (var node in session.Graph.Nodes)
             {
-                var (title, subtitle, kind) = DescribeSessionNode(node);
+                var (title, subtitle, kind, refId) = DescribeSessionNode(node);
                 var vm = new GraphNodeViewModel
                 {
                     Id = node.Id,
                     Title = title,
                     Subtitle = subtitle,
                     Kind = kind,
+                    RefId = refId,
                     Location = new Point(column * 260, row * 160),
                 };
                 vm.Inputs.Add(new ConnectorViewModel { Id = node.Id + "-input", Title = "" });
@@ -355,21 +366,41 @@ namespace TruthCardGame.ReferenceHost.Wpf
             return node;
         }
 
-        private static (string, string, string) DescribeSessionNode(SessionGraphNodeDefinition node)
+        private (string, string, string, string) DescribeSessionNode(SessionGraphNodeDefinition node)
         {
             switch (node)
             {
                 case SessionStartNodeDefinition:
-                    return ("Start", "Session entry", "start");
+                    return ("Start", "Session entry", "start", "");
                 case PhaseReferenceNodeDefinition reference:
-                    return ("Phase Reference", reference.PhaseId, "phase-reference");
+                    return DescribePhaseReference(reference);
                 case SessionDecisionNodeDefinition decision:
-                    return ("Session Decision", decision.Prompt, "decision");
+                    return ("Session Decision", decision.Prompt, "decision", "");
                 case SessionEndNodeDefinition:
-                    return ("End", "Session terminal", "end");
+                    return ("End", "Session terminal", "end", "");
                 default:
-                    return (node.GetType().Name, node.Id, "unknown");
+                    return (node.GetType().Name, node.Id, "unknown", "");
             }
+        }
+
+        private (string, string, string, string) DescribePhaseReference(PhaseReferenceNodeDefinition reference)
+        {
+            PhaseDefinition phase = null;
+            try
+            {
+                if (PhaseResolver != null) phase = PhaseResolver(reference.PhaseId);
+            }
+            catch
+            {
+                // Unknown reference: fall back to the raw id below.
+            }
+
+            var title = phase?.Title ?? reference.PhaseId;
+            var exits = phase?.Exits ?? new List<PhaseExitDefinition>();
+            var subtitle = exits.Count > 0
+                ? $"{exits.Count} exit{(exits.Count == 1 ? "" : "s")}: {string.Join(", ", exits.Select(e => string.IsNullOrEmpty(e.Name) ? e.Id : e.Name))}"
+                : "no exits";
+            return ($"Phase: {title}", subtitle, "phase-reference", reference.PhaseId);
         }
 
         private static (string, string, string) DescribeSessionOutput(GraphOutputDefinition output)
@@ -572,8 +603,26 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public void LoadContent(GameContentDefinition content)
         {
             Content = content;
+            var phasesById = content.Phases.ToDictionary(p => p.Id);
+            SessionGraph.PhaseResolver = id =>
+                id != null && phasesById.TryGetValue(id, out var phase) ? phase : null;
             SelectSession(content.Sessions.Count > 0 ? content.Sessions[0] : null);
             SelectPhase(content.Phases.Count > 0 ? content.Phases[0] : null);
+        }
+
+        /// <summary>Loads a phase by id into the Phase Graph pane; false when unknown.</summary>
+        public bool SelectPhaseById(string phaseId)
+        {
+            if (Content == null || string.IsNullOrEmpty(phaseId)) return false;
+            foreach (var phase in Content.Phases)
+            {
+                if (phase.Id == phaseId)
+                {
+                    SelectPhase(phase);
+                    return true;
+                }
+            }
+            return false;
         }
 
         /// <summary>Loads a session into the Session Graph pane (Library selection).</summary>

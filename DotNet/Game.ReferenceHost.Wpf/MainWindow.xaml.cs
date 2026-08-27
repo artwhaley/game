@@ -1,8 +1,9 @@
 using System;
 using System.ComponentModel;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using Microsoft.Data.Sqlite;
 using TruthCardGame.Content;
 using TruthCardGame.Content.Sqlite;
@@ -16,7 +17,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
     /// three draggable splitters. Both graph panes host real Nodify editors
     /// (pan/zoom/select/move/connect) wired to canonical content view models.
     /// Pane ratios persist across launches; the reference player lives behind
-    /// the "Run Session" preview command.
+    /// the "Run Session" preview command and reports the playing phase back
+    /// for graph parity.
     /// </summary>
     public partial class MainWindow : Window
     {
@@ -28,6 +30,65 @@ namespace TruthCardGame.ReferenceHost.Wpf
             InitializeComponent();
             _vm = new WorkbenchViewModel();
             DataContext = _vm;
+
+            NodeDoubleClickCommand = new DelegateCommand<GraphNodeViewModel>(OnNodeDoubleClicked);
+
+            // Inspector pane follows whichever editor has a selection.
+            _vm.SessionGraph.SelectionChanged += (_, _) => UpdateInspector(_vm.SessionGraph.SelectedNode);
+            _vm.PhaseGraph.SelectionChanged += (_, _) => UpdateInspector(_vm.PhaseGraph.SelectedNode);
+        }
+
+        /// <summary>Double-click on a PhaseReference node opens that phase below.</summary>
+        public ICommand NodeDoubleClickCommand { get; }
+
+        private void OnNodeDoubleClicked(GraphNodeViewModel node)
+        {
+            if (node == null) return;
+            if (node.Kind == "phase-reference" && !string.IsNullOrEmpty(node.RefId))
+            {
+                if (_vm.SelectPhaseById(node.RefId))
+                {
+                    SyncPhaseListSelection(node.RefId);
+                    StatusText.Text = "Phase opened from session graph: " + node.Title;
+                }
+                else
+                {
+                    StatusText.Text = "Referenced phase not found: " + node.RefId;
+                }
+            }
+        }
+
+        /// <summary>Selects the phase in the Library list without re-triggering the change handler.</summary>
+        private void SyncPhaseListSelection(string phaseId)
+        {
+            var match = _vm.Content?.Phases.FirstOrDefault(p => p.Id == phaseId);
+            if (match == null) return;
+            PhaseList.SelectionChanged -= OnPhaseListChanged;
+            try
+            {
+                PhaseList.SelectedItem = match;
+                PhaseList.ScrollIntoView(match);
+            }
+            finally
+            {
+                PhaseList.SelectionChanged += OnPhaseListChanged;
+            }
+        }
+
+        private void UpdateInspector(GraphNodeViewModel node)
+        {
+            if (node == null)
+            {
+                InspTitle.Text = "(none)";
+                InspId.Text = "";
+                InspKind.Text = "";
+                return;
+            }
+            InspTitle.Text = node.Title;
+            InspId.Text = string.IsNullOrEmpty(node.RefId)
+                ? "id: " + node.Id
+                : "id: " + node.Id + "\nref: " + node.RefId;
+            InspKind.Text = node.Kind + (string.IsNullOrEmpty(node.Subtitle) ? "" : "\n" + node.Subtitle);
         }
 
         private void OnLoaded(object sender, RoutedEventArgs e)
@@ -101,21 +162,19 @@ namespace TruthCardGame.ReferenceHost.Wpf
         // ---------- layout (GridSplitters + persisted ratios) ----------
 
         /// <summary>
-        /// Applies the persisted 18/32/32/18 ratios to the four content columns
-        /// (indices 0, 2, 4, 6) as star weights, leaving the two Auto splitters
-        /// between them. Ratio sum is used directly as weights, so dragging a
-        /// splitter re-proportions the stars naturally.
+        /// Applies the persisted ratios to the four content columns (indices
+        /// 0, 2, 4, 6) as star weights, leaving the Auto splitters between
+        /// them. Star sizing keeps proportions correct as the window resizes.
         /// </summary>
         private void ApplyLayout()
         {
-            var ratios = new[]
+            SetContentStarWeights(new[]
             {
                 _vm.Layout.LibraryRatio,
                 _vm.Layout.SessionRatio,
                 _vm.Layout.PhaseRatio,
                 _vm.Layout.InspectorRatio,
-            };
-            SetContentStarWeights(ratios);
+            });
         }
 
         private void SetContentStarWeights(double[] weights)
@@ -133,9 +192,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
         }
 
-        private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+        private void OnSplitterDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
         {
-            if (_loaded) ApplyLayout();
+            // Convert the dragged pixel layout back to ratios, persist, and
+            // re-express as stars so window resizes keep the new proportions.
+            PersistCurrentRatios();
+            SaveLayout();
+            ApplyLayout();
         }
 
         private void OnResetLayout(object sender, RoutedEventArgs e)
@@ -184,21 +247,24 @@ namespace TruthCardGame.ReferenceHost.Wpf
             _vm.Layout.SetRatios(widths[0] / total, widths[1] / total, widths[2] / total, widths[3] / total);
         }
 
-        // ---------- reference player preview ----------
+        // ---------- reference player preview (with graph parity) ----------
 
         private void OnRunSession(object sender, RoutedEventArgs e)
         {
             var player = new ReferencePlayerWindow { Owner = this };
+            // Parity: while the player runs, the Phase Graph follows the phase
+            // being played so the two views stay in sync.
+            player.PhaseChanged += phaseId =>
+            {
+                if (_vm.SelectPhaseById(phaseId))
+                {
+                    SyncPhaseListSelection(phaseId);
+                }
+            };
             player.Show();
         }
 
         // ---------- palette actions (unsaved authoring nodes) ----------
-
-        private static Point CenterOf(GraphEditorViewModel editor, UIElement host)
-        {
-            var offset = 8.0;
-            return new Point(offset, offset);
-        }
 
         private void OnAddSessionStart(object sender, RoutedEventArgs e)
         {
@@ -211,34 +277,25 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 "start-" + (_vm.SessionGraph.Nodes.Count + 1),
                 "Start", "Session entry", "start", new Point(40, 40));
             GraphEditorViewModel.Output(node, node.Id + "-out", "out", "normal", "");
-            _vm.SessionGraph.Connect(node.Outputs[0], FindFirstSessionInput());
             StatusText.Text = "Added Start node (unsaved).";
-        }
-
-        private ConnectorViewModel FindFirstSessionInput()
-        {
-            foreach (var node in _vm.SessionGraph.Nodes)
-            {
-                if (node.Kind != "start" && node.Inputs.Count > 0) return node.Inputs[0];
-            }
-            return null;
         }
 
         private void OnAddPhaseReference(object sender, RoutedEventArgs e)
         {
-            var node = _vm.SessionGraph.AddPhaseReference("(phase)", new Point(60, 60));
+            var phase = PhaseList.SelectedItem as PhaseDefinition ?? _vm.SelectedPhase;
+            var node = _vm.SessionGraph.AddPhaseReference(phase?.Id ?? "(phase)", new Point(80, 60));
             StatusText.Text = "Added Phase Reference node (unsaved).";
         }
 
         private void OnAddSessionDecision(object sender, RoutedEventArgs e)
         {
-            _vm.SessionGraph.AddSessionDecision(new Point(80, 60));
+            _vm.SessionGraph.AddSessionDecision(new Point(120, 60));
             StatusText.Text = "Added Session Decision node (unsaved).";
         }
 
         private void OnAddSessionEnd(object sender, RoutedEventArgs e)
         {
-            _vm.SessionGraph.AddSessionEnd(new Point(100, 60));
+            _vm.SessionGraph.AddSessionEnd(new Point(160, 60));
             StatusText.Text = "Added Session End node (unsaved).";
         }
 
@@ -255,10 +312,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
             StatusText.Text = "Added Entry node (unsaved).";
         }
 
-        private void OnAddCardExecutor(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddCardExecutor(new Point(60, 60)); StatusText.Text = "Added Draw Card node (unsaved)."; }
-        private void OnAddVariableCheck(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddVariableCheck(new Point(80, 60)); StatusText.Text = "Added Check node (unsaved)."; }
-        private void OnAddActionNode(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddActionNode(new Point(100, 60)); StatusText.Text = "Added Action node (unsaved)."; }
-        private void OnAddPhaseDecision(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddPhaseDecision(new Point(120, 60)); StatusText.Text = "Added Decision node (unsaved)."; }
-        private void OnAddReturn(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddReturn(new Point(140, 60)); StatusText.Text = "Added Return node (unsaved)."; }
+        private void OnAddCardExecutor(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddCardExecutor(new Point(80, 60)); StatusText.Text = "Added Draw Card node (unsaved)."; }
+        private void OnAddVariableCheck(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddVariableCheck(new Point(120, 60)); StatusText.Text = "Added Check node (unsaved)."; }
+        private void OnAddActionNode(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddActionNode(new Point(160, 60)); StatusText.Text = "Added Action node (unsaved)."; }
+        private void OnAddPhaseDecision(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddPhaseDecision(new Point(200, 60)); StatusText.Text = "Added Decision node (unsaved)."; }
+        private void OnAddReturn(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddReturn(new Point(240, 60)); StatusText.Text = "Added Return node (unsaved)."; }
     }
 }

@@ -118,6 +118,12 @@ namespace TruthCardGame.Core
 
         public int ContinuationDepth => _stack.Count;
 
+        /// <summary>Phase id of the active phase run (null before the first phase enters).</summary>
+        public string CurrentPhaseId => _activeRun?.PhaseId;
+
+        /// <summary>Phase-local progress of the active run (0 before the first phase enters).</summary>
+        public float CurrentProgress => _activeRun?.Progress.Value ?? 0f;
+
         /// <summary>
         /// Advances the whole session one user-paced step: runs at most one card
         /// (through whatever phase/transfer/return chain that involves), then

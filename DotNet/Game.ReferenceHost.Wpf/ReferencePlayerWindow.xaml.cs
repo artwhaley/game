@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -16,7 +17,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
     /// Reference player shell over the canonical SQLite content DB. Kept alive
     /// from the Workbench behind the Preview command (ticket 12). Loads content
     /// through the portable snapshot path and plays a session through the
-    /// graph VM (tickets 07-09).
+    /// graph VM (tickets 07-09). Surfaces run state legibly: phase titles,
+    /// phase progress against the phase's progress-check target, temperature
+    /// values, and a PhaseChanged event the workbench uses for graph parity.
     /// </summary>
     public partial class ReferencePlayerWindow : Window
     {
@@ -26,7 +29,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private GameContentDefinition _content;
         private GameSessionEngine _engine;
         private CancellationTokenSource _sessionCts;
-        private float _lengthModifier = 1f;
+        private CancellationTokenSource _autoCts;
+
+        /// <summary>Raised on the UI thread whenever playback enters a phase (phase id).</summary>
+        public event Action<string> PhaseChanged;
 
         public ReferencePlayerWindow()
         {
@@ -88,6 +94,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     return;
                 }
 
+                StopAuto();
                 CancelSession();
                 _sessionCts = new CancellationTokenSource();
 
@@ -105,9 +112,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 SessionTitle.Text = selected.Title;
                 PhaseTitle.Text = "—";
                 CardTitle.Text = "—";
+                ProgressText.Text = "—";
+                TemperaturesText.Text = RefreshTemperatures();
                 SetStatus("Starting…");
                 DrawNextButton.IsEnabled = false;
-                Log($"Session started: {selected.Title} (length {_lengthModifier:0.0}x, fixed seeds)");
+                Log($"Session started: {selected.Title} (fixed seeds)");
 
                 await AdvanceAsync();
             }
@@ -128,6 +137,62 @@ namespace TruthCardGame.ReferenceHost.Wpf
             await AdvanceAsync();
         }
 
+        /// <summary>Auto-run: advances repeatedly until the session completes or toggled off.</summary>
+        private async void OnAutoToggled(object sender, RoutedEventArgs e)
+        {
+            if (_autoCts != null)
+            {
+                StopAuto();
+                return;
+            }
+            if (_engine == null || _sessionCts == null)
+            {
+                Log("Start a session before auto-running.");
+                return;
+            }
+
+            _autoCts = CancellationTokenSource.CreateLinkedTokenSource(_sessionCts.Token);
+            AutoButton.Content = "Stop ■";
+            DrawNextButton.IsEnabled = false;
+            SetStatus("Auto-running…");
+            Log("Auto-run started.");
+            try
+            {
+                while (!_autoCts.IsCancellationRequested && _engine != null && !_engine.IsComplete)
+                {
+                    var result = await _engine.AdvanceOneCardAsync(_autoCts.Token);
+                    RefreshRunState();
+                    if (result.Kind == AdvanceResultKind.SessionCompleted) break;
+                    await Task.Delay(300, _autoCts.Token);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                Log("Auto-run stopped.");
+            }
+            catch (Exception ex)
+            {
+                SetStatus("Error");
+                Log("ERROR during auto-run: " + ex.Message);
+            }
+            finally
+            {
+                AutoButton.Content = "Auto ▶";
+                _autoCts?.Dispose();
+                _autoCts = null;
+                if (_engine == null || !_engine.IsComplete)
+                {
+                    DrawNextButton.IsEnabled = _engine != null;
+                    SetStatus("Paused — draw next when ready");
+                }
+            }
+        }
+
+        private void StopAuto()
+        {
+            _autoCts?.Cancel();
+        }
+
         private async Task AdvanceAsync()
         {
             if (_engine == null || _sessionCts == null) return;
@@ -136,16 +201,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
             try
             {
                 var result = await _engine.AdvanceOneCardAsync(_sessionCts.Token);
+                RefreshRunState();
 
                 switch (result.Kind)
                 {
                     case AdvanceResultKind.CardCompleted:
-                        RefreshProgress();
                         SetStatus("Done — draw next when ready");
                         DrawNextButton.IsEnabled = true;
                         break;
                     case AdvanceResultKind.SessionCompleted:
-                        RefreshProgress();
                         SetStatus("Complete");
                         CardTitle.Text = result.Card?.Title ?? "(no card — skipped empty phases)";
                         DrawNextButton.IsEnabled = false;
@@ -153,6 +217,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         break;
                     case AdvanceResultKind.BusyIgnored:
                         Log("Draw ignored (advance already running).");
+                        DrawNextButton.IsEnabled = true;
                         break;
                 }
             }
@@ -167,6 +232,77 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
         }
 
+        /// <summary>Refreshes the phase/progress/temperature read-outs from engine state.</summary>
+        private void RefreshRunState()
+        {
+            if (_engine == null) return;
+
+            var phaseId = _engine.CurrentPhaseId;
+            if (!string.IsNullOrEmpty(phaseId))
+            {
+                var phase = TryPhase(phaseId);
+                PhaseTitle.Text = phase != null
+                    ? $"{phase.Title}  [{phaseId}]"
+                    : phaseId;
+                ProgressText.Text = DescribeProgress(phaseId);
+            }
+            TemperaturesText.Text = RefreshTemperatures();
+        }
+
+        private string DescribeProgress(string phaseId)
+        {
+            var done = _engine.CurrentProgress;
+            var target = ProgressTargetFor(phaseId);
+            return target.HasValue ? $"{done:0} / {target.Value:0}" : $"{done:0} / ?";
+        }
+
+        /// <summary>Finds the phase's progress-check target (first PhaseProgress VariableCheck).</summary>
+        private float? ProgressTargetFor(string phaseId)
+        {
+            var phase = TryPhase(phaseId);
+            if (phase?.Graph?.Nodes == null) return null;
+            foreach (var node in phase.Graph.Nodes)
+            {
+                if (node is VariableCheckNodeDefinition check &&
+                    check.SourceKind == VariableSourceKind.PhaseProgress)
+                {
+                    return check.CompareValue;
+                }
+            }
+            return null;
+        }
+
+        private PhaseDefinition TryPhase(string phaseId)
+        {
+            if (_content == null || string.IsNullOrEmpty(phaseId)) return null;
+            foreach (var phase in _content.Phases)
+            {
+                if (phase.Id == phaseId) return phase;
+            }
+            return null;
+        }
+
+        private string RefreshTemperatures()
+        {
+            if (_engine == null || _content == null) return "—";
+            var catalog = _engine.Catalog;
+            var parts = catalog.TemperaturesList
+                .Select(t =>
+                {
+                    try
+                    {
+                        return $"{(string.IsNullOrEmpty(t.Title) ? t.Id : t.Title)}: {_engine.Temperatures.Get(t.Id):0.#}";
+                    }
+                    catch
+                    {
+                        return null;
+                    }
+                })
+                .Where(s => s != null);
+            var text = string.Join("   ", parts);
+            return text.Length == 0 ? "(none defined)" : text;
+        }
+
         private void SubscribeEngine()
         {
             _engine.CardStarted += card =>
@@ -178,36 +314,25 @@ namespace TruthCardGame.ReferenceHost.Wpf
             _engine.CardFinished += card =>
             {
                 Log($"card finished: {card.Title}");
-                RefreshProgress();
+                RefreshRunState();
             };
-            _engine.PhaseEntered += phaseTitle =>
+            _engine.PhaseEntered += phaseId =>
             {
-                PhaseTitle.Text = string.IsNullOrEmpty(phaseTitle) ? "(unnamed)" : phaseTitle;
-                Log($"phase entered: {phaseTitle}");
+                RefreshRunState();
+                Log($"phase entered: {PhaseDisplayName(phaseId)}");
+                PhaseChanged?.Invoke(phaseId);
             };
             _engine.SessionCompleted += () =>
             {
                 SetStatus("Complete");
+                ProgressText.Text = "complete";
             };
         }
 
-        private void RefreshProgress()
+        private string PhaseDisplayName(string phaseId)
         {
-            if (_engine == null) return;
-            // Slot-era targets/remaining are gone; run-state visualization returns
-            // with the graph VM preview (Docs/GraphWorkbench ticket 19).
-            ProgressText.Text = _engine.IsComplete ? "complete" : "—";
-        }
-
-        // ---------- live length modifier ----------
-
-        private void OnLengthChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-        {
-            _lengthModifier = (float)e.NewValue;
-            if (LengthLabel != null) // slider fires during XAML parse, before names resolve
-            {
-                LengthLabel.Text = $"{_lengthModifier:0.0}x";
-            }
+            var phase = TryPhase(phaseId);
+            return phase != null ? $"{phase.Title} [{phaseId}]" : phaseId;
         }
 
         // ---------- prompt / cutscene UI (host services) ----------
@@ -349,6 +474,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         protected override void OnClosed(EventArgs e)
         {
+            StopAuto();
             CancelSession();
             base.OnClosed(e);
         }

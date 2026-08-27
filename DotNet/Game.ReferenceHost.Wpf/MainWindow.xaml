@@ -5,18 +5,42 @@
         Title="TruthCard Game — Graph Workbench"
         Width="1600" Height="900"
         WindowStartupLocation="CenterScreen"
-        Loaded="OnLoaded" Closing="OnClosing" SizeChanged="OnSizeChanged">
+        Loaded="OnLoaded" Closing="OnClosing">
     <Window.Resources>
-        <!-- Shared node template used by both graph editors. -->
+        <!-- Shared node template used by both graph editors. Input/output
+             connector templates give every node its connection points; the
+             double-click binding loads a referenced phase into the Phase pane. -->
         <DataTemplate x:Key="NodeTemplate">
-            <nodify:Node Header="{Binding Title}">
-                <StackPanel Margin="4,2,4,4">
-                    <TextBlock Text="{Binding Subtitle}" FontFamily="Consolas" FontSize="10"
-                               TextWrapping="Wrap" MaxWidth="150" Foreground="#FFB0B0B0"/>
-                    <TextBlock Text="{Binding Kind}" FontFamily="Consolas" FontSize="9"
-                               Foreground="#FF808080" Margin="0,3,0,0"/>
-                </StackPanel>
-            </nodify:Node>
+            <Grid>
+                <Grid.InputBindings>
+                    <MouseBinding Gesture="LeftDoubleClick"
+                                  Command="{Binding DataContext.NodeDoubleClickCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  CommandParameter="{Binding}"/>
+                </Grid.InputBindings>
+                <nodify:Node Header="{Binding Title}"
+                             Input="{Binding Inputs}"
+                             Output="{Binding Outputs}">
+                    <nodify:Node.InputConnectorTemplate>
+                        <DataTemplate>
+                            <nodify:NodeInput IsConnected="{Binding IsConnected}"
+                                              Anchor="{Binding Anchor, Mode=OneWayToSource}"/>
+                        </DataTemplate>
+                    </nodify:Node.InputConnectorTemplate>
+                    <nodify:Node.OutputConnectorTemplate>
+                        <DataTemplate>
+                            <nodify:NodeOutput Header="{Binding Title}"
+                                               IsConnected="{Binding IsConnected}"
+                                               Anchor="{Binding Anchor, Mode=OneWayToSource}"/>
+                        </DataTemplate>
+                    </nodify:Node.OutputConnectorTemplate>
+                    <StackPanel Margin="4,2,4,4">
+                        <TextBlock Text="{Binding Subtitle}" FontFamily="Consolas" FontSize="10"
+                                   TextWrapping="Wrap" MaxWidth="170" Foreground="#FFB0B0B0"/>
+                        <TextBlock Text="{Binding Kind}" FontFamily="Consolas" FontSize="9"
+                                   Foreground="#FF808080" Margin="0,3,0,0"/>
+                    </StackPanel>
+                </nodify:Node>
+            </Grid>
         </DataTemplate>
     </Window.Resources>
 
@@ -81,7 +105,8 @@
             </DockPanel>
 
             <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch"
-                          Background="#FF505050" ResizeBehavior="PreviousAndNext"/>
+                          Background="#FF505050" ResizeBehavior="PreviousAndNext"
+                          DragCompleted="OnSplitterDragCompleted"/>
 
             <!-- Pane 2: Session Graph -->
             <DockPanel Grid.Column="2" Margin="2,4,2,4">
@@ -100,12 +125,29 @@
                                      ItemsSource="{Binding SessionGraph.Nodes}"
                                      Connections="{Binding SessionGraph.Connections}"
                                      PendingConnection="{Binding SessionGraph.PendingConnection}"
+                                     DisconnectConnectorCommand="{Binding SessionGraph.DisconnectConnectorCommand}"
                                      ItemTemplate="{StaticResource NodeTemplate}"
-                                     Background="#FF1E1E1E" Margin="2,4,2,2"/>
+                                     Background="#FF1E1E1E" Margin="2,4,2,2">
+                    <nodify:NodifyEditor.ConnectionTemplate>
+                        <DataTemplate>
+                            <nodify:LineConnection Source="{Binding Source.Anchor}"
+                                                   Target="{Binding Target.Anchor}"
+                                                   Stroke="#FF7EB6E8" StrokeThickness="2"/>
+                        </DataTemplate>
+                    </nodify:NodifyEditor.ConnectionTemplate>
+                    <nodify:NodifyEditor.PendingConnectionTemplate>
+                        <DataTemplate>
+                            <nodify:PendingConnection StartedCommand="{Binding StartCommand}"
+                                                      CompletedCommand="{Binding CompletedCommand}"
+                                                      AllowOnlyConnectors="True"/>
+                        </DataTemplate>
+                    </nodify:NodifyEditor.PendingConnectionTemplate>
+                </nodify:NodifyEditor>
             </DockPanel>
 
             <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Stretch"
-                          Background="#FF505050" ResizeBehavior="PreviousAndNext"/>
+                          Background="#FF505050" ResizeBehavior="PreviousAndNext"
+                          DragCompleted="OnSplitterDragCompleted"/>
 
             <!-- Pane 3: Phase Graph -->
             <DockPanel Grid.Column="4" Margin="2,4,2,4">
@@ -122,15 +164,33 @@
                         </StackPanel>
                     </StackPanel>
                 </Border>
-                <nodify:NodifyEditor x:Name="PhaseEditor" ItemsSource="{Binding PhaseGraph.Nodes, ElementName=Root}"
-                                     Connections="{Binding PhaseGraph.Connections, ElementName=Root}"
-                                     PendingConnection="{Binding PhaseGraph.PendingConnection, ElementName=Root}"
+                <nodify:NodifyEditor x:Name="PhaseEditor"
+                                     ItemsSource="{Binding PhaseGraph.Nodes}"
+                                     Connections="{Binding PhaseGraph.Connections}"
+                                     PendingConnection="{Binding PhaseGraph.PendingConnection}"
+                                     DisconnectConnectorCommand="{Binding PhaseGraph.DisconnectConnectorCommand}"
                                      ItemTemplate="{StaticResource NodeTemplate}"
-                                     Background="#FF1E1E1E" Margin="2,4,2,2"/>
+                                     Background="#FF1E1E1E" Margin="2,4,2,2">
+                    <nodify:NodifyEditor.ConnectionTemplate>
+                        <DataTemplate>
+                            <nodify:LineConnection Source="{Binding Source.Anchor}"
+                                                   Target="{Binding Target.Anchor}"
+                                                   Stroke="#FF7EB6E8" StrokeThickness="2"/>
+                        </DataTemplate>
+                    </nodify:NodifyEditor.ConnectionTemplate>
+                    <nodify:NodifyEditor.PendingConnectionTemplate>
+                        <DataTemplate>
+                            <nodify:PendingConnection StartedCommand="{Binding StartCommand}"
+                                                      CompletedCommand="{Binding CompletedCommand}"
+                                                      AllowOnlyConnectors="True"/>
+                        </DataTemplate>
+                    </nodify:NodifyEditor.PendingConnectionTemplate>
+                </nodify:NodifyEditor>
             </DockPanel>
 
             <GridSplitter Grid.Column="5" Width="4" HorizontalAlignment="Stretch"
-                          Background="#FF505050" ResizeBehavior="PreviousAndNext"/>
+                          Background="#FF505050" ResizeBehavior="PreviousAndNext"
+                          DragCompleted="OnSplitterDragCompleted"/>
 
             <!-- Pane 4: Inspector -->
             <DockPanel Grid.Column="6" Margin="2,4,4,4">
@@ -139,13 +199,15 @@
                 </Border>
                 <StackPanel Margin="8,6,8,6">
                     <TextBlock Text="Selection" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                    <TextBlock x:Name="InspTitle" Text="(none)" FontWeight="Bold"/>
-                    <TextBlock x:Name="InspId" Text="" FontFamily="Consolas" FontSize="10" Foreground="#FFB0B0B0" Margin="0,2,0,0"/>
+                    <TextBlock x:Name="InspTitle" Text="(none)" FontWeight="Bold" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="InspId" Text="" FontFamily="Consolas" FontSize="10" Foreground="#FFB0B0B0" Margin="0,2,0,0" TextWrapping="Wrap"/>
                     <TextBlock x:Name="InspKind" Text="" FontFamily="Consolas" FontSize="10" Foreground="#FF808080" Margin="0,2,0,0"/>
                     <TextBlock Text="Hint" FontWeight="SemiBold" Margin="0,16,0,4"/>
-                    <TextBlock Text="Pan: right-drag or space+drag · Zoom: mouse wheel
-Select: left-click node · Connect: drag from an output connector to an input
-Delete connection: Alt+click a connected connector" TextWrapping="Wrap" FontSize="11" Foreground="#FFB0B0B0"/>
+                    <TextBlock Text="Pan: right-drag · Zoom: mouse wheel
+Select: left-click node · Move: drag node
+Connect: drag from an output connector to an input
+Delete connection: Alt+click a connected connector
+Double-click a Phase node to open it below" TextWrapping="Wrap" FontSize="11" Foreground="#FFB0B0B0"/>
                 </StackPanel>
             </DockPanel>
         </Grid>
