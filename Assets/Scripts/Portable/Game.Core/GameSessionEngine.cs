@@ -27,12 +27,20 @@ namespace TruthCardGame.Core
 
         public Player Player { get; }
 
+        /// <summary>Session-global temperatures, initialized per the spawn options (Ticket 06).</summary>
+        public TemperatureState Temperatures { get; }
+
         public event Action<CardDefinition> CardStarted;
         public event Action<CardDefinition> CardFinished;
         public event Action<string> PhaseEntered;
         public event Action SessionCompleted;
 
         public GameSessionEngine(GameContentDefinition content, string sessionId, CoreServices services)
+            : this(content, sessionId, services, SessionSpawnOptions.Default)
+        {
+        }
+
+        public GameSessionEngine(GameContentDefinition content, string sessionId, CoreServices services, SessionSpawnOptions spawn)
         {
             if (content == null) throw new ArgumentNullException(nameof(content));
             if (string.IsNullOrEmpty(sessionId)) throw new ArgumentNullException(nameof(sessionId));
@@ -42,6 +50,7 @@ namespace TruthCardGame.Core
             _session = _catalog.SessionById(sessionId);
             _tracker = new BackgroundActionTracker(_services.Log);
             Player = new Player("Player");
+            Temperatures = new TemperatureState(_catalog, spawn ?? SessionSpawnOptions.Default);
         }
 
         public ContentCatalog Catalog => _catalog;

@@ -54,9 +54,9 @@ namespace TruthCardGame.Core
 
     /// <summary>
     /// Session-global temperatures. Values keyed by stable Temperature id and
-    /// initialized from the definitions' defaults; mutations clamp to each
-    /// definition's bounds. Missing definitions are a runtime error, never
-    /// silently tolerated.
+    /// initialized from the definitions' defaults (with optional spawn
+    /// overrides applied on top); mutations clamp to each definition's bounds.
+    /// Missing definitions are a runtime error, never silently tolerated.
     /// </summary>
     public sealed class TemperatureState
     {
@@ -64,12 +64,26 @@ namespace TruthCardGame.Core
         private readonly ContentCatalog _catalog;
 
         public TemperatureState(ContentCatalog catalog)
+            : this(catalog, SessionSpawnOptions.Default)
+        {
+        }
+
+        public TemperatureState(ContentCatalog catalog, SessionSpawnOptions spawn)
         {
             _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
+            spawn = spawn ?? SessionSpawnOptions.Default;
 
             foreach (var definition in catalog.TemperaturesList)
             {
                 _values[definition.Id] = definition.DefaultValue;
+            }
+
+            // Spawn overrides replace the default per-value; unknown ids are a
+            // content error (never silently ignored).
+            foreach (var pair in spawn.TemperatureOverrides)
+            {
+                var definition = catalog.TemperatureById(pair.Key);
+                _values[pair.Key] = Clamp(pair.Value, definition.MinValue, definition.MaxValue);
             }
         }
 
