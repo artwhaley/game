@@ -112,7 +112,7 @@ namespace TruthCardGame.Core
 
             try
             {
-                return await AdvanceCoreAsync(run, context, cancellationToken);
+                return await StepLoopAsync(run, context, cancellationToken, run.CurrentNode, freshEntry: run.CurrentNode == null, executedCard: null);
             }
             catch (InvalidOperationException ex)
             {
@@ -122,14 +122,61 @@ namespace TruthCardGame.Core
             }
         }
 
-        private async Task<PhaseAdvanceResult> AdvanceCoreAsync(PhaseRun run, ActionExecutionContext context, CancellationToken cancellationToken)
+        /// <summary>
+        /// Resumes a suspended run at a saved graph locus (RETURN mechanics):
+        /// executes the saved action chain (innermost first) and, on normal
+        /// completion, continues stepping from the locus's normal edge with a
+        /// fresh card budget. A transfer during the chain re-saves the remaining
+        /// points.
+        /// </summary>
+        public async Task<PhaseAdvanceResult> ResumeFromContinuationAsync(
+            PhaseRun run, GraphNodeDefinition locus, IReadOnlyList<ContinuationPoint> chain,
+            ActionExecutionContext context, CancellationToken cancellationToken)
+        {
+            if (run == null) throw new ArgumentNullException(nameof(run));
+            if (locus == null) throw new ArgumentNullException(nameof(locus));
+
+            try
+            {
+                run.CurrentNode = locus;
+                PhaseNodeChanged?.Invoke(locus.Id);
+
+                if (chain != null && chain.Count > 0)
+                {
+                    var scope = ScopeForLocus(locus);
+                    var resumeContext = ContextFor(context, run, scope);
+                    var resumeResult = await _executor.ResumeChainAsync(chain, resumeContext, cancellationToken);
+                    if (resumeResult.Transfer != ActionTransfer.None)
+                    {
+                        run.CurrentNode = locus;
+                        return PhaseAdvanceResult.Transferred(resumeResult);
+                    }
+                }
+
+                var next = FollowNormal(run, locus);
+                return await StepLoopAsync(run, context, cancellationToken, next, freshEntry: false, executedCard: null);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Fail(run, ex.Message);
+            }
+        }
+
+        private static ActionOwnerScope ScopeForLocus(GraphNodeDefinition locus)
+        {
+            if (locus is CardExecutorNodeDefinition) return ActionOwnerScope.CardSequence;
+            return ActionOwnerScope.PhaseActionSequence;
+        }
+
+        private async Task<PhaseAdvanceResult> StepLoopAsync(
+            PhaseRun run, ActionExecutionContext context, CancellationToken cancellationToken,
+            GraphNodeDefinition initialNode, bool freshEntry, CardDefinition executedCard)
         {
             var cardBudget = 1;
-            var node = run.CurrentNode;
-            CardDefinition executedCard = null;
+            var node = initialNode;
 
             // Fresh run: enter the Entry node.
-            if (node == null)
+            if (freshEntry)
             {
                 PhaseEntered?.Invoke(_phase.Id);
                 node = FindEntry();

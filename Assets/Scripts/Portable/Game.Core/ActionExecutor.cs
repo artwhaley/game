@@ -27,22 +27,64 @@ namespace TruthCardGame.Core
         }
 
         /// <summary>
-        /// Runs an owned sequence in order. Returns the first transfer request a
-        /// flow-control instance produces; later instances are NOT discarded on a
-        /// transfer (the VM saves the next index and resumes on RETURN).
+        /// Runs an owned sequence from index 0. Returns the first transfer request
+        /// a flow-control instance produces; later instances are NOT discarded on a
+        /// transfer — the VM saves the next index (plus any enclosing sequence
+        /// points) and resumes on RETURN.
         /// </summary>
-        public async Task<ActionExecutionResult> ExecuteSequenceAsync(
+        public Task<ActionExecutionResult> ExecuteSequenceAsync(
             ActionSequenceDefinition sequence, ActionExecutionContext context, CancellationToken cancellationToken)
+        {
+            return ExecuteSequenceFromAsync(sequence, 0, context, cancellationToken);
+        }
+
+        /// <summary>
+        /// Resumes an owned sequence at a saved index (RETURN mechanics). A nested
+        /// chain resumes inner sequence first, then the outer sequence continues at
+        /// its own saved point; only then does the caller follow the graph locus.
+        /// </summary>
+        public async Task<ActionExecutionResult> ResumeChainAsync(
+            IReadOnlyList<ContinuationPoint> chain, ActionExecutionContext context, CancellationToken cancellationToken)
+        {
+            if (chain == null) throw new ArgumentNullException(nameof(chain));
+
+            // Innermost first: resume the deepest saved sequence point, then
+            // cascade outward through the enclosing sequences.
+            for (var i = 0; i < chain.Count; i++)
+            {
+                var point = chain[i];
+                var result = await ExecuteSequenceFromAsync(point.Sequence, point.NextActionIndex, context, cancellationToken);
+                if (result.Transfer != ActionTransfer.None)
+                {
+                    // A nested transfer mid-resume re-saves the remaining points.
+                    for (var j = i; j < chain.Count; j++)
+                    {
+                        var remaining = chain[j];
+                        result.Continuation.Add(new ContinuationPoint(remaining.Sequence, remaining.NextActionIndex));
+                    }
+                    return result;
+                }
+            }
+
+            return ActionExecutionResult.Continue;
+        }
+
+        private async Task<ActionExecutionResult> ExecuteSequenceFromAsync(
+            ActionSequenceDefinition sequence, int startIndex, ActionExecutionContext context, CancellationToken cancellationToken)
         {
             if (sequence == null) throw new ArgumentNullException(nameof(sequence));
 
-            for (var index = 0; index < sequence.Instances.Count; index++)
+            for (var index = startIndex; index < sequence.Instances.Count; index++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var instance = sequence.Instances[index];
                 var result = await ExecuteInstanceAsync(instance, context, cancellationToken);
                 if (result.Transfer != ActionTransfer.None)
                 {
+                    // Save this sequence's resume point after the transferring
+                    // instance. Nested option sequences already recorded their
+                    // inner points (innermost first), so append outward.
+                    result.Continuation.Add(new ContinuationPoint(sequence, index + 1));
                     return result;
                 }
             }
