@@ -87,9 +87,22 @@
                     <DockPanel Grid.Column="0" Margin="0,0,3,0">
                         <TextBlock DockPanel.Dock="Top" Text="Sessions" FontWeight="Bold" Margin="2,0,2,4"
                                    Foreground="#FFBBBBBB"/>
+                        <StackPanel DockPanel.Dock="Bottom" Margin="0,4,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="New" Click="OnNewSession" Padding="6,1" Margin="0,0,3,0"
+                                        Style="{StaticResource DarkButton}" ToolTip="Create a new empty session"/>
+                                <Button Content="Delete" Click="OnDeleteSession" Padding="6,1" Margin="0,0,3,0"
+                                        Style="{StaticResource DarkButton}" ToolTip="Delete the selected session (cascades its graph)"/>
+                                <Button Content="Copy" Click="OnCopySession" Padding="6,1" IsEnabled="False"
+                                        Style="{StaticResource DarkButton}" ToolTip="Copy session (Ticket 17)"/>
+                            </StackPanel>
+                            <TextBox x:Name="SessionFilter" Style="{StaticResource DarkTextBox}" Margin="0,4,0,0"
+                                     Padding="3,1" TextChanged="OnSessionFilterChanged" ToolTip="Filter sessions by title"/>
+                        </StackPanel>
                         <ListBox x:Name="SessionList" Style="{StaticResource DarkListBox}"
                                  ItemContainerStyle="{StaticResource DarkListBoxItem}"
-                                 SelectionChanged="OnSessionListChanged"/>
+                                 SelectionChanged="OnSessionListChanged"
+                                 PreviewMouseMove="OnSessionListMouseMove"/>
                     </DockPanel>
                     <DockPanel Grid.Column="1" Margin="3,0,0,0">
                         <TextBlock DockPanel.Dock="Top" Text="Phases" FontWeight="Bold" Margin="2,0,2,4"
@@ -116,11 +129,13 @@
                             <Button Content="+ Start" Click="OnAddSessionStart" Padding="6,1" Margin="0,0,3,0"
                                     Style="{StaticResource DarkButton}" ToolTip="Add SessionStart (singular)"/>
                             <Button Content="+ Phase" Click="OnAddPhaseReference" Padding="6,1" Margin="0,0,3,0"
-                                    Style="{StaticResource DarkButton}"/>
+                                    Style="{StaticResource DarkButton}" ToolTip="Add a PhaseReference for the phase selected in the Library"/>
                             <Button Content="+ Decision" Click="OnAddSessionDecision" Padding="6,1" Margin="0,0,3,0"
                                     Style="{StaticResource DarkButton}"/>
-                            <Button Content="+ End" Click="OnAddSessionEnd" Padding="6,1"
+                            <Button Content="+ End" Click="OnAddSessionEnd" Padding="6,1" Margin="0,0,3,0"
                                     Style="{StaticResource DarkButton}"/>
+                            <Button Content="Delete" Click="OnDeleteSelectedNode" Padding="6,1"
+                                    Style="{StaticResource DarkButton}" ToolTip="Delete the selected node"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -130,6 +145,10 @@
                                      PendingConnection="{Binding SessionGraph.PendingConnection}"
                                      DisconnectConnectorCommand="{Binding SessionGraph.DisconnectConnectorCommand}"
                                      ItemTemplate="{StaticResource NodeTemplate}"
+                                     ViewportLocation="{Binding SessionGraph.ViewportLocation, Mode=TwoWay}"
+                                     ViewportZoom="{Binding SessionGraph.ViewportZoom, Mode=TwoWay}"
+                                     AllowDrop="True" DragOver="OnSessionDragOver" Drop="OnSessionDrop"
+                                     PreviewKeyDown="OnEditorKeyDown"
                                      Background="#FF1B1B1C" Margin="2,4,2,2">
                     <nodify:NodifyEditor.ConnectionTemplate>
                         <DataTemplate>
@@ -181,6 +200,9 @@
                                      PendingConnection="{Binding PhaseGraph.PendingConnection}"
                                      DisconnectConnectorCommand="{Binding PhaseGraph.DisconnectConnectorCommand}"
                                      ItemTemplate="{StaticResource NodeTemplate}"
+                                     ViewportLocation="{Binding PhaseGraph.ViewportLocation, Mode=TwoWay}"
+                                     ViewportZoom="{Binding PhaseGraph.ViewportZoom, Mode=TwoWay}"
+                                     PreviewKeyDown="OnEditorKeyDown"
                                      Background="#FF1B1B1C" Margin="2,4,2,2">
                     <nodify:NodifyEditor.ConnectionTemplate>
                         <DataTemplate>
@@ -214,12 +236,26 @@
                     <TextBlock x:Name="InspTitle" Text="(none)" FontWeight="Bold" TextWrapping="Wrap" Foreground="#FFDDDDDD"/>
                     <TextBlock x:Name="InspId" Text="" FontFamily="Consolas" FontSize="10" Foreground="#FFB0B0B0" Margin="0,2,0,0" TextWrapping="Wrap"/>
                     <TextBlock x:Name="InspKind" Text="" FontFamily="Consolas" FontSize="10" Foreground="#FF808080" Margin="0,2,0,0"/>
+
+                    <!-- Session metadata (ticket 13): shown when a Start node is selected. -->
+                    <StackPanel x:Name="SessionMetaPanel" Visibility="Collapsed" Margin="0,10,0,0">
+                        <TextBlock Text="Session" FontWeight="SemiBold" Margin="0,0,0,4" Foreground="#FFDDDDDD"/>
+                        <TextBlock Text="Title" FontSize="10" Foreground="#FFB0B0B0" Margin="0,0,0,1"/>
+                        <TextBox x:Name="SessionTitleBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
+                                 TextChanged="OnSessionTitleChanged"/>
+                        <TextBlock Text="Type" FontSize="10" Foreground="#FFB0B0B0" Margin="0,6,0,1"/>
+                        <ComboBox x:Name="SessionTypeBox" Style="{StaticResource DarkComboBox}" Padding="3,1"
+                                  DisplayMemberPath="Title" SelectionChanged="OnSessionTypeChanged"/>
+                    </StackPanel>
+
                     <TextBlock Text="Hint" FontWeight="SemiBold" Margin="0,16,0,4" Foreground="#FFDDDDDD"/>
                     <TextBlock Text="Pan: right-drag · Zoom: mouse wheel
 Select: left-click node · Move: drag node
 Connect: drag from an output connector to an input
 Delete connection: Alt+click a connected connector
-Double-click a Phase node to open it below" TextWrapping="Wrap" FontSize="11" Foreground="#FFB0B0B0"/>
+Delete node: select + Delete key
+Drag a Phase from the Library onto the Session canvas
+to place it; double-click a Phase node to open it below" TextWrapping="Wrap" FontSize="11" Foreground="#FFB0B0B0"/>
                 </StackPanel>
             </DockPanel>
         </Grid>

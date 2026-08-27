@@ -130,6 +130,39 @@ namespace TruthCardGame.Content.Sqlite
                 ("node", nodeId), ("session", sessionId));
         }
 
+        /// <summary>
+        /// Writes one new session node (row + subtype rows + output sockets) as
+        /// an atomic unit, reusing the shared initializer writer. Node ids are
+        /// authored by the caller and must be unique within the session.
+        /// </summary>
+        public static void AddNode(DbConnection connection, string sessionId, SessionGraphNodeDefinition node)
+        {
+            if (node == null) throw new ArgumentNullException(nameof(node));
+
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    DatabaseInitializer.WriteSessionNode(connection, transaction, sessionId, node);
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+
+        /// <summary>Deletes every edge leaving the given output socket (disconnect persistence).</summary>
+        public static void RemoveEdgesFromSource(DbConnection connection, string sourceOutputId)
+        {
+            if (string.IsNullOrEmpty(sourceOutputId)) return;
+            Sql.Execute(connection, null,
+                "DELETE FROM session_graph_edge WHERE source_port_id = @source;",
+                ("source", sourceOutputId));
+        }
+
         public static void AddEdge(DbConnection connection, string sessionId, GraphEdgeDefinition edge)
         {
             if (edge == null) throw new ArgumentNullException(nameof(edge));

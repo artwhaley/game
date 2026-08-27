@@ -396,6 +396,41 @@ namespace TruthCardGame.Content.Sqlite
             }
         }
 
+        /// <summary>
+        /// Narrow read: reconstructs exactly one session's graph (nodes, typed
+        /// payloads, output sockets, edges) for the authoring workbench, which
+        /// reloads a single session after each structural edit instead of the
+        /// whole content. Session metadata rows are not re-read — callers pass
+        /// the live SessionDefinition they already hold.
+        /// </summary>
+        public static SessionGraphDefinition LoadSessionGraph(DbConnection connection, string sessionId)
+        {
+            if (connection == null) throw new ArgumentNullException(nameof(connection));
+            if (string.IsNullOrEmpty(sessionId)) throw new ArgumentException("Session id required.", nameof(sessionId));
+
+            ConnectionInitializer.Initialize(connection);
+            var sequences = new SequenceCache(connection);
+
+            var graph = LoadGraph(
+                connection,
+                nodeTable: "session_graph_node",
+                parentColumn: "session_id",
+                parentId: sessionId,
+                outputTable: "session_node_output",
+                edgeTable: "session_graph_edge",
+                edgeParentColumn: "session_id",
+                nodeFactory: nodeId => BuildSessionNode(connection, nodeId, sequences),
+                portKindError: kind => $"Loader: unknown session port_kind '{kind}'.");
+
+            var result = new SessionGraphDefinition();
+            foreach (var node in graph.Nodes)
+            {
+                result.Nodes.Add((SessionGraphNodeDefinition)node);
+            }
+            result.Edges = graph.Edges;
+            return result;
+        }
+
         // ---- shared graph reading ----
 
         private sealed class LoadedGraph

@@ -99,6 +99,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public string Kind { get; set; } = "";      // normal / phase_exit / session_goto / true / false
         public string Tag { get; set; } = "";       // phase exit id / session goto instance id
 
+        /// <summary>The node that owns this connector (edge persistence resolves the target node id).</summary>
+        public GraphNodeViewModel Owner { get; set; }
+
         public Point Anchor
         {
             get => _anchor;
@@ -176,13 +179,56 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public PendingConnectionViewModel PendingConnection { get; }
         public ICommand DisconnectConnectorCommand { get; }
 
-        public Point ViewportLocation { get; set; }
-        public double ViewportZoom { get; set; } = 1.0;
+        private Point _viewportLocation;
+        private double _viewportZoom = 1.0;
+
+        /// <summary>Pan offset; MainWindow persists it via ViewportChanged.</summary>
+        public Point ViewportLocation
+        {
+            get => _viewportLocation;
+            set
+            {
+                if (_viewportLocation != value)
+                {
+                    _viewportLocation = value;
+                    ViewportChanged?.Invoke();
+                }
+            }
+        }
+
+        /// <summary>Zoom; MainWindow persists it via ViewportChanged.</summary>
+        public double ViewportZoom
+        {
+            get => _viewportZoom;
+            set
+            {
+                if (Math.Abs(_viewportZoom - value) > 0.0001)
+                {
+                    _viewportZoom = value;
+                    ViewportChanged?.Invoke();
+                }
+            }
+        }
 
         /// <summary>Selected node, for the Inspector pane.</summary>
         public GraphNodeViewModel SelectedNode { get; private set; }
 
         public event EventHandler SelectionChanged;
+
+        /// <summary>A node's Location changed (persist the layout row).</summary>
+        public event Action<GraphNodeViewModel> NodeMoved;
+
+        /// <summary>A directed edge was just created in the editor (persist it).</summary>
+        public event Action<ConnectorViewModel, ConnectorViewModel> ConnectionCreated;
+
+        /// <summary>An edge was just removed in the editor (persist the removal).</summary>
+        public event Action<ConnectionViewModel> ConnectionRemoved;
+
+        /// <summary>A node was deleted from the editor (persist node + cascade).</summary>
+        public event Action<GraphNodeViewModel> NodeDeleted;
+
+        /// <summary>Pan or zoom changed (persist the viewport row).</summary>
+        public event Action ViewportChanged;
 
         protected GraphEditorViewModel()
         {
@@ -197,6 +243,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         connection.Source.IsConnected = false;
                         connection.Target.IsConnected = false;
                         Connections.RemoveAt(i);
+                        ConnectionRemoved?.Invoke(connection);
                     }
                 }
             });
@@ -219,8 +266,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void OnNodePropertyChanged(object sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName != nameof(GraphNodeViewModel.IsSelected)) return;
             var node = (GraphNodeViewModel)sender;
+            if (e.PropertyName == nameof(GraphNodeViewModel.Location))
+            {
+                NodeMoved?.Invoke(node);
+                return;
+            }
+            if (e.PropertyName != nameof(GraphNodeViewModel.IsSelected)) return;
             if (node.IsSelected && SelectedNode != node)
             {
                 if (SelectedNode != null) SelectedNode.IsSelected = false;
@@ -245,7 +297,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 Kind = kind,
                 Location = location,
             };
-            node.Inputs.Add(new ConnectorViewModel { Id = id + "-input", Title = "" });
+            var input = new ConnectorViewModel { Id = id + "-input", Title = "" };
+            input.Owner = node;
+            node.Inputs.Add(input);
             node.PropertyChanged += OnNodePropertyChanged;
             Nodes.Add(node);
             return node;
@@ -256,6 +310,46 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             if (source == null || target == null) return;
             Connections.Add(new ConnectionViewModel(source, target));
+            ConnectionCreated?.Invoke(source, target);
+        }
+
+        /// <summary>
+        /// Removes a node and every edge touching it, raising the authoring
+        /// events so the host can persist the deletion. Keeps the editor's
+        /// selection consistent.
+        /// </summary>
+        public void DeleteNode(GraphNodeViewModel node)
+        {
+            if (node == null || !Nodes.Contains(node)) return;
+
+            for (var i = Connections.Count - 1; i >= 0; i--)
+            {
+                var connection = Connections[i];
+                if (connection.Source == null || connection.Target == null) continue;
+                var touches = false;
+                foreach (var output in node.Outputs)
+                {
+                    if (connection.Source == output) touches = true;
+                }
+                foreach (var input in node.Inputs)
+                {
+                    if (connection.Target == input) touches = true;
+                }
+                if (!touches) continue;
+                connection.Source.IsConnected = false;
+                connection.Target.IsConnected = false;
+                Connections.RemoveAt(i);
+                ConnectionRemoved?.Invoke(connection);
+            }
+
+            node.PropertyChanged -= OnNodePropertyChanged;
+            Nodes.Remove(node);
+            if (SelectedNode == node)
+            {
+                SelectedNode = null;
+                SelectionChanged?.Invoke(this, EventArgs.Empty);
+            }
+            NodeDeleted?.Invoke(node);
         }
 
         public void ClearSelection()
@@ -267,6 +361,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public static ConnectorViewModel Output(GraphNodeViewModel node, string id, string title, string kind, string tag)
         {
             var output = new ConnectorViewModel { Id = id, Title = title, Kind = kind, Tag = tag };
+            output.Owner = node;
             node.Outputs.Add(output);
             return output;
         }
@@ -286,7 +381,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// <summary>The session being authored (null until loaded).</summary>
         public SessionDefinition LoadedSession => _loaded;
 
-        public void LoadFromDefinition(SessionDefinition session)
+        public void LoadFromDefinition(SessionDefinition session, Dictionary<string, (double X, double Y)> layout = null, (double Zoom, double X, double Y)? viewport = null)
         {
             _loaded = session;
             if (session?.Graph == null)
@@ -298,12 +393,16 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var nodes = new Dictionary<string, GraphNodeViewModel>();
             var connections = new List<ConnectionViewModel>();
 
-            // Layout: left-to-right by graph order, stacked vertically with overlap avoided.
+            // Layout: persisted coordinates when present, otherwise a left-to-right
+            // grid by graph order, stacked vertically with overlap avoided.
             var column = 0.0;
             var row = 0.0;
             foreach (var node in session.Graph.Nodes)
             {
                 var (title, subtitle, kind, refId) = DescribeSessionNode(node);
+                var point = layout != null && layout.TryGetValue(node.Id, out var saved)
+                    ? new Point(saved.X, saved.Y)
+                    : new Point(column * 260, row * 160);
                 var vm = new GraphNodeViewModel
                 {
                     Id = node.Id,
@@ -311,9 +410,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     Subtitle = subtitle,
                     Kind = kind,
                     RefId = refId,
-                    Location = new Point(column * 260, row * 160),
+                    Location = point,
                 };
-                vm.Inputs.Add(new ConnectorViewModel { Id = node.Id + "-input", Title = "" });
+                var input = new ConnectorViewModel { Id = node.Id + "-input", Title = "" };
+                input.Owner = vm;
+                vm.Inputs.Add(input);
                 nodes[node.Id] = vm;
                 column++;
                 if (column >= 5) { column = 0; row++; }
@@ -339,6 +440,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
 
             Populate(nodes.Values, connections);
+            if (viewport.HasValue)
+            {
+                ViewportZoom = viewport.Value.Zoom;
+                ViewportLocation = new Point(viewport.Value.X, viewport.Value.Y);
+            }
         }
 
         /// <summary>Palette: adds a PhaseReference targeting the given phase id (title resolved for readable display).</summary>
@@ -466,7 +572,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// <summary>The phase being authored (null until loaded).</summary>
         public PhaseDefinition LoadedPhase => _loaded;
 
-        public void LoadFromDefinition(PhaseDefinition phase)
+        public void LoadFromDefinition(PhaseDefinition phase, Dictionary<string, (double X, double Y)> layout = null, (double Zoom, double X, double Y)? viewport = null)
         {
             _loaded = phase;
             if (phase?.Graph == null)
@@ -490,15 +596,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
             foreach (var node in phase.Graph.Nodes)
             {
                 var (title, subtitle, kind) = DescribePhaseNode(node, exitNameById);
+                var point = layout != null && layout.TryGetValue(node.Id, out var saved)
+                    ? new Point(saved.X, saved.Y)
+                    : new Point(column * 220, row * 150);
                 var vm = new GraphNodeViewModel
                 {
                     Id = node.Id,
                     Title = title,
                     Subtitle = subtitle,
                     Kind = kind,
-                    Location = new Point(column * 220, row * 150),
+                    Location = point,
                 };
-                vm.Inputs.Add(new ConnectorViewModel { Id = node.Id + "-input", Title = "" });
+                var input = new ConnectorViewModel { Id = node.Id + "-input", Title = "" };
+                input.Owner = vm;
+                vm.Inputs.Add(input);
                 nodes[node.Id] = vm;
                 column++;
                 if (column >= 6) { column = 0; row++; }
@@ -523,6 +634,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
 
             Populate(nodes.Values, connections);
+            if (viewport.HasValue)
+            {
+                ViewportZoom = viewport.Value.Zoom;
+                ViewportLocation = new Point(viewport.Value.X, viewport.Value.Y);
+            }
         }
 
         /// <summary>Palette: adds a CardExecutor node.</summary>
