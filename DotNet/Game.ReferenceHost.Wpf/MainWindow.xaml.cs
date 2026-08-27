@@ -1,10 +1,8 @@
 using System;
-using System.Collections.ObjectModel;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using Microsoft.Data.Sqlite;
 using TruthCardGame.Content;
 using TruthCardGame.Content.Sqlite;
@@ -13,27 +11,38 @@ using TruthCardGame.Core;
 namespace TruthCardGame.ReferenceHost.Wpf
 {
     /// <summary>
-    /// Thin reference player shell over the canonical SQLite content DB. INTERIM
-    /// Graph Workbench state: content loads through the portable snapshot path and
-    /// this window remains the seed of the Workbench (Tickets 12+ build out the
-    /// Nodify four-pane authoring surfaces here). Actual playback is suspended
-    /// while the graph VM lands (tickets 07-09); advancing reports that loudly.
+    /// Graph Workbench shell (ticket 12): four horizontal panes — Library
+    /// (18*), Session Graph (32*), Phase Graph (32*), Inspector (18*) — with
+    /// three draggable splitters. Both graph panes host real Nodify editors
+    /// (pan/zoom/select/move/connect) wired to canonical content view models.
+    /// Pane ratios persist across launches; the reference player lives behind
+    /// the "Run Session" preview command.
     /// </summary>
     public partial class MainWindow : Window
     {
-        private const int MaxLogEntries = 400;
-
-        private readonly ObservableCollection<string> _log = new ObservableCollection<string>();
-        private GameContentDefinition _content;
-        private GameSessionEngine _engine;
-        private CancellationTokenSource _sessionCts;
-        private float _lengthModifier = 1f;
+        private readonly WorkbenchViewModel _vm;
+        private bool _loaded;
 
         public MainWindow()
         {
             InitializeComponent();
-            LogList.ItemsSource = _log;
-            Loaded += (_, _) => LoadContent();
+            _vm = new WorkbenchViewModel();
+            DataContext = _vm;
+        }
+
+        private void OnLoaded(object sender, RoutedEventArgs e)
+        {
+            if (_loaded) return;
+            _loaded = true;
+
+            // Restore persisted pane ratios before the first layout pass.
+            var persisted = LayoutPersistence.Load(LayoutPersistence.DefaultSettingsPath());
+            _vm.Layout.SetRatios(
+                persisted.LibraryRatio, persisted.SessionRatio,
+                persisted.PhaseRatio, persisted.InspectorRatio);
+
+            ApplyLayout();
+            LoadContent();
         }
 
         // ---------- content loading (canonical SQLite) ----------
@@ -42,351 +51,214 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             try
             {
-                var path = ResolveDatabasePath();
+                var path = ReferencePlayerWindow.ResolveDatabasePath();
+                GameContentDefinition content;
                 using (var connection = new SqliteConnection("Data Source=" + path))
                 {
-                    _content = GameContentSnapshotLoader.Load(connection);
+                    content = GameContentSnapshotLoader.Load(connection);
                 }
-                SessionCombo.ItemsSource = _content.Sessions;
-                SessionCombo.DisplayMemberPath = nameof(SessionDefinition.Title);
-                SessionCombo.SelectedIndex = 0;
-                Log("Content loaded from " + path);
+                _vm.LoadContent(content);
+                BindLibrary();
+                StatusText.Text = $"Content loaded from {path} — {content.Sessions.Count} sessions · {content.Phases.Count} phases";
             }
             catch (Exception ex)
             {
                 StatusText.Text = "Content error";
                 MessageBox.Show(this, "Failed to load content:\n\n" + ex.Message,
-                    "Reference host", MessageBoxButton.OK, MessageBoxImage.Error);
+                    "Workbench", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
+        private void BindLibrary()
+        {
+            SessionList.ItemsSource = _vm.Content.Sessions;
+            SessionList.DisplayMemberPath = nameof(SessionDefinition.Title);
+            if (SessionList.Items.Count > 0) SessionList.SelectedIndex = 0;
+
+            PhaseList.ItemsSource = _vm.Content.Phases;
+            PhaseList.DisplayMemberPath = nameof(PhaseDefinition.Title);
+            if (PhaseList.Items.Count > 0) PhaseList.SelectedIndex = 0;
+        }
+
+        private void OnSessionListChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (SessionList.SelectedItem is SessionDefinition session)
+            {
+                _vm.SelectSession(session);
+                SessionHeader.Text = "Session Graph — " + session.Title;
+            }
+        }
+
+        private void OnPhaseListChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (PhaseList.SelectedItem is PhaseDefinition phase)
+            {
+                _vm.SelectPhase(phase);
+                PhaseHeader.Text = "Phase Graph — " + phase.Title;
+            }
+        }
+
+        // ---------- layout (GridSplitters + persisted ratios) ----------
 
         /// <summary>
-        /// Canonical DB location: an explicit --db &lt;path&gt; command-line
-        /// argument, else the repo-relative dev path Content/GameContent.db.
-        /// Never a hardcoded machine path.
+        /// Applies the persisted 18/32/32/18 ratios to the four content columns
+        /// (indices 0, 2, 4, 6) as star weights, leaving the two Auto splitters
+        /// between them. Ratio sum is used directly as weights, so dragging a
+        /// splitter re-proportions the stars naturally.
         /// </summary>
-        private static string ResolveDatabasePath()
+        private void ApplyLayout()
         {
-            var args = Environment.GetCommandLineArgs();
-            for (var i = 1; i + 1 < args.Length; i++)
+            var ratios = new[]
             {
-                if (args[i] == "--db") return Path.GetFullPath(args[i + 1]);
-            }
-
-            return Path.GetFullPath(Path.Combine(
-                AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Content", "GameContent.db"));
+                _vm.Layout.LibraryRatio,
+                _vm.Layout.SessionRatio,
+                _vm.Layout.PhaseRatio,
+                _vm.Layout.InspectorRatio,
+            };
+            SetContentStarWeights(ratios);
         }
 
-        // ---------- session lifecycle ----------
-
-        private async void OnStartSession(object sender, RoutedEventArgs e)
+        private void SetContentStarWeights(double[] weights)
         {
+            var contentColumns = new[]
+            {
+                PaneGrid.ColumnDefinitions[0],
+                PaneGrid.ColumnDefinitions[2],
+                PaneGrid.ColumnDefinitions[4],
+                PaneGrid.ColumnDefinitions[6],
+            };
+            for (var i = 0; i < 4; i++)
+            {
+                contentColumns[i].Width = new GridLength(weights[i], GridUnitType.Star);
+            }
+        }
+
+        private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (_loaded) ApplyLayout();
+        }
+
+        private void OnResetLayout(object sender, RoutedEventArgs e)
+        {
+            _vm.Layout.SetRatios(
+                WorkbenchLayout.DefaultLibraryRatio,
+                WorkbenchLayout.DefaultSessionRatio,
+                WorkbenchLayout.DefaultPhaseRatio,
+                WorkbenchLayout.DefaultInspectorRatio);
+            SaveLayout();
+            ApplyLayout();
+            StatusText.Text = "Layout reset to 18/32/32/18";
+        }
+
+        private void SaveLayout()
+        {
+            LayoutPersistence.Save(LayoutPersistence.DefaultSettingsPath(), _vm.Layout);
+        }
+
+        private void OnClosing(object sender, CancelEventArgs e)
+        {
+            // Persist current splitter positions as ratios before exit.
             try
             {
-                if (_content == null || SessionCombo.SelectedItem is not SessionDefinition selected)
-                {
-                    Log("No session selected.");
-                    return;
-                }
-
-                CancelSession();
-                _sessionCts = new CancellationTokenSource();
-
-                var services = new CoreServices(
-                    delay: new WpfGameDelay(),
-                    log: new UiGameLog(Log),
-                    prompts: new UiPromptService(this),
-                    cutscene: new UiCutsceneService(this));
-
-                _engine = new GameSessionEngine(_content, selected.Id, services);
-
-                SubscribeEngine();
-
-                ClearInteractionArea();
-                SessionTitle.Text = selected.Title;
-                PhaseTitle.Text = "—";
-                CardTitle.Text = "—";
-                SetStatus("Starting…");
-                DrawNextButton.IsEnabled = false;
-                Log($"Session started: {selected.Title} (length {_lengthModifier:0.0}x, fixed seeds)");
-
-                await AdvanceAsync();
+                PersistCurrentRatios();
+                SaveLayout();
             }
-            catch (OperationCanceledException)
+            catch
             {
-                Log("Session start canceled.");
-            }
-            catch (Exception ex)
-            {
-                // Invalid content must surface here, not as a dispatcher crash.
-                SetStatus("Error");
-                Log("ERROR starting session: " + ex.Message);
+                // Never block shutdown over settings persistence.
             }
         }
 
-        private async void OnDrawNext(object sender, RoutedEventArgs e)
+        private void PersistCurrentRatios()
         {
-            await AdvanceAsync();
-        }
-
-        private async Task AdvanceAsync()
-        {
-            if (_engine == null || _sessionCts == null) return;
-
-            DrawNextButton.IsEnabled = false;
-            try
+            var widths = new[]
             {
-                var result = await _engine.AdvanceOneCardAsync(_sessionCts.Token);
-
-                switch (result.Kind)
-                {
-                    case AdvanceResultKind.CardCompleted:
-                        RefreshProgress();
-                        SetStatus("Done — draw next when ready");
-                        DrawNextButton.IsEnabled = true;
-                        break;
-                    case AdvanceResultKind.SessionCompleted:
-                        RefreshProgress();
-                        SetStatus("Complete");
-                        CardTitle.Text = result.Card?.Title ?? "(no card — skipped empty phases)";
-                        DrawNextButton.IsEnabled = false;
-                        Log("SESSION COMPLETE");
-                        break;
-                    case AdvanceResultKind.BusyIgnored:
-                        Log("Draw ignored (advance already running).");
-                        break;
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                Log("Advance canceled (restart/shutdown).");
-            }
-            catch (Exception ex)
-            {
-                SetStatus("Error");
-                Log("ERROR: " + ex.Message);
-            }
-        }
-
-        private void SubscribeEngine()
-        {
-            _engine.CardStarted += card =>
-            {
-                CardTitle.Text = card.Title;
-                SetStatus("Executing…");
-                Log($"card started: {card.Title}");
+                PaneGrid.ColumnDefinitions[0].ActualWidth,
+                PaneGrid.ColumnDefinitions[2].ActualWidth,
+                PaneGrid.ColumnDefinitions[4].ActualWidth,
+                PaneGrid.ColumnDefinitions[6].ActualWidth,
             };
-            _engine.CardFinished += card =>
-            {
-                Log($"card finished: {card.Title}");
-                RefreshProgress();
-            };
-            _engine.PhaseEntered += phaseTitle =>
-            {
-                PhaseTitle.Text = string.IsNullOrEmpty(phaseTitle) ? "(unnamed)" : phaseTitle;
-                Log($"phase entered: {phaseTitle}");
-            };
-            _engine.SessionCompleted += () =>
-            {
-                SetStatus("Complete");
-            };
+            var total = 0.0;
+            for (var i = 0; i < 4; i++) total += widths[i];
+            if (total <= 0) return;
+            _vm.Layout.SetRatios(widths[0] / total, widths[1] / total, widths[2] / total, widths[3] / total);
         }
 
-        private void RefreshProgress()
+        // ---------- reference player preview ----------
+
+        private void OnRunSession(object sender, RoutedEventArgs e)
         {
-            if (_engine == null) return;
-            // Slot-era targets/remaining are gone; run-state visualization returns
-            // with the graph VM preview (Docs/GraphWorkbench ticket 19).
-            ProgressText.Text = _engine.IsComplete ? "complete" : "—";
+            var player = new ReferencePlayerWindow { Owner = this };
+            player.Show();
         }
 
-        // ---------- live length modifier ----------
+        // ---------- palette actions (unsaved authoring nodes) ----------
 
-        private void OnLengthChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        private static Point CenterOf(GraphEditorViewModel editor, UIElement host)
         {
-            _lengthModifier = (float)e.NewValue;
-            if (LengthLabel != null) // slider fires during XAML parse, before names resolve
+            var offset = 8.0;
+            return new Point(offset, offset);
+        }
+
+        private void OnAddSessionStart(object sender, RoutedEventArgs e)
+        {
+            if (_vm.SessionHasStart())
             {
-                LengthLabel.Text = $"{_lengthModifier:0.0}x";
+                StatusText.Text = "Session already has a Start node (singular).";
+                return;
             }
+            var node = _vm.SessionGraph.AddNode(
+                "start-" + (_vm.SessionGraph.Nodes.Count + 1),
+                "Start", "Session entry", "start", new Point(40, 40));
+            GraphEditorViewModel.Output(node, node.Id + "-out", "out", "normal", "");
+            _vm.SessionGraph.Connect(node.Outputs[0], FindFirstSessionInput());
+            StatusText.Text = "Added Start node (unsaved).";
         }
 
-        // ---------- prompt / cutscene UI (host services) ----------
-
-        internal Task<int?> ShowChoiceAsync(string prompt, System.Collections.Generic.IReadOnlyList<string> options, CancellationToken ct)
+        private ConnectorViewModel FindFirstSessionInput()
         {
-            var completion = new TaskCompletionSource<int?>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            if (ct.CanBeCanceled)
+            foreach (var node in _vm.SessionGraph.Nodes)
             {
-                var registration = ct.Register(() =>
-                {
-                    RunOnUi(ClearInteractionArea);
-                    completion.TrySetCanceled(ct);
-                });
-                completion.Task.ContinueWith(_ => registration.Dispose(), TaskScheduler.Default);
+                if (node.Kind != "start" && node.Inputs.Count > 0) return node.Inputs[0];
             }
-
-            RunOnUi(() =>
-            {
-                ClearInteractionArea();
-                SetStatus("Waiting for choice…");
-                InteractionArea.Children.Add(new TextBlock
-                {
-                    Text = prompt,
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 8)
-                });
-
-                for (var i = 0; i < options.Count; i++)
-                {
-                    var index = i;
-                    var button = new Button
-                    {
-                        Content = options[index],
-                        Height = 26,
-                        Margin = new Thickness(0, 4, 0, 0)
-                    };
-                    button.Click += (_, _) =>
-                    {
-                        ClearInteractionArea();
-                        completion.TrySetResult(index); // resolves exactly once
-                    };
-                    InteractionArea.Children.Add(button);
-                }
-            });
-
-            return completion.Task;
+            return null;
         }
 
-        internal Task ShowCutsceneAsync(string resourceId, CancellationToken ct)
+        private void OnAddPhaseReference(object sender, RoutedEventArgs e)
         {
-            var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var node = _vm.SessionGraph.AddPhaseReference("(phase)", new Point(60, 60));
+            StatusText.Text = "Added Phase Reference node (unsaved).";
+        }
 
-            if (ct.CanBeCanceled)
+        private void OnAddSessionDecision(object sender, RoutedEventArgs e)
+        {
+            _vm.SessionGraph.AddSessionDecision(new Point(80, 60));
+            StatusText.Text = "Added Session Decision node (unsaved).";
+        }
+
+        private void OnAddSessionEnd(object sender, RoutedEventArgs e)
+        {
+            _vm.SessionGraph.AddSessionEnd(new Point(100, 60));
+            StatusText.Text = "Added Session End node (unsaved).";
+        }
+
+        private void OnAddPhaseEntry(object sender, RoutedEventArgs e)
+        {
+            if (_vm.PhaseHasEntry())
             {
-                var registration = ct.Register(() =>
-                {
-                    RunOnUi(ClearInteractionArea);
-                    completion.TrySetCanceled(ct);
-                });
-                completion.Task.ContinueWith(_ => registration.Dispose(), TaskScheduler.Default);
+                StatusText.Text = "Phase already has an Entry node (singular).";
+                return;
             }
-
-            RunOnUi(() =>
-            {
-                ClearInteractionArea();
-                SetStatus("Waiting for cutscene…");
-                InteractionArea.Children.Add(new TextBlock
-                {
-                    Text = "CUTSCENE",
-                    FontSize = 20,
-                    FontWeight = FontWeights.Bold,
-                    Margin = new Thickness(0, 0, 0, 4)
-                });
-                InteractionArea.Children.Add(new TextBlock
-                {
-                    Text = resourceId,
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 10)
-                });
-                var completeButton = new Button
-                {
-                    Content = "Complete Cutscene",
-                    Width = 160,
-                    Height = 28
-                };
-                completeButton.Click += (_, _) =>
-                {
-                    ClearInteractionArea();
-                    completion.TrySetResult(true); // resolves exactly once
-                };
-                InteractionArea.Children.Add(completeButton);
-            });
-
-            return completion.Task;
+            _vm.PhaseGraph.AddNode(
+                "entry-" + (_vm.PhaseGraph.Nodes.Count + 1),
+                "Entry", "", "entry", new Point(40, 40));
+            StatusText.Text = "Added Entry node (unsaved).";
         }
 
-        private void ClearInteractionArea()
-        {
-            InteractionArea.Children.Clear();
-        }
-
-        // ---------- helpers ----------
-
-        private void RunOnUi(Action action)
-        {
-            if (Dispatcher.CheckAccess()) action();
-            else Dispatcher.Invoke(action);
-        }
-
-        private void SetStatus(string status)
-        {
-            RunOnUi(() => StatusText.Text = status);
-        }
-
-        private void Log(string message)
-        {
-            RunOnUi(() =>
-            {
-                _log.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
-                while (_log.Count > MaxLogEntries)
-                {
-                    _log.RemoveAt(0);
-                }
-                if (LogList.Items.Count > 0)
-                {
-                    LogList.ScrollIntoView(LogList.Items.GetItemAt(LogList.Items.Count - 1));
-                }
-            });
-        }
-
-        private void CancelSession()
-        {
-            _sessionCts?.Cancel();
-            _sessionCts?.Dispose();
-            _sessionCts = null;
-        }
-
-        protected override void OnClosed(EventArgs e)
-        {
-            CancelSession();
-            base.OnClosed(e);
-        }
-
-        // ---------- host services bound to this window ----------
-
-        private sealed class UiPromptService : IPromptService
-        {
-            private readonly MainWindow _window;
-            public UiPromptService(MainWindow window) => _window = window;
-
-            public Task<int?> AskAsync(string prompt, System.Collections.Generic.IReadOnlyList<string> options, CancellationToken cancellationToken)
-                => _window.ShowChoiceAsync(prompt, options, cancellationToken);
-        }
-
-        private sealed class UiCutsceneService : ICutsceneService
-        {
-            private readonly MainWindow _window;
-            public UiCutsceneService(MainWindow window) => _window = window;
-
-            public Task PlayAsync(string resourceId, CancellationToken cancellationToken)
-                => _window.ShowCutsceneAsync(resourceId, cancellationToken);
-        }
-
-        private sealed class WpfGameDelay : IGameDelay
-        {
-            public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
-                => Task.Delay(delay, cancellationToken);
-        }
-
-        private sealed class UiGameLog : IGameLog
-        {
-            private readonly Action<string> _sink;
-            public UiGameLog(Action<string> sink) => _sink = sink;
-            public void Info(string message) => _sink(message);
-            public void Warning(string message) => _sink("[warn] " + message);
-            public void Error(string message) => _sink("[error] " + message);
-        }
+        private void OnAddCardExecutor(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddCardExecutor(new Point(60, 60)); StatusText.Text = "Added Draw Card node (unsaved)."; }
+        private void OnAddVariableCheck(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddVariableCheck(new Point(80, 60)); StatusText.Text = "Added Check node (unsaved)."; }
+        private void OnAddActionNode(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddActionNode(new Point(100, 60)); StatusText.Text = "Added Action node (unsaved)."; }
+        private void OnAddPhaseDecision(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddPhaseDecision(new Point(120, 60)); StatusText.Text = "Added Decision node (unsaved)."; }
+        private void OnAddReturn(object sender, RoutedEventArgs e) { _vm.PhaseGraph.AddReturn(new Point(140, 60)); StatusText.Text = "Added Return node (unsaved)."; }
     }
 }

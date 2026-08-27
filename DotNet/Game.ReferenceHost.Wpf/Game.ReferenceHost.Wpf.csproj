@@ -12,6 +12,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
+    <!-- Graph Workbench ticket 12: pinned unless a compatibility issue is proven. -->
+    <PackageReference Include="Nodify" Version="7.3.0" />
   </ItemGroup>
 
   <ItemGroup>
