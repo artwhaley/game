@@ -129,11 +129,36 @@ namespace TruthCardGame.Content.Sqlite
         public static void AddPhaseGoto(DbConnection connection, string nodeId, string exitId)
         {
             if (string.IsNullOrEmpty(nodeId)) throw new ArgumentException("Node id required.", nameof(nodeId));
+            var sequenceId = GetActionSequenceId(connection, nodeId);
+            AddPhaseGotoToSequence(connection, sequenceId, nodeId + "-", exitId);
+        }
+
+        /// <summary>
+        /// Appends one blocking PhaseGoto instance to a decision-option sequence
+        /// (PhaseDecision option rows use the same Phase Action palette).
+        /// </summary>
+        public static void AddPhaseGotoToOption(DbConnection connection, string optionId, string exitId)
+        {
+            if (string.IsNullOrEmpty(optionId)) throw new ArgumentException("Option id required.", nameof(optionId));
             if (string.IsNullOrEmpty(exitId)) throw new ArgumentException("Exit id required.", nameof(exitId));
 
-            var sequenceId = GetActionSequenceId(connection, nodeId);
+            var sequenceId = "";
+            Sql.QueryAll(connection,
+                "SELECT action_sequence_id FROM phase_decision_option WHERE id = @option;",
+                reader => sequenceId = reader.GetString(0),
+                ("option", optionId));
+            if (string.IsNullOrEmpty(sequenceId))
+            {
+                throw new InvalidOperationException($"Phase decision option '{optionId}' has no sequence.");
+            }
+            AddPhaseGotoToSequence(connection, sequenceId, optionId + "-", exitId);
+        }
+
+        /// <summary>Shared PhaseGoto append: one instance row + subtype row.</summary>
+        private static void AddPhaseGotoToSequence(DbConnection connection, string sequenceId, string idPrefix, string exitId)
+        {
             var nextOrdinal = NextInstanceOrdinal(connection, sequenceId);
-            var instanceId = nodeId + "-goto-" + nextOrdinal;
+            var instanceId = idPrefix + "goto-" + nextOrdinal;
 
             Sql.Execute(connection, null,
                 "INSERT INTO action_instance (id, action_sequence_id, ordinal, action_type, is_blocking) " +

@@ -190,9 +190,18 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
             _vm.PhaseGraph.GotoExitChanged += (node, row) => WithConnection(connection =>
             {
-                if (row == null || string.IsNullOrEmpty(row.InstanceId) || string.IsNullOrEmpty(row.ExitId)) return;
-                PhaseGraphRepository.SetPhaseGotoExit(connection, row.InstanceId, row.ExitId);
-                // Re-point the in-memory sequence so a later reload matches.
+                if (row == null || string.IsNullOrEmpty(row.InstanceId)) return;
+                if (row.Scope == "session")
+                {
+                    // SessionGoto: rename the instance label AND its projected port (live).
+                    SessionDecisionRepository.SetSessionGotoLabel(connection, row.InstanceId, row.Label ?? "");
+                }
+                else
+                {
+                    if (string.IsNullOrEmpty(row.ExitId)) return;
+                    PhaseGraphRepository.SetPhaseGotoExit(connection, row.InstanceId, row.ExitId);
+                }
+                // Re-point the in-memory definition so a later reload matches.
                 if (node != null && _vm.SelectedPhase != null)
                 {
                     var def = _vm.SelectedPhase.Graph.Nodes.Find(n => n.Id == node.Id) as ActionNodeDefinition;
@@ -204,6 +213,52 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         }
                     }
                 }
+            });
+
+            _vm.PhaseGraph.DecisionPromptChanged += node => WithConnection(connection =>
+            {
+                if (node?.DecisionScope == "session")
+                {
+                    SessionDecisionRepository.UpdatePrompt(connection, node.Id, node.DecisionPrompt ?? "");
+                }
+                else if (node?.DecisionScope == "phase")
+                {
+                    PhaseDecisionRepository.UpdatePrompt(connection, node.Id, node.DecisionPrompt ?? "");
+                }
+            });
+
+            _vm.PhaseGraph.DecisionRowChanged += (node, option) => WithConnection(connection =>
+            {
+                if (option?.Scope == "session")
+                {
+                    SessionDecisionRepository.RenameOption(connection, option.OptionId, option.Label ?? "");
+                }
+                else if (option?.Scope == "phase")
+                {
+                    PhaseDecisionRepository.RenameOption(connection, option.OptionId, option.Label ?? "");
+                }
+            });
+
+            _vm.SessionGraph.DecisionPromptChanged += node => WithConnection(connection =>
+            {
+                if (node?.DecisionScope == "session")
+                {
+                    SessionDecisionRepository.UpdatePrompt(connection, node.Id, node.DecisionPrompt ?? "");
+                }
+            });
+
+            _vm.SessionGraph.DecisionRowChanged += (node, option) => WithConnection(connection =>
+            {
+                if (option?.Scope == "session")
+                {
+                    SessionDecisionRepository.RenameOption(connection, option.OptionId, option.Label ?? "");
+                }
+            });
+
+            _vm.SessionGraph.GotoExitChanged += (node, row) => WithConnection(connection =>
+            {
+                if (row == null || string.IsNullOrEmpty(row.InstanceId) || row.Scope != "session") return;
+                SessionDecisionRepository.SetSessionGotoLabel(connection, row.InstanceId, row.Label ?? "");
             });
 
         }
@@ -229,6 +284,83 @@ namespace TruthCardGame.ReferenceHost.Wpf
             WithConnection(connection => PhaseGraphRepository.RemovePhaseGoto(connection, row.InstanceId));
             ReloadPhaseEditor();
             StatusText.Text = "Removed PhaseGoto instance.";
+        }
+
+        private void OnAddDecisionOption(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is FrameworkElement element) || !(element.DataContext is GraphNodeViewModel node)) return;
+            if (string.IsNullOrEmpty(node.DecisionScope)) return;
+            var optionId = node.Id + "-opt-" + Guid.NewGuid().ToString("N").Substring(0, 6);
+            var sequenceId = optionId + "-seq";
+            if (node.DecisionScope == "session")
+            {
+                WithConnection(connection => SessionDecisionRepository.AddOption(connection, node.Id, optionId, "Option", sequenceId));
+            }
+            else
+            {
+                WithConnection(connection => PhaseDecisionRepository.AddOption(connection, node.Id, optionId, "Option", sequenceId));
+            }
+            ReloadSessionEditor();
+            ReloadPhaseEditor();
+            StatusText.Text = "Added decision option.";
+        }
+
+        private void OnRemoveDecisionOption(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is FrameworkElement element) || !(element.DataContext is DecisionRowData option)) return;
+            if (option.Scope == "session")
+            {
+                WithConnection(connection => SessionDecisionRepository.RemoveOption(connection, option.NodeId, option.OptionId));
+            }
+            else
+            {
+                WithConnection(connection => PhaseDecisionRepository.RemoveOption(connection, option.NodeId, option.OptionId));
+            }
+            ReloadSessionEditor();
+            ReloadPhaseEditor();
+            StatusText.Text = "Removed decision option.";
+        }
+
+        private void OnAddDecisionGoto(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is FrameworkElement element) || !(element.DataContext is DecisionRowData option)) return;
+            if (option.Scope == "session")
+            {
+                if (_vm.SelectedSession == null) return;
+                WithConnection(connection => SessionDecisionRepository.AddSessionGoto(
+                    connection, option.NodeId, option.OptionId, "goto"));
+                ReloadSessionEditor();
+                StatusText.Text = "Added SessionGoto — a unique port appeared on the decision node.";
+            }
+            else
+            {
+                if (_vm.SelectedPhase == null || _vm.SelectedPhase.Exits.Count == 0)
+                {
+                    StatusText.Text = "Add an exit to this phase first (exits strip above).";
+                    return;
+                }
+                WithConnection(connection => PhaseGraphRepository.AddPhaseGotoToOption(
+                    connection, option.OptionId, _vm.SelectedPhase.Exits[0].Id));
+                ReloadPhaseEditor();
+                StatusText.Text = "Added PhaseGoto to option sequence.";
+            }
+        }
+
+        private void OnRemoveDecisionGoto(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is FrameworkElement element) || !(element.DataContext is GotoRowData row)) return;
+            if (string.IsNullOrEmpty(row.InstanceId)) return;
+            if (row.Scope == "session")
+            {
+                WithConnection(connection => SessionDecisionRepository.RemoveSessionGoto(connection, row.InstanceId));
+                ReloadSessionEditor();
+            }
+            else
+            {
+                WithConnection(connection => PhaseGraphRepository.RemovePhaseGoto(connection, row.InstanceId));
+                ReloadPhaseEditor();
+            }
+            StatusText.Text = "Removed GOTO (and its unique port, if any).";
         }
 
         private static VariableSourceKind ParseSourceKind(string source)

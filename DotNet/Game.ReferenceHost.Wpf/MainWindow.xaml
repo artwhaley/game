@@ -74,6 +74,79 @@
                             <Button Content="+ GOTO" Click="OnAddGoto" Padding="6,1" Margin="0,2,0,0" HorizontalAlignment="Left"
                                     Style="{StaticResource DarkButton}" ToolTip="Add a PhaseGoto instance (blocking, chooses an exit)"/>
                         </StackPanel>
+                        <!-- Inline decision editor (ticket 16): prompt + 1-3 option rows. -->
+                        <StackPanel Visibility="{Binding DecisionScope, Converter={StaticResource NullToCollapsed}}" Margin="0,4,0,0">
+                            <TextBlock Text="Prompt" FontSize="10" Foreground="#FFB0B0B0"/>
+                            <TextBox Style="{StaticResource DarkTextBox}" Padding="2,0"
+                                     Text="{Binding DecisionPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                            <ItemsControl ItemsSource="{Binding DecisionRows}" Margin="0,4,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#FF26262A" BorderBrush="#FF3A3A3E" BorderThickness="1"
+                                                CornerRadius="2" Margin="0,0,0,3" Padding="3">
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBox Style="{StaticResource DarkTextBox}" Padding="2,0" MinWidth="70"
+                                                             Text="{Binding Label, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                             ToolTip="Option label"/>
+                                                    <Button Content="−" Click="OnRemoveDecisionOption" Padding="3,0" Margin="3,0,0,0"
+                                                            Style="{StaticResource DarkButton}" ToolTip="Remove option (min 1)"/>
+                                                </StackPanel>
+                                                <ItemsControl ItemsSource="{Binding GotoRows}" Margin="0,3,0,0">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Orientation="Horizontal" Margin="0,1,0,1">
+                                                                <TextBlock Text="GOTO" FontFamily="Consolas" FontSize="10"
+                                                                           VerticalAlignment="Center" Foreground="#FFB0B0B0"/>
+                                                                <!-- Phase scope: exit ComboBox. Session scope: label TextBox. -->
+                                                                <ComboBox Padding="2,0" MinWidth="80" Margin="4,0,2,0"
+                                                                          ItemsSource="{Binding DataContext.GotoExitOptions, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                          SelectedValuePath="Id"
+                                                                          SelectedValue="{Binding ExitId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                                                    <ComboBox.Style>
+                                                                        <Style TargetType="ComboBox" BasedOn="{StaticResource DarkComboBox}">
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding Scope}" Value="phase">
+                                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </ComboBox.Style>
+                                                                </ComboBox>
+                                                                <TextBox Padding="2,0" MinWidth="70" Margin="4,0,2,0"
+                                                                         Text="{Binding Label, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                                                    <TextBox.Style>
+                                                                        <Style TargetType="TextBox" BasedOn="{StaticResource DarkTextBox}">
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding Scope}" Value="session">
+                                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBox.Style>
+                                                                </TextBox>
+                                                                <Button Content="×" Click="OnRemoveDecisionGoto" Padding="3,0"
+                                                                        Style="{StaticResource DarkButton}" ToolTip="Remove this GOTO"/>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <Button Content="+ GOTO" Click="OnAddDecisionGoto" Padding="6,1" Margin="0,2,0,0"
+                                                        HorizontalAlignment="Left"
+                                                        Style="{StaticResource DarkButton}"
+                                                        ToolTip="Add a SessionGoto (creates a unique port) or PhaseGoto to this option's sequence"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Content="+ Option" Click="OnAddDecisionOption" Padding="6,1" Margin="0,2,0,0"
+                                    HorizontalAlignment="Left" Style="{StaticResource DarkButton}"
+                                    Visibility="{Binding CanAddOption, Converter={StaticResource BoolToVisible}}"
+                                    ToolTip="Add an option row (max 3)"/>
+                        </StackPanel>
                         <TextBlock Text="{Binding Kind}" FontFamily="Consolas" FontSize="9"
                                    Foreground="#FF808080" Margin="0,3,0,0"/>
                     </StackPanel>
