@@ -223,10 +223,52 @@ namespace TruthCardGame.Content.Sqlite.Tests
         }
 
         [Test]
-        public void Card_CreateWithoutSequence_IsRejected()
+        public void Card_CreateWithoutSequence_GetsDefaultProgressAction()
         {
-            var card = new CardDefinition { Id = Id(), Title = "Broken" };
-            Assert.Throws<InvalidOperationException>(() => CardRepository.Create(_connection, card));
+            var cardId = Id();
+            var card = new CardDefinition { Id = cardId, Title = "Defaulted" };
+
+            CardRepository.Create(_connection, card);
+
+            var loaded = GameContentSnapshotLoader.Load(_connection);
+            var reloaded = loaded.Cards.Find(c => c.Id == cardId);
+            Assert.IsNotNull(reloaded);
+            Assert.IsNotNull(reloaded.Sequence, "repository creates the owned sequence");
+            Assert.AreEqual(1, reloaded.Sequence.Instances.Count);
+            var progress = reloaded.Sequence.Instances[0] as IncrementProgressInstanceDefinition;
+            Assert.IsNotNull(progress, "default instance is IncrementProgress");
+            Assert.AreEqual(10f, progress.Amount, "default amount is 10");
+        }
+
+        [Test]
+        public void Card_DefaultProgress_IsPerCard_NotShared()
+        {
+            var first = new CardDefinition
+            {
+                Id = Id(),
+                Title = "First",
+                Sequence = new ActionSequenceDefinition
+                {
+                    Id = "seq-first",
+                    Instances =
+                    {
+                        new IncrementProgressInstanceDefinition { Id = "inst-first", Amount = 25f },
+                    },
+                },
+            };
+            var second = new CardDefinition { Id = Id(), Title = "Second" }; // gets default 10
+
+            CardRepository.Create(_connection, first);
+            CardRepository.Create(_connection, second);
+
+            var loaded = GameContentSnapshotLoader.Load(_connection);
+            var reloadedFirst = loaded.Cards.Find(c => c.Id == first.Id);
+            var reloadedSecond = loaded.Cards.Find(c => c.Id == second.Id);
+
+            Assert.AreEqual(25f, ((IncrementProgressInstanceDefinition)reloadedFirst.Sequence.Instances[0]).Amount,
+                "authored amount survives untouched");
+            Assert.AreEqual(10f, ((IncrementProgressInstanceDefinition)reloadedSecond.Sequence.Instances[0]).Amount,
+                "defaulted card keeps its own default; changing one card never affects another");
         }
 
         // ---------- phase exits ----------

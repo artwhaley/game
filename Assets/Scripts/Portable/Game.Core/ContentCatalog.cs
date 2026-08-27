@@ -22,6 +22,7 @@ namespace TruthCardGame.Core
         private readonly Dictionary<string, ResourceDefinition> _resources;
         private readonly Dictionary<string, SessionTypeDefinition> _sessionTypes;
         private readonly Dictionary<string, TemperatureDefinition> _temperatures;
+        private readonly IReadOnlyList<TemperatureDefinition> _temperaturesList;
 
         public ContentCatalog(GameContentDefinition content)
         {
@@ -34,6 +35,9 @@ namespace TruthCardGame.Core
             _resources = Index(content.Resources, "Resource", r => r.Id);
             _sessionTypes = Index(content.SessionTypes, "SessionType", t => t.Id);
             _temperatures = Index(content.Temperatures, "Temperature", t => t.Id);
+            _temperaturesList = content.Temperatures == null
+                ? (IReadOnlyList<TemperatureDefinition>)new List<TemperatureDefinition>()
+                : content.Temperatures;
         }
 
         private static Dictionary<string, T> Index<T>(IReadOnlyList<T> entities, string typeName, Func<T, string> idOf) where T : class
@@ -101,6 +105,9 @@ namespace TruthCardGame.Core
         {
             return Lookup(_temperatures, "Temperature", id);
         }
+
+        /// <summary>All temperature definitions in stable order (TemperatureState initialization).</summary>
+        public IReadOnlyList<TemperatureDefinition> TemperaturesList => _temperaturesList;
 
         private static T Lookup<T>(Dictionary<string, T> index, string typeName, string id) where T : class
         {

@@ -1,38 +1,36 @@
+using TruthCardGame.Content;
+
 namespace TruthCardGame.Content.Sqlite
 {
     /// <summary>
-    /// Stable action-type discriminator values.
-    ///
-    /// The first four were established by schema v1's configured-Action tables;
-    /// they are reused unchanged by the v2 instance subtypes so migrated rows
-    /// keep recognizable values. The remainder are new in v2
-    /// (action_instance.action_type). Flow-control types are always blocking —
-    /// enforced by repositories and the Core Action Type registry (Ticket 05).
+    /// Stable action-type discriminator values, aliasing the single portable
+    /// vocabulary in <see cref="ActionTypeKeys"/> (Game.Content). The first four
+    /// keys were established by schema v1's configured-Action tables; they are
+    /// reused unchanged by the v2 instance subtypes so migrated rows keep
+    /// recognizable values. Flow-control types are always blocking — enforced by
+    /// persistence, the Core registry, and the executor.
     /// </summary>
     public static class ActionType
     {
         // Legacy-established (reused by v2 instance subtypes):
-        public const string Debug = "debug";
-        public const string StatIncrease = "statIncrease";
+        public const string Debug = ActionTypeKeys.Debug;
+        public const string StatIncrease = ActionTypeKeys.StatIncrease;
         public const string Choice = "choice";          // v1 name; v2 table is prompt_choice below
-        public const string Cutscene = "cutscene";
+        public const string Cutscene = ActionTypeKeys.Cutscene;
 
         // New in v2:
-        public const string IncrementProgressV2 = "increment_progress";
-        public const string ModifyTemperatureV2 = "modify_temperature";
-        public const string PromptChoiceV2 = "prompt_choice";
-        public const string PhaseGotoV2 = "phase_goto";
-        public const string SessionGotoV2 = "session_goto";
-        public const string ReturnV2 = "return";
-        public const string EndSessionV2 = "end_session";
+        public const string IncrementProgressV2 = ActionTypeKeys.IncrementProgress;
+        public const string ModifyTemperatureV2 = ActionTypeKeys.ModifyTemperature;
+        public const string PromptChoiceV2 = ActionTypeKeys.PromptChoice;
+        public const string PhaseGotoV2 = ActionTypeKeys.PhaseGoto;
+        public const string SessionGotoV2 = ActionTypeKeys.SessionGoto;
+        public const string ReturnV2 = ActionTypeKeys.Return;
+        public const string EndSessionV2 = ActionTypeKeys.EndSession;
 
         /// <summary>Flow-control actions can never be authored as nonblocking.</summary>
         public static bool IsAlwaysBlocking(string actionType)
         {
-            return actionType == PhaseGotoV2
-                || actionType == SessionGotoV2
-                || actionType == ReturnV2
-                || actionType == EndSessionV2;
+            return ActionTypeKeys.IsAlwaysBlocking(actionType);
         }
     }
 }

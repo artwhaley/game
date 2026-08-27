@@ -62,16 +62,36 @@ namespace TruthCardGame.Content.Sqlite
     /// Narrow v2 repository: Card creation with an owned Action Sequence —
     /// the minimum the Workbench needs to author a card whose default Progress
     /// Action is an ordinary editable instance.
+    ///
+    /// Per the Ticket 05 contract, Create owns sequence construction: a card
+    /// without a sequence gets a fresh owned one seeded with the default
+    /// IncrementProgress(+10) instance. An author-supplied sequence is used
+    /// verbatim; the default is only applied when the card arrives without one,
+    /// so deleting or changing it affects only that card.
     /// </summary>
     public static class CardRepository
     {
+        public const float DefaultProgressAmount = 10f;
+
         public static void Create(DbConnection connection, CardDefinition card)
         {
             if (card == null) throw new ArgumentNullException(nameof(card));
             if (string.IsNullOrEmpty(card.Id)) throw new ArgumentException("Card id required.", nameof(card));
+
             if (card.Sequence == null || string.IsNullOrEmpty(card.Sequence.Id))
             {
-                throw new InvalidOperationException($"Card '{card.Id}' has no owned action sequence id.");
+                card.Sequence = new ActionSequenceDefinition
+                {
+                    Id = $"cseq-{card.Id}",
+                    Instances =
+                    {
+                        new IncrementProgressInstanceDefinition
+                        {
+                            Id = $"inst-{card.Id}-default-progress",
+                            Amount = DefaultProgressAmount,
+                        },
+                    },
+                };
             }
 
             using (var transaction = connection.BeginTransaction())
