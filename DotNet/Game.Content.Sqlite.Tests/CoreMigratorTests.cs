@@ -41,13 +41,17 @@ namespace TruthCardGame.Content.Sqlite.Tests
             ConnectionInitializer.Initialize(_connection);
             var version = CoreMigrator.EnsureSchema(_connection);
 
-            Assert.AreEqual(1, version);
+            Assert.AreEqual(2, version, "both migrations apply on a fresh database");
             Assert.IsTrue(TableExists(_connection, "session"));
             Assert.IsTrue(TableExists(_connection, "phase_slot"));
             Assert.IsTrue(TableExists(_connection, "phase_slot_candidate"));
             Assert.IsTrue(TableExists(_connection, "action_choice"));
             Assert.IsTrue(TableExists(_connection, "card_action"));
             Assert.IsTrue(TableExists(_connection, "resource"));
+            // v2 additions:
+            Assert.IsTrue(TableExists(_connection, "action_instance"));
+            Assert.IsTrue(TableExists(_connection, "phase_graph_edge"));
+            Assert.IsTrue(TableExists(_connection, "session_graph_node"));
         }
 
         [Test]
@@ -61,7 +65,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
             using (var reopened = OpenNewConnection())
             {
                 CoreMigrator.EnsureSchema(reopened);
-                Assert.AreEqual(1, MigrationRowCount(reopened));
+                Assert.AreEqual(2, MigrationRowCount(reopened), "one ledger row per migration");
             }
         }
 
@@ -96,19 +100,22 @@ namespace TruthCardGame.Content.Sqlite.Tests
         }
 
         [Test]
-        public void MigrationTable_ReportsVersion1()
+        public void MigrationTable_RecordsEveryMigrationInOrder()
         {
             ConnectionInitializer.Initialize(_connection);
             CoreMigrator.EnsureSchema(_connection);
 
             using (var command = _connection.CreateCommand())
             {
-                command.CommandText = "SELECT version, name FROM core_schema_migration;";
+                command.CommandText = "SELECT version, name FROM core_schema_migration ORDER BY version;";
                 using (var reader = command.ExecuteReader())
                 {
                     Assert.IsTrue(reader.Read());
                     Assert.AreEqual(1, reader.GetInt32(0));
                     Assert.AreEqual("core-schema-v1", reader.GetString(1));
+                    Assert.IsTrue(reader.Read());
+                    Assert.AreEqual(2, reader.GetInt32(0));
+                    Assert.AreEqual("core-graph-schema-v2", reader.GetString(1));
                     Assert.IsFalse(reader.Read());
                 }
             }

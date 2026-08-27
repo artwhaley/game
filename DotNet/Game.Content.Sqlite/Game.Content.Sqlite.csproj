@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="SQLITE-SCHEMA-V1.sql" />
+    <EmbeddedResource Include="SQLITE-SCHEMA-V2.sql" />
   </ItemGroup>
 
 </Project>

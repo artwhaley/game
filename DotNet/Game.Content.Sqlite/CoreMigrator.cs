@@ -36,6 +36,10 @@ namespace TruthCardGame.Content.Sqlite
                         Execute(connection, transaction, statement);
                     }
 
+                    // Data transformation (migration 2) runs inside the same
+                    // transaction so DDL + row work commit or roll back together.
+                    migration.Callback?.Invoke(connection, transaction);
+
                     Execute(connection, transaction,
                         "INSERT INTO core_schema_migration (version, name, applied_utc) " +
                         "VALUES (@version, @name, @appliedUtc);",
