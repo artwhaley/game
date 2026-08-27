@@ -1,18 +1,17 @@
 using System;
 using System.IO;
 using Microsoft.Data.Sqlite;
+using TruthCardGame.Content.Samples;
 using TruthCardGame.Content.Sqlite;
 
 namespace TruthCardGame.Content.Sqlite.Tool
 {
     /// <summary>
-    /// Seeds the canonical Content/GameContent.db from SampleContent.
-    /// Usage: dotnet run --project DotNet/Game.Content.Sqlite.Tool [--db &lt;path&gt;]
-    ///
-    /// INTERIM Graph Workbench migration state: with the portable model on the v2
-    /// graph shape but the database still at schema v1, this tool runs migrations
-    /// only and reports that seeding returns in Ticket 04
-    /// (Docs/GraphWorkbench/05-implementation-map.md).
+    /// Seeds the canonical Content/GameContent.db from SampleContent (schema v2),
+    /// or upgrades an existing core database in place with --migrate.
+    /// Usage: dotnet run --project DotNet/Game.Content.Sqlite.Tool [--db &lt;path&gt;] [--migrate]
+    /// Default path is Content/GameContent.db relative to the working directory.
+    /// Seeding refuses to touch a database that already has core content.
     /// </summary>
     public static class Program
     {
@@ -21,9 +20,11 @@ namespace TruthCardGame.Content.Sqlite.Tool
             try
             {
                 var dbPath = DefaultDbPath();
-                for (var i = 0; i + 1 < args.Length; i++)
+                var migrateOnly = false;
+                for (var i = 0; i < args.Length; i++)
                 {
-                    if (args[i] == "--db") dbPath = args[i + 1];
+                    if (args[i] == "--db" && i + 1 < args.Length) dbPath = args[i + 1];
+                    if (args[i] == "--migrate") migrateOnly = true;
                 }
 
                 var fullPath = Path.GetFullPath(dbPath);
@@ -33,11 +34,17 @@ namespace TruthCardGame.Content.Sqlite.Tool
                 using (var connection = new SqliteConnection("Data Source=" + fullPath))
                 {
                     ConnectionInitializer.Initialize(connection);
-                    var version = CoreMigrator.EnsureSchema(connection);
-                    Console.WriteLine(
-                        $"Ensured core schema v{version} on '{fullPath}'. " +
-                        "Snapshot seeding is suspended until Graph Workbench Ticket 04 lands " +
-                        "(v2 schema migration + graph persistence).");
+                    if (migrateOnly)
+                    {
+                        var version = CoreMigrator.EnsureSchema(connection);
+                        Console.WriteLine($"Migrated '{fullPath}' in place (core schema v{version}).");
+                    }
+                    else
+                    {
+                        DatabaseInitializer.InitializeEmptyDatabaseFromSnapshot(connection, SampleContent.Create());
+                        var version = CoreMigrator.EnsureSchema(connection);
+                        Console.WriteLine($"Seeded '{fullPath}' (core schema v{version}) from SampleContent.");
+                    }
                 }
 
                 return 0;

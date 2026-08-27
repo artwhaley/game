@@ -2,16 +2,14 @@ using System;
 using System.IO;
 using Microsoft.Data.Sqlite;
 using NUnit.Framework;
+using TruthCardGame.Content;
 
 namespace TruthCardGame.Content.Sqlite.Tests
 {
     /// <summary>
     /// Guards the committed canonical Content/GameContent.db: it must always pass
-    /// SQLite integrity and foreign-key checks and be migrator-clean.
-    ///
-    /// INTERIM Graph Workbench state: full snapshot loading re-enters this test in
-    /// Ticket 04 together with the v2 loader; only the storage-integrity portion is
-    /// meaningful while the portable model is ahead of the schema.
+    /// SQLite integrity and foreign-key checks, be migrator-clean, and load
+    /// through the v2 snapshot loader without losing structural content.
     /// </summary>
     [TestFixture]
     public class CanonicalDatabaseTests
@@ -19,11 +17,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
         [Test]
         public void CanonicalDatabase_PassesIntegrityChecks()
         {
-            var path = Environment.GetEnvironmentVariable("SQLITE_CANONICAL_DB");
-            if (string.IsNullOrEmpty(path))
-            {
-                path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Content", "GameContent.db"));
-            }
+            var path = CanonicalPath();
             Assert.That(File.Exists(path), Is.True, "Canonical DB missing at " + path);
 
             using (var connection = new SqliteConnection("Data Source=" + path + ";Mode=ReadOnly"))
@@ -44,6 +38,71 @@ namespace TruthCardGame.Content.Sqlite.Tests
                     }
                 }
             }
+        }
+
+        [Test]
+        public void CanonicalDatabase_IsMigrationV2()
+        {
+            using (var connection = new SqliteConnection("Data Source=" + CanonicalPath() + ";Mode=ReadOnly"))
+            {
+                connection.Open();
+
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandText = "SELECT MAX(version) FROM core_schema_migration;";
+                    Assert.AreEqual(2L, command.ExecuteScalar(), "canonical DB must be at core schema v2");
+                }
+
+                // v1 slot structures must be emptied by migration 2.
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandText = "SELECT COUNT(*) FROM phase_slot;";
+                    Assert.AreEqual(0L, command.ExecuteScalar(), "canonical DB must have no PhaseSlot rows");
+                }
+            }
+        }
+
+        [Test]
+        public void CanonicalDatabase_LoadsThroughV2Loader()
+        {
+            using (var connection = new SqliteConnection("Data Source=" + CanonicalPath() + ";Mode=ReadOnly"))
+            {
+                connection.Open();
+                var content = GameContentSnapshotLoader.Load(connection);
+
+                Assert.Greater(content.Sessions.Count, 0, "sessions survived the migration");
+                Assert.Greater(content.Phases.Count, 0, "phases survived the migration");
+                Assert.Greater(content.Cards.Count, 0, "cards survived the migration");
+                Assert.Greater(content.Deck.CardIds.Count, 0, "deck survived the migration");
+
+                foreach (var session in content.Sessions)
+                {
+                    Assert.Greater(session.Graph.Nodes.Count, 0, $"session '{session.Id}' gained a graph");
+                    Assert.Greater(session.Graph.Edges.Count, 0, $"session '{session.Id}' gained edges");
+                }
+
+                foreach (var phase in content.Phases)
+                {
+                    Assert.Greater(phase.Graph.Nodes.Count, 0, $"phase '{phase.Id}' gained a graph");
+                    Assert.Greater(phase.Exits.Count, 0, $"phase '{phase.Id}' gained exits");
+                }
+
+                foreach (var card in content.Cards)
+                {
+                    Assert.IsNotNull(card.Sequence, $"card '{card.Id}' owns an action sequence");
+                    Assert.Greater(card.Sequence.Instances.Count, 0, $"card '{card.Id}' has at least the default progress instance");
+                }
+            }
+        }
+
+        private static string CanonicalPath()
+        {
+            var path = Environment.GetEnvironmentVariable("SQLITE_CANONICAL_DB");
+            if (string.IsNullOrEmpty(path))
+            {
+                path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Content", "GameContent.db"));
+            }
+            return path;
         }
     }
 }

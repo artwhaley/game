@@ -383,7 +383,10 @@ namespace TruthCardGame.Content.Sqlite
                             $"Migration2Transform: choice action '{actionId}' has no subtype row.");
                     }
 
-                    InsertInstanceRow(connection, transaction, instanceId, sequenceId, ordinal, actionType, isBlocking == 1);
+                    // The v1 discriminator 'choice' is replaced by the v2
+                    // prompt_choice key; the instance row must carry the v2 key
+                    // so the v2 loader can read it back.
+                    InsertInstanceRow(connection, transaction, instanceId, sequenceId, ordinal, ActionType.PromptChoiceV2, isBlocking == 1);
                     Execute(connection, transaction,
                         "INSERT INTO action_instance_prompt_choice (action_instance_id, prompt) VALUES (@i, @prompt);",
                         Param("i", instanceId), Param("prompt", prompt));

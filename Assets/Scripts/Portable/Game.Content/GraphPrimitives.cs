@@ -45,6 +45,13 @@ namespace TruthCardGame.Content
         /// as one authored unit.
         /// </summary>
         public string SessionGotoActionInstanceId { get; set; } = "";
+
+        /// <summary>
+        /// Optional display label persisted with the socket (session_goto sockets
+        /// render their instance's label here). PhaseExit sockets derive their shown
+        /// name live from the referenced exit and leave this empty.
+        /// </summary>
+        public string Label { get; set; } = "";
     }
 
     /// <summary>

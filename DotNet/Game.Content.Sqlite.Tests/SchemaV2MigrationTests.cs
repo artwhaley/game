@@ -67,14 +67,24 @@ namespace TruthCardGame.Content.Sqlite.Tests
             }
         }
 
-        // ---------- HARD gate: migrate a copy of the real canonical DB ----------
+        // ---------- HARD gate: migrate a copy of the v1-era canonical DB ----------
+
+        /// <summary>
+        /// The live canonical DB is migration-v2 since Ticket 04; these migration
+        /// proofs run against a preserved v1-era fixture of the same content so
+        /// the upgrade path stays tested end-to-end.
+        /// </summary>
+        private static string V1FixturePath()
+        {
+            return Path.GetFullPath(Path.Combine(
+                AppContext.BaseDirectory, "..", "..", "..", "..", "..", "DotNet", "Game.Content.Sqlite.Tests", "Fixtures", "GameContent-v1.db"));
+        }
 
         [Test]
         public void CanonicalCopy_MigratesToV2_AndPassesIntegrityChecks()
         {
-            var canonical = Path.GetFullPath(Path.Combine(
-                AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Content", "GameContent.db"));
-            Assume.That(File.Exists(canonical), Is.True, "canonical DB missing at " + canonical);
+            var canonical = V1FixturePath();
+            Assume.That(File.Exists(canonical), Is.True, "v1 fixture missing at " + canonical);
 
             File.Copy(canonical, _dbPath, overwrite: true);
 
@@ -110,8 +120,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
         [Test]
         public void CanonicalCopy_TransformsSampleContent_Exactly()
         {
-            var canonical = Path.GetFullPath(Path.Combine(
-                AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Content", "GameContent.db"));
+            var canonical = V1FixturePath();
             Assume.That(File.Exists(canonical), Is.True);
 
             File.Copy(canonical, _dbPath, overwrite: true);
@@ -165,8 +174,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
         [Test]
         public void LegacyRows_BehavePerPosture_SlotsCleared_OthersKept_UnknownHostUntouched()
         {
-            var canonical = Path.GetFullPath(Path.Combine(
-                AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Content", "GameContent.db"));
+            var canonical = V1FixturePath();
             Assume.That(File.Exists(canonical), Is.True);
 
             File.Copy(canonical, _dbPath, overwrite: true);

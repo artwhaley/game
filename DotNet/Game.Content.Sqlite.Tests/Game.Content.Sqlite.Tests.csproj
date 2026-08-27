@@ -15,19 +15,20 @@
   </ItemGroup>
 
   <!--
-    Ticket 02 interim (Docs/GraphWorkbench/05-implementation-map.md): the portable
-    model is on the v2 graph shape while the schema/loader/repositories are still
-    pre-Ticket-03/04. These suites exercise slot-era persistence surfaces that are
-    being replaced; they re-enter compilation as their replacements land:
-      - AuthoringRepositoryTests / HostExtensionSafetyTests -> Ticket 04 (v2 repos) + 03 (constraint tests)
-      - SnapshotRoundTripTests                              -> Ticket 04 (v2 loader)
-      - EngineIntegrationTests                              -> Ticket 09 (graph VM end-to-end)
+    Ticket 02 interim (Docs/GraphWorkbench/05-implementation-map.md): slot-era
+    suites awaiting their v2 replacements. AuthoringRepositoryTests was
+    rewritten for the v2 narrow repositories (Ticket 04); HostExtensionSafetyTests
+    remains excluded (v1 slot-era; the Graph Workbench stack has no
+    host-extension ticket), and EngineIntegrationTests returns with the graph
+    VM (Ticket 09).
   -->
   <ItemGroup>
-    <Compile Remove="AuthoringRepositoryTests.cs" />
     <Compile Remove="HostExtensionSafetyTests.cs" />
-    <Compile Remove="SnapshotRoundTripTests.cs" />
     <Compile Remove="EngineIntegrationTests.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Fixtures\GameContent-v1.db" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

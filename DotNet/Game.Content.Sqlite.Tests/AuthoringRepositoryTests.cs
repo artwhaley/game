@@ -1,14 +1,18 @@
 using System;
 using System.IO;
-using System.Linq;
 using Microsoft.Data.Sqlite;
 using NUnit.Framework;
 using TruthCardGame.Content;
 
 namespace TruthCardGame.Content.Sqlite.Tests
 {
+    /// <summary>
+    /// Ticket 04: the v2 narrow authoring repositories. Each test drives the
+    /// repository through its normal operation and reloads via the snapshot
+    /// loader (or direct SQL) to prove what actually persisted.
+    /// </summary>
     [TestFixture]
-    public class AuthoringRepositoryTests
+    public class AuthoringRepositoryTests : IDisposable
     {
         private string _dbPath;
         private SqliteConnection _connection;
@@ -16,14 +20,14 @@ namespace TruthCardGame.Content.Sqlite.Tests
         [SetUp]
         public void SetUp()
         {
-            _dbPath = Path.Combine(Path.GetTempPath(), "sqlite-authoring-" + Guid.NewGuid().ToString("N") + ".db");
+            _dbPath = Path.Combine(Path.GetTempPath(), "gwb-t04-repos-" + Guid.NewGuid().ToString("N") + ".db");
             _connection = new SqliteConnection("Data Source=" + _dbPath);
             ConnectionInitializer.Initialize(_connection);
             CoreMigrator.EnsureSchema(_connection);
         }
 
         [TearDown]
-        public void TearDown()
+        public void Dispose()
         {
             _connection.Dispose();
             SqliteConnection.ClearAllPools();
@@ -32,213 +36,236 @@ namespace TruthCardGame.Content.Sqlite.Tests
 
         private static string Id() => "id-" + Guid.NewGuid().ToString("N").Substring(0, 12);
 
+        // ---------- reference entities ----------
+
         [Test]
-        public void CreateEditReload_Session()
+        public void SessionType_CreateRenameList()
         {
-            var id = Id();
-            SessionRepository.Create(_connection, id, "Night One", new[] { "intense", "new" });
-            var created = SessionRepository.Get(_connection, id);
-            Assert.AreEqual("Night One", created.Title);
-            CollectionAssert.AreEqual(new[] { "intense", "new" }, created.Tags.ToArray());
+            SessionTypeRepository.Create(_connection, "type-test", "Test");
+            SessionTypeRepository.Rename(_connection, "type-test", "Renamed");
 
-            SessionRepository.UpdateTitle(_connection, id, "Night Two");
-            SessionRepository.ReplaceTags(_connection, id, new[] { "relaxing" });
-
-            var reloaded = SessionRepository.Get(_connection, id);
-            Assert.AreEqual("Night Two", reloaded.Title);
-            CollectionAssert.AreEqual(new[] { "relaxing" }, reloaded.Tags.ToArray());
+            var types = SessionTypeRepository.List(_connection);
+            var testType = types.Find(t => t.Id == "type-test");
+            Assert.IsNotNull(testType);
+            Assert.AreEqual("Renamed", testType.Title);
         }
 
         [Test]
-        public void SharedPhase_ReferencedByMultipleSlots_Survives()
+        public void Temperature_CreateUpdateList()
         {
-            var phaseId = Id();
-            PhaseRepository.Create(_connection, new PhaseDefinition { Id = phaseId, Title = "Warm Up", MinCards = 2, MaxCards = 3 });
-
-            var s1 = Id();
-            var s2 = Id();
-            SessionRepository.Create(_connection, s1, "S1", null);
-            SessionRepository.Create(_connection, s2, "S2", null);
-            var slot1 = Id();
-            var slot2 = Id();
-            PhaseSlotRepository.Create(_connection, s1, slot1, "Warmup");
-            PhaseSlotRepository.Create(_connection, s2, slot2, "Warmup");
-            PhaseSlotRepository.AddCandidate(_connection, slot1, Id(), phaseId);
-            PhaseSlotRepository.AddCandidate(_connection, slot2, Id(), phaseId);
-
-            var slotsOfS1 = SessionRepository.ListPhaseSlots(_connection, s1);
-            var slotsOfS2 = SessionRepository.ListPhaseSlots(_connection, s2);
-            Assert.AreEqual(phaseId, slotsOfS1[0].Candidates[0].PhaseId);
-            Assert.AreEqual(phaseId, slotsOfS2[0].Candidates[0].PhaseId);
-            Assert.AreEqual("Warm Up", PhaseRepository.Get(_connection, phaseId).Title);
-        }
-
-        [Test]
-        public void ReorderSlots_ProducesNewOrder_WithoutConstraintViolation()
-        {
-            var sessionId = Id();
-            SessionRepository.Create(_connection, sessionId, "S", null);
-            var a = Id();
-            var b = Id();
-            var c = Id();
-            PhaseSlotRepository.Create(_connection, sessionId, a, "A");
-            PhaseSlotRepository.Create(_connection, sessionId, b, "B");
-            PhaseSlotRepository.Create(_connection, sessionId, c, "C");
-
-            PhaseSlotRepository.Reorder(_connection, sessionId, new[] { c, a, b });
-
-            CollectionAssert.AreEqual(
-                new[] { c, a, b },
-                SessionRepository.ListPhaseSlots(_connection, sessionId).Select(s => s.Id).ToArray());
-        }
-
-        [Test]
-        public void ReorderCandidates_ProducesNewOrder()
-        {
-            var sessionId = Id();
-            SessionRepository.Create(_connection, sessionId, "S", null);
-            var slotId = Id();
-            PhaseSlotRepository.Create(_connection, sessionId, slotId, "Resolution");
-
-            var p1 = Id();
-            var p2 = Id();
-            var p3 = Id();
-            PhaseRepository.Create(_connection, new PhaseDefinition { Id = p1, Title = "P1" });
-            PhaseRepository.Create(_connection, new PhaseDefinition { Id = p2, Title = "P2" });
-            PhaseRepository.Create(_connection, new PhaseDefinition { Id = p3, Title = "P3" });
-            var c1 = Id();
-            var c2 = Id();
-            var c3 = Id();
-            PhaseSlotRepository.AddCandidate(_connection, slotId, c1, p1);
-            PhaseSlotRepository.AddCandidate(_connection, slotId, c2, p2);
-            PhaseSlotRepository.AddCandidate(_connection, slotId, c3, p3);
-
-            PhaseSlotRepository.ReorderCandidates(_connection, slotId, new[] { c3, c1, c2 });
-
-            CollectionAssert.AreEqual(
-                new[] { c3, c1, c2 },
-                PhaseSlotRepository.ListCandidates(_connection, slotId).Select(c => c.Id).ToArray());
-        }
-
-        [Test]
-        public void DeleteInUsePhase_IsBlocked_UnreferencedPhase_Deletes()
-        {
-            var inUse = Id();
-            var free = Id();
-            PhaseRepository.Create(_connection, new PhaseDefinition { Id = inUse, Title = "In Use" });
-            PhaseRepository.Create(_connection, new PhaseDefinition { Id = free, Title = "Free" });
-
-            var sessionId = Id();
-            SessionRepository.Create(_connection, sessionId, "S", null);
-            var slotId = Id();
-            PhaseSlotRepository.Create(_connection, sessionId, slotId, "Slot");
-            PhaseSlotRepository.AddCandidate(_connection, slotId, Id(), inUse);
-
-            var ex = Assert.Throws<InvalidOperationException>(() => PhaseRepository.Delete(_connection, inUse));
-            StringAssert.Contains("cannot be deleted", ex.Message);
-
-            PhaseRepository.Delete(_connection, free);
-            Assert.Throws<InvalidOperationException>(() => PhaseRepository.Get(_connection, free));
-        }
-
-        [Test]
-        public void DeleteSession_RemovesSlotsAndCandidates_ButNotPhases()
-        {
-            var sessionId = Id();
-            SessionRepository.Create(_connection, sessionId, "S", null);
-            var phaseId = Id();
-            PhaseRepository.Create(_connection, new PhaseDefinition { Id = phaseId, Title = "P" });
-            var slotId = Id();
-            PhaseSlotRepository.Create(_connection, sessionId, slotId, "Slot");
-            PhaseSlotRepository.AddCandidate(_connection, slotId, Id(), phaseId);
-
-            SessionRepository.Delete(_connection, sessionId);
-
-            Assert.IsEmpty(SessionRepository.ListPhaseSlots(_connection, sessionId));
-            Assert.AreEqual("P", PhaseRepository.Get(_connection, phaseId).Title);
-        }
-
-        [Test]
-        public void Phase_TagReplacement_IsTransactionalAndOrdered()
-        {
-            var phaseId = Id();
-            PhaseRepository.Create(_connection, new PhaseDefinition
+            TemperatureRepository.Create(_connection, new TemperatureDefinition
             {
-                Id = phaseId,
-                Title = "P",
-                MinCards = 2,
-                MaxCards = 4,
-                MustIncludeTags = { "solo", "truth" }
+                Id = "temp-test",
+                Title = "Tension",
+                MinValue = 0f,
+                MaxValue = 10f,
+                DefaultValue = 5f,
+            });
+            TemperatureRepository.Update(_connection, new TemperatureDefinition
+            {
+                Id = "temp-test",
+                Title = "Tension II",
+                MinValue = 0f,
+                MaxValue = 20f,
+                DefaultValue = 7f,
             });
 
-            PhaseRepository.ReplaceMustIncludeTags(_connection, phaseId, new[] { "party", "dare", "solo" });
-
-            var reloaded = PhaseRepository.Get(_connection, phaseId);
-            CollectionAssert.AreEqual(new[] { "party", "dare", "solo" }, reloaded.MustIncludeTags.ToArray());
+            var temperatures = TemperatureRepository.List(_connection);
+            var updated = temperatures.Find(t => t.Id == "temp-test");
+            Assert.IsNotNull(updated);
+            Assert.AreEqual("Tension II", updated.Title);
+            Assert.AreEqual(20f, updated.MaxValue);
+            Assert.AreEqual(7f, updated.DefaultValue);
         }
 
-        [Test]
-        public void Ids_ArePreserved_AcrossCreateAndReload()
-        {
-            var sessionId = "session-preserve-1";
-            var slotId = "slot-preserve-1";
-            var candidateId = "candidate-preserve-1";
-            var phaseId = "phase-preserve-1";
-
-            PhaseRepository.Create(_connection, new PhaseDefinition { Id = phaseId, Title = "P" });
-            SessionRepository.Create(_connection, sessionId, "S", null);
-            PhaseSlotRepository.Create(_connection, sessionId, slotId, "Slot");
-            PhaseSlotRepository.AddCandidate(_connection, slotId, candidateId, phaseId);
-
-            // Get() returns the session row + tags (slots load via ListPhaseSlots).
-            Assert.AreEqual("S", SessionRepository.Get(_connection, sessionId).Title);
-            var slots = SessionRepository.ListPhaseSlots(_connection, sessionId);
-            Assert.AreEqual(slotId, slots[0].Id);
-            Assert.AreEqual(candidateId, slots[0].Candidates[0].Id);
-            Assert.AreEqual(phaseId, slots[0].Candidates[0].PhaseId);
-        }
+        // ---------- phase graph ----------
 
         [Test]
-        public void FakeUnityExtensionRow_SurvivesUnrelatedEdits()
+        public void PhaseGraph_ReplaceGraph_CascadesAndRewrites()
         {
-            Execute("CREATE TABLE unity_fake_extension (id TEXT PRIMARY KEY, payload TEXT NOT NULL);");
-            Execute("INSERT INTO unity_fake_extension (id, payload) VALUES ('b1', 'binding');");
-
-            var sessionId = Id();
-            SessionRepository.Create(_connection, sessionId, "S", new[] { "intense" });
-            SessionRepository.ReplaceTags(_connection, sessionId, new[] { "relaxing" });
             var phaseId = Id();
-            PhaseRepository.Create(_connection, new PhaseDefinition { Id = phaseId, Title = "P", MustIncludeTags = { "solo" } });
-            PhaseRepository.ReplaceMustExcludeTags(_connection, phaseId, new[] { "dare" });
-            var slotId = Id();
-            PhaseSlotRepository.Create(_connection, sessionId, slotId, "Slot");
-            PhaseSlotRepository.Reorder(_connection, sessionId, new[] { slotId });
-            SessionRepository.Delete(_connection, sessionId);
+            Sql.Execute(_connection, null,
+                "INSERT INTO phase (id, title, min_cards, max_cards) VALUES (@id, 'P', 0, 0);",
+                ("id", phaseId));
 
-            using (var command = _connection.CreateCommand())
-            {
-                command.CommandText = "SELECT payload FROM unity_fake_extension WHERE id = 'b1';";
-                Assert.AreEqual("binding", command.ExecuteScalar());
-            }
+            var firstGraph = new PhaseGraphDefinition();
+            var entry = new PhaseEntryNodeDefinition { Id = $"pn-{phaseId}-entry" };
+            entry.Outputs.Add(new GraphOutputDefinition { Id = $"pn-{phaseId}-entry-out", Kind = GraphPortKind.Normal });
+            firstGraph.Nodes.Add(entry);
+
+            PhaseGraphRepository.ReplaceGraph(_connection, phaseId, firstGraph);
+            Assert.AreEqual(1L, Scalar("SELECT COUNT(*) FROM phase_graph_node WHERE phase_id=@p;", phaseId));
+            Assert.AreEqual(1L, Scalar("SELECT COUNT(*) FROM phase_node_output WHERE node_id=@p;", $"pn-{phaseId}-entry"));
+
+            // Replace with an empty graph: node + socket + edges must cascade away.
+            PhaseGraphRepository.ReplaceGraph(_connection, phaseId, new PhaseGraphDefinition());
+            Assert.AreEqual(0L, Scalar("SELECT COUNT(*) FROM phase_graph_node WHERE phase_id=@p;", phaseId));
+            Assert.AreEqual(0L, Scalar("SELECT COUNT(*) FROM phase_node_output WHERE node_id=@p;", $"pn-{phaseId}-entry"));
         }
 
         [Test]
-        public void StableIds_AreNonEmptyAndUnique()
+        public void PhaseGraph_AddRemoveEdge_AndRemoveNode()
         {
-            var a = StableIds.New();
-            var b = StableIds.New();
-            Assert.IsNotEmpty(a);
-            Assert.IsNotEmpty(b);
-            Assert.AreNotEqual(a, b);
+            var phaseId = Id();
+            Sql.Execute(_connection, null,
+                "INSERT INTO phase (id, title, min_cards, max_cards) VALUES (@id, 'P', 0, 0);",
+                ("id", phaseId));
+
+            var entry = new PhaseEntryNodeDefinition { Id = $"pn-{phaseId}-entry" };
+            entry.Outputs.Add(new GraphOutputDefinition { Id = $"pn-{phaseId}-entry-out", Kind = GraphPortKind.Normal });
+            var executor = new CardExecutorNodeDefinition { Id = $"pn-{phaseId}-exec" };
+            var graph = new PhaseGraphDefinition();
+            graph.Nodes.Add(entry);
+            graph.Nodes.Add(executor);
+            PhaseGraphRepository.ReplaceGraph(_connection, phaseId, graph);
+
+            var edge = new GraphEdgeDefinition
+            {
+                Id = $"pe-{phaseId}-x",
+                SourceOutputId = $"pn-{phaseId}-entry-out",
+                TargetNodeId = $"pn-{phaseId}-exec",
+            };
+            PhaseGraphRepository.AddEdge(_connection, phaseId, edge);
+            Assert.AreEqual(1L, Scalar("SELECT COUNT(*) FROM phase_graph_edge WHERE id=@p;", edge.Id));
+
+            PhaseGraphRepository.RemoveEdge(_connection, edge.Id);
+            Assert.AreEqual(0L, Scalar("SELECT COUNT(*) FROM phase_graph_edge WHERE id=@p;", edge.Id));
+
+            PhaseGraphRepository.RemoveNode(_connection, phaseId, executor.Id);
+            Assert.AreEqual(0L, Scalar("SELECT COUNT(*) FROM phase_graph_node WHERE id=@p;", executor.Id));
         }
 
-        private void Execute(string sql)
+        // ---------- session graph ----------
+
+        [Test]
+        public void SessionGraph_ReplaceGraph_RoundTripsThroughLoader()
+        {
+            var sessionId = Id();
+            SessionTypeRepository.Create(_connection, "type-s", "Standard");
+            Sql.Execute(_connection, null,
+                "INSERT INTO session (id, title, session_type_id) VALUES (@id, 'S', 'type-s');",
+                ("id", sessionId));
+
+            var graph = new SessionGraphDefinition();
+            var start = new SessionStartNodeDefinition { Id = $"sn-{sessionId}-start" };
+            start.Outputs.Add(new GraphOutputDefinition { Id = $"sn-{sessionId}-start-out", Kind = GraphPortKind.Normal });
+            var end = new SessionEndNodeDefinition { Id = $"sn-{sessionId}-end" };
+            graph.Nodes.Add(start);
+            graph.Nodes.Add(end);
+            graph.Edges.Add(new GraphEdgeDefinition
+            {
+                Id = $"se-{sessionId}-1",
+                SourceOutputId = $"sn-{sessionId}-start-out",
+                TargetNodeId = end.Id,
+            });
+
+            SessionGraphRepository.ReplaceGraph(_connection, sessionId, graph);
+
+            var loaded = GameContentSnapshotLoader.Load(_connection);
+            var session = loaded.Sessions.Find(s => s.Id == sessionId);
+            Assert.IsNotNull(session);
+            Assert.AreEqual(2, session.Graph.Nodes.Count);
+            Assert.AreEqual(1, session.Graph.Edges.Count);
+        }
+
+        // ---------- action sequences / cards ----------
+
+        [Test]
+        public void ActionSequence_SaveExistsDelete()
+        {
+            var sequence = new ActionSequenceDefinition
+            {
+                Id = "seq-repo-1",
+                Instances =
+                {
+                    new StatIncreaseInstanceDefinition { Id = "inst-repo-1", StatKey = "courage", Amount = 2f },
+                    new DebugInstanceDefinition { Id = "inst-repo-2", Message = "hello" },
+                },
+            };
+
+            ActionSequenceRepository.Save(_connection, sequence);
+            Assert.IsTrue(ActionSequenceRepository.Exists(_connection, "seq-repo-1"));
+            Assert.AreEqual(2L, Scalar("SELECT COUNT(*) FROM action_instance WHERE action_sequence_id=@p;", "seq-repo-1"));
+
+            ActionSequenceRepository.Delete(_connection, "seq-repo-1");
+            Assert.IsFalse(ActionSequenceRepository.Exists(_connection, "seq-repo-1"));
+            Assert.AreEqual(0L, Scalar("SELECT COUNT(*) FROM action_instance WHERE action_sequence_id=@p;", "seq-repo-1"));
+        }
+
+        [Test]
+        public void Card_CreateWithOwnedSequence_LoadsWithDefaultProgress()
+        {
+            var cardId = Id();
+            var card = new CardDefinition
+            {
+                Id = cardId,
+                Title = "Repo Card",
+                Tags = { "truth" },
+                Sequence = new ActionSequenceDefinition
+                {
+                    Id = $"cseq-{cardId}",
+                    Instances =
+                    {
+                        new IncrementProgressInstanceDefinition { Id = $"inst-{cardId}-progress", Amount = 10f },
+                    },
+                },
+            };
+
+            CardRepository.Create(_connection, card);
+
+            var loaded = GameContentSnapshotLoader.Load(_connection);
+            var reloaded = loaded.Cards.Find(c => c.Id == cardId);
+            Assert.IsNotNull(reloaded);
+            Assert.AreEqual("Repo Card", reloaded.Title);
+            CollectionAssert.AreEqual(new[] { "truth" }, reloaded.Tags);
+            Assert.AreEqual(1, reloaded.Sequence.Instances.Count);
+            Assert.AreEqual(10f, ((IncrementProgressInstanceDefinition)reloaded.Sequence.Instances[0]).Amount);
+        }
+
+        [Test]
+        public void Card_CreateWithoutSequence_IsRejected()
+        {
+            var card = new CardDefinition { Id = Id(), Title = "Broken" };
+            Assert.Throws<InvalidOperationException>(() => CardRepository.Create(_connection, card));
+        }
+
+        // ---------- phase exits ----------
+
+        [Test]
+        public void PhaseExit_CreateListDelete()
+        {
+            var phaseId = Id();
+            Sql.Execute(_connection, null,
+                "INSERT INTO phase (id, title, min_cards, max_cards) VALUES (@id, 'P', 0, 0);",
+                ("id", phaseId));
+
+            PhaseExitRepository.Create(_connection, phaseId, new PhaseExitDefinition { Id = $"px-{phaseId}-done", Name = "Complete" }, 0);
+            PhaseExitRepository.Create(_connection, phaseId, new PhaseExitDefinition { Id = $"px-{phaseId}-fail", Name = "Fail" }, 1);
+
+            var exits = PhaseExitRepository.List(_connection, phaseId);
+            Assert.AreEqual(2, exits.Count);
+            Assert.AreEqual("Complete", exits[0].Name);
+            Assert.AreEqual("Fail", exits[1].Name);
+
+            PhaseExitRepository.Delete(_connection, $"px-{phaseId}-fail");
+            exits = PhaseExitRepository.List(_connection, phaseId);
+            Assert.AreEqual(1, exits.Count);
+        }
+
+        // ---------- helpers ----------
+
+        private object Scalar(string sql, string parameterValue)
         {
             using (var command = _connection.CreateCommand())
             {
                 command.CommandText = sql;
-                command.ExecuteNonQuery();
+                var parameter = command.CreateParameter();
+                parameter.ParameterName = "@p";
+                parameter.Value = parameterValue;
+                command.Parameters.Add(parameter);
+                return command.ExecuteScalar();
             }
         }
+
     }
 }

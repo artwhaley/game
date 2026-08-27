@@ -24,6 +24,25 @@ namespace TruthCardGame.Content.Sqlite
             }
         }
 
+        public static void QueryAll(DbConnection connection, string sql, Action<DbDataReader> visit, params (string Name, object Value)[] parameters)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = sql;
+                foreach (var parameter in parameters)
+                {
+                    var dbParameter = command.CreateParameter();
+                    dbParameter.ParameterName = parameter.Name;
+                    dbParameter.Value = parameter.Value ?? DBNull.Value;
+                    command.Parameters.Add(dbParameter);
+                }
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read()) visit(reader);
+                }
+            }
+        }
+
         /// <summary>
         /// Ensures a tag row exists for each name. Tag ids are the tag names
         /// themselves (name is UNIQUE), matching the initializer convention.
