@@ -6,23 +6,21 @@ using TruthCardGame.Content;
 namespace TruthCardGame.Core
 {
     /// <summary>
-    /// Session-run facade. INTERIM state of the Graph Workbench migration
-    /// (Docs/GraphWorkbench/05-implementation-map.md): content construction and
-    /// event surfaces exist so hosts keep compiling, while execution internals are
-    /// being replaced by the two-level graph VM.
-    ///
-    /// - Ticket 06 installs Temperatures / SessionSpawnOptions / PhaseRun RNG seams.
-    /// - Tickets 07-09 implement Phase-local stepping, GOTO/RETURN continuation,
-    ///   and session-graph decisions on top; this facade then forwards real
-    ///   semantics again and the advance methods stop throwing.
+    /// Session-run facade over the two-level graph VM. Tickets 07-09 replaced the
+    /// slot-era internals with the Phase VM + Session VM; this facade constructs
+    /// the session VM on first advance, forwards host events, and exposes the
+    /// one-card-per-request user-paced operation to hosts.
     /// </summary>
     public sealed class GameSessionEngine
     {
+        private readonly GameContentDefinition _content;
         private readonly ContentCatalog _catalog;
         private readonly SessionDefinition _session;
         private readonly CoreServices _services;
         private readonly BackgroundActionTracker _tracker;
+        private readonly PhaseRunRngFactory _rngFactory;
 
+        private SessionGraphVm _vm;
         private bool _busy;
 
         public Player Player { get; }
@@ -46,9 +44,11 @@ namespace TruthCardGame.Core
             if (string.IsNullOrEmpty(sessionId)) throw new ArgumentNullException(nameof(sessionId));
             _services = services ?? throw new ArgumentNullException(nameof(services));
 
+            _content = content;
             _catalog = new ContentCatalog(content);
             _session = _catalog.SessionById(sessionId);
             _tracker = new BackgroundActionTracker(_services.Log);
+            _rngFactory = new PhaseRunRngFactory();
             Player = new Player("Player");
             Temperatures = new TemperatureState(_catalog, spawn ?? SessionSpawnOptions.Default);
         }
@@ -72,9 +72,10 @@ namespace TruthCardGame.Core
         // ---------- the user-paced operation ----------
 
         /// <summary>
-        /// Advances at most one executed Card per request once the graph VM is in place.
-        /// Until Tickets 07-09 land it fails loudly instead of pretending progress:
-        /// no silent fake playback exists between the model and runtime tickets.
+        /// Advances at most one executed Card per request through the session VM:
+        /// prompts/decisions/cutscenes inside the step are awaited, and the VM is
+        /// driven until exactly one card executes or the session completes. Busy
+        /// requests are ignored; runtime content errors surface loudly.
         /// </summary>
         public async Task<AdvanceResult> AdvanceOneCardAsync(CancellationToken cancellationToken)
         {
@@ -89,15 +90,50 @@ namespace TruthCardGame.Core
             _busy = true;
             try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                throw new NotSupportedException(
-                    "Graph VM execution lands in Docs/GraphWorkbench tickets 07-09; " +
-                    "session '" + _session.Id + "' cannot be advanced yet.");
+                var vm = EnsureVm();
+                var context = new ActionExecutionContext(
+                    Player, _services, _catalog, Temperatures, null, ActionOwnerScope.All);
+
+                while (!vm.IsComplete)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var result = await vm.AdvanceAsync(context, cancellationToken);
+                    switch (result.Outcome)
+                    {
+                        case SessionAdvanceOutcome.CardExecuted:
+                            return new AdvanceResult(AdvanceResultKind.CardCompleted, result.Card);
+                        case SessionAdvanceOutcome.YieldedForCard:
+                            continue; // park at next card boundary and try again
+                        case SessionAdvanceOutcome.SessionCompleted:
+                            IsComplete = true;
+                            return new AdvanceResult(AdvanceResultKind.SessionCompleted);
+                        case SessionAdvanceOutcome.Error:
+                            throw new InvalidOperationException(
+                                $"Session '{_session.Id}' runtime error: " + result.ErrorMessage);
+                        default:
+                            throw new InvalidOperationException(
+                                $"Session '{_session.Id}' produced unknown outcome '{result.Outcome}'.");
+                    }
+                }
+
+                IsComplete = true;
+                return new AdvanceResult(AdvanceResultKind.SessionCompleted);
             }
             finally
             {
                 _busy = false;
             }
+        }
+
+        private SessionGraphVm EnsureVm()
+        {
+            if (_vm != null) return _vm;
+            _vm = new SessionGraphVm(_content, _session.Id, _services, _tracker, _rngFactory);
+            _vm.CardStarted += card => CardStarted?.Invoke(card);
+            _vm.CardFinished += card => CardFinished?.Invoke(card);
+            _vm.PhaseEntered += title => PhaseEntered?.Invoke(title);
+            _vm.SessionCompleted += () => SessionCompleted?.Invoke();
+            return _vm;
         }
     }
 }

@@ -17,7 +17,8 @@ namespace TruthCardGame.Core
     /// creates a fresh PhaseRun (even for the same Phase deeper on the stack);
     /// RETURN restores the exact saved frame (locus, PhaseRun, chain, card);
     /// temperatures are session-global and stay current across transfers;
-    /// EndSession clears the entire stack.
+    /// EndSession clears the entire stack. PhaseGoto and SessionGoto both land
+    /// in the same session-node enter path.
     /// </summary>
     public sealed class SessionGraphVm
     {
@@ -157,9 +158,7 @@ namespace TruthCardGame.Core
                 {
                     var frame = _pendingResume;
                     _pendingResume = null;
-                    var resumeResult = await _activePhaseVm.ResumeFromContinuationAsync(
-                        _activeRun, frame.GraphLocus, frame.Chain, context, cancellationToken);
-                    var resumed = await HandlePhaseResultAsync(resumeResult, context, cancellationToken);
+                    var resumed = await ResumeFrameAsync(frame, context, cancellationToken);
                     if (resumed != null) return resumed;
                 }
                 else if (_activeRun != null)
@@ -258,8 +257,27 @@ namespace TruthCardGame.Core
 
         private async Task EnterDecisionAsync(SessionDecisionNodeDefinition decision, ActionExecutionContext context, CancellationToken cancellationToken)
         {
-            throw new InvalidOperationException(
-                "SessionDecision nodes land in Ticket 09; content must not author them before then.");
+            if (decision.Options.Count > 3)
+            {
+                throw new InvalidOperationException(
+                    $"SessionDecision '{decision.Id}' has {decision.Options.Count} options; " +
+                    "the authoring contract allows at most 3.");
+            }
+
+            var selected = await PromptForSessionDecisionAsync(decision, context, cancellationToken);
+            if (selected != null && selected.Sequence != null && selected.Sequence.Instances.Count > 0)
+            {
+                var optionContext = SessionDecisionContext(context);
+                var optionResult = await _executor.ExecuteSequenceAsync(selected.Sequence, optionContext, cancellationToken);
+                if (optionResult.Transfer != ActionTransfer.None)
+                {
+                    await HandleTransferAsync(optionResult, context, cancellationToken);
+                    return;
+                }
+            }
+
+            _sessionNode = FollowNormal(decision);
+            SessionNodeChanged?.Invoke(_sessionNode.Id);
         }
 
         // ---------- transfer resolution ----------
@@ -346,11 +364,77 @@ namespace TruthCardGame.Core
             SessionNodeChanged?.Invoke(_sessionNode.Id);
         }
 
-        /// <summary>SessionGoto (Ticket 09 surface): transfer along the instance's own session output port.</summary>
+        /// <summary>
+        /// SessionGoto: valid only inside a SessionDecision option sequence. Push
+        /// the continuation (locus = the decision node, no PhaseRun), resolve the
+        /// instance's own unique session output socket, and transfer to whatever
+        /// session node that edge targets. If the target returns later, the
+        /// option sequence resumes at the next action, then the decision's common
+        /// normal edge is followed.
+        /// </summary>
         private async Task ResolveSessionGotoAsync(ActionExecutionResult transfer, ActionExecutionContext context, CancellationToken cancellationToken)
         {
-            throw new InvalidOperationException(
-                "SessionGoto lands in Ticket 09; content must not author it before then.");
+            if (!(_sessionNode is SessionDecisionNodeDefinition decision))
+            {
+                throw new InvalidOperationException(
+                    $"SessionGoto '{transfer.SessionGotoLabel}' fired with no active SessionDecision node.");
+            }
+
+            // Save the continuation BEFORE transferring: session-level frame.
+            _stack.Push(new ContinuationFrame(decision, null, transfer.Continuation, null));
+
+            var socket = FindSessionGotoSocket(decision, transfer.SessionGotoInstanceId);
+            if (socket == null)
+            {
+                throw new InvalidOperationException(
+                    $"SessionGoto '{transfer.SessionGotoLabel}' has no unique output socket " +
+                    $"on decision '{decision.Id}'.");
+            }
+
+            if (!_edgeFromOutput.TryGetValue(socket.Id, out var targetNodeId))
+            {
+                throw new InvalidOperationException(
+                    $"Unwired SessionGoto: socket '{socket.Id}' ('{transfer.SessionGotoLabel}') " +
+                    $"of decision '{decision.Id}' has no outgoing edge.");
+            }
+
+            _sessionNode = _nodesById[targetNodeId];
+            SessionNodeChanged?.Invoke(_sessionNode.Id);
+        }
+
+        /// <summary>
+        /// Resumes a saved frame after RETURN. Session-level frames (PhaseRun
+        /// null, locus a SessionDecision) resume the option chain in session
+        /// scope, then follow the decision's common normal edge. Phase-level
+        /// frames resume through the phase VM as before.
+        /// </summary>
+        private async Task<SessionAdvanceResult> ResumeFrameAsync(
+            ContinuationFrame frame, ActionExecutionContext context, CancellationToken cancellationToken)
+        {
+            if (frame.PhaseRun == null)
+            {
+                if (frame.Chain != null && frame.Chain.Count > 0)
+                {
+                    var optionContext = SessionDecisionContext(context);
+                    var chainResult = await _executor.ResumeChainAsync(frame.Chain, optionContext, cancellationToken);
+                    if (chainResult.Transfer != ActionTransfer.None)
+                    {
+                        await HandleTransferAsync(chainResult, context, cancellationToken);
+                        return null;
+                    }
+                }
+
+                if (frame.GraphLocus is SessionDecisionNodeDefinition decision)
+                {
+                    _sessionNode = FollowNormal(decision);
+                    SessionNodeChanged?.Invoke(_sessionNode.Id);
+                }
+                return null; // keep the session loop going
+            }
+
+            var resumeResult = await _activePhaseVm.ResumeFromContinuationAsync(
+                _activeRun, frame.GraphLocus, frame.Chain, context, cancellationToken);
+            return await HandlePhaseResultAsync(resumeResult, context, cancellationToken);
         }
 
         /// <summary>
@@ -364,9 +448,18 @@ namespace TruthCardGame.Core
         {
             var frame = _stack.Pop(); // throws on empty with a clear message
 
-            _activeRun = frame.PhaseRun;
-            _activePhaseVm = new PhaseGraphVm(_content, _catalog.PhaseById(frame.PhaseRun.PhaseId), _services, _tracker);
-            WirePhaseEvents(_activePhaseVm);
+            if (frame.PhaseRun == null)
+            {
+                // Session-level frame (SessionDecision option sequence).
+                _activeRun = null;
+                _activePhaseVm = null;
+            }
+            else
+            {
+                _activeRun = frame.PhaseRun;
+                _activePhaseVm = new PhaseGraphVm(_content, _catalog.PhaseById(frame.PhaseRun.PhaseId), _services, _tracker);
+                WirePhaseEvents(_activePhaseVm);
+            }
             _pendingResume = frame;
             return Task.CompletedTask;
         }
@@ -390,6 +483,50 @@ namespace TruthCardGame.Core
                 }
             }
             return null;
+        }
+
+        private GraphOutputDefinition FindSessionGotoSocket(SessionDecisionNodeDefinition decision, string instanceId)
+        {
+            foreach (var output in decision.Outputs)
+            {
+                if (output.Kind == GraphPortKind.SessionGoto && output.SessionGotoActionInstanceId == instanceId)
+                {
+                    return output;
+                }
+            }
+            return null;
+        }
+
+        private static ActionExecutionContext SessionDecisionContext(ActionExecutionContext baseContext)
+        {
+            return new ActionExecutionContext(
+                baseContext.Player,
+                baseContext.Services,
+                baseContext.Catalog,
+                baseContext.Temperatures,
+                null, // no PhaseRun at session level
+                ActionOwnerScope.SessionDecisionOptionSequence);
+        }
+
+        private async Task<SessionDecisionOptionDefinition> PromptForSessionDecisionAsync(
+            SessionDecisionNodeDefinition decision, ActionExecutionContext context, CancellationToken cancellationToken)
+        {
+            if (context.Services.Prompts == null)
+            {
+                _services.Log.Warning(
+                    $"SessionDecision '{decision.Id}' has no prompt service; continuing without a choice.");
+                return null;
+            }
+
+            var labels = new List<string>();
+            foreach (var option in decision.Options) labels.Add(option.Label);
+
+            var selectedIndex = await context.Services.Prompts.AskAsync(decision.Prompt, labels, cancellationToken);
+            if (selectedIndex == null || selectedIndex < 0 || selectedIndex >= decision.Options.Count)
+            {
+                return null;
+            }
+            return decision.Options[selectedIndex.Value];
         }
 
         private SessionStartNodeDefinition FindStart()

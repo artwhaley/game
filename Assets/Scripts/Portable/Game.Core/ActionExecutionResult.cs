@@ -52,7 +52,10 @@ namespace TruthCardGame.Core
         /// <summary>PhaseGoto target (PhaseExit stable id).</summary>
         public string PhaseExitId { get; set; } = "";
 
-        /// <summary>SessionGoto inline label (author-visible; socket matched at session level).</summary>
+        /// <summary>SessionGoto owning Action Instance id — the socket match key at session level.</summary>
+        public string SessionGotoInstanceId { get; set; } = "";
+
+        /// <summary>SessionGoto inline label (author-visible; for messages only).</summary>
         public string SessionGotoLabel { get; set; } = "";
 
         /// <summary>
@@ -69,9 +72,14 @@ namespace TruthCardGame.Core
             return new ActionExecutionResult { Transfer = ActionTransfer.PhaseGoto, PhaseExitId = exitId };
         }
 
-        public static ActionExecutionResult SessionGoto(string label)
+        public static ActionExecutionResult SessionGoto(string instanceId, string label)
         {
-            return new ActionExecutionResult { Transfer = ActionTransfer.SessionGoto, SessionGotoLabel = label };
+            return new ActionExecutionResult
+            {
+                Transfer = ActionTransfer.SessionGoto,
+                SessionGotoInstanceId = instanceId ?? "",
+                SessionGotoLabel = label ?? "",
+            };
         }
 
         public static readonly ActionExecutionResult ReturnTransfer = new ActionExecutionResult { Transfer = ActionTransfer.Return };

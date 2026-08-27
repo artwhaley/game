@@ -207,7 +207,7 @@ namespace TruthCardGame.Core
                 case PhaseGotoInstanceDefinition phaseGoto:
                     return ActionExecutionResult.PhaseGoto(phaseGoto.PhaseExitId);
                 case SessionGotoInstanceDefinition sessionGoto:
-                    return ActionExecutionResult.SessionGoto(sessionGoto.Label);
+                    return ActionExecutionResult.SessionGoto(sessionGoto.Id, sessionGoto.Label);
                 case ReturnInstanceDefinition returnInstance:
                     return ActionExecutionResult.ReturnTransfer;
                 case EndSessionInstanceDefinition endSession:

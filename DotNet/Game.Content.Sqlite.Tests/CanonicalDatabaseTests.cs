@@ -95,6 +95,34 @@ namespace TruthCardGame.Content.Sqlite.Tests
             }
         }
 
+        [Test]
+        public void CanonicalDatabase_PlaysThroughTheSessionVm()
+        {
+            // End-to-end: the WPF reference host path — load the canonical DB,
+            // run each session through the graph VM until it completes.
+            using (var connection = new SqliteConnection("Data Source=" + CanonicalPath() + ";Mode=ReadOnly"))
+            {
+                connection.Open();
+                var content = GameContentSnapshotLoader.Load(connection);
+
+                foreach (var session in content.Sessions)
+                {
+                    var services = new Core.CoreServices(new NoOpDelay());
+                    var engine = new Core.GameSessionEngine(content, session.Id, services);
+                    var guard = 0;
+                    while (!engine.IsComplete)
+                    {
+                        guard++;
+                        Assert.Less(guard, 500, $"session '{session.Id}' did not complete (loop guard)");
+                        var result = engine.AdvanceOneCardAsync(default).GetAwaiter().GetResult();
+                        Assert.That(result.Kind, Is.AnyOf(
+                            Core.AdvanceResultKind.CardCompleted,
+                            Core.AdvanceResultKind.SessionCompleted), $"session '{session.Id}' advanced cleanly");
+                    }
+                }
+            }
+        }
+
         private static string CanonicalPath()
         {
             var path = Environment.GetEnvironmentVariable("SQLITE_CANONICAL_DB");
@@ -103,6 +131,12 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Content", "GameContent.db"));
             }
             return path;
+        }
+
+        private sealed class NoOpDelay : Core.IGameDelay
+        {
+            public System.Threading.Tasks.Task DelayAsync(System.TimeSpan delay, System.Threading.CancellationToken cancellationToken)
+                => System.Threading.Tasks.Task.CompletedTask;
         }
     }
 }
