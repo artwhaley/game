@@ -75,7 +75,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     prompts: new PreviewPromptService(this),
                     cutscene: new PreviewCutsceneService(this));
 
-                _previewEngine = new GameSessionEngine(_previewContent, session.Id, services);
+                _previewEngine = new GameSessionEngine(_previewContent, session.Id, services, SpawnOptionsForRun());
                 SubscribePreviewVm(); // eager VM: wire the trace before the first advance
                 PreviewSessionLabel.Text = session.Title + "  (fresh snapshot)";
                 PreviewErrorText.Text = "";
@@ -120,7 +120,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     log: new PreviewLogSink(PreviewLog),
                     prompts: new PreviewPromptService(this),
                     cutscene: new PreviewCutsceneService(this));
-                _previewEngine = new GameSessionEngine(_previewContent, session.Id, services);
+                _previewEngine = new GameSessionEngine(_previewContent, session.Id, services, SpawnOptionsForRun());
                 SubscribePreviewVm();
                 PreviewErrorText.Text = "";
                 PreviewDrawButton.IsEnabled = false;
@@ -141,6 +141,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
             PreviewLog("Stopped.");
             ClearPreviewHighlights();
             RefreshPreviewState();
+        }
+
+        /// <summary>
+        /// Session start options (Ticket 20 spawn seam). Defaults today; a
+        /// future profile loader supplies TemperatureOverrides here.
+        /// </summary>
+        private static SessionSpawnOptions SpawnOptionsForRun()
+        {
+            return SessionSpawnOptions.Default;
         }
 
         private void StopPreview()

@@ -66,6 +66,17 @@ namespace TruthCardGame.ReferenceHost.Wpf
         }
 
         /// <summary>
+        /// Session start options (Ticket 20 spawn seam). Today this returns the
+        /// defaults (Happiness 50 when the content defines no default); a future
+        /// profile loader supplies SessionSpawnOptions.TemperatureOverrides here
+        /// from UserProfilePaths.ProfileDatabasePath().
+        /// </summary>
+        private static SessionSpawnOptions SpawnOptionsForRun()
+        {
+            return SessionSpawnOptions.Default;
+        }
+
+        /// <summary>
         /// Canonical DB location: an explicit --db &lt;path&gt; command-line
         /// argument, else the repo-relative dev path Content/GameContent.db.
         /// Never a hardcoded machine path.
@@ -104,7 +115,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     prompts: new UiPromptService(this),
                     cutscene: new UiCutsceneService(this));
 
-                _engine = new GameSessionEngine(_content, selected.Id, services);
+                _engine = new GameSessionEngine(_content, selected.Id, services, SpawnOptionsForRun());
 
                 SubscribeEngine();
 

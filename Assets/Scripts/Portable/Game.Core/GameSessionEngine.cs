@@ -60,13 +60,17 @@ namespace TruthCardGame.Core
             _catalog = new ContentCatalog(content);
             _session = _catalog.SessionById(sessionId);
             _tracker = new BackgroundActionTracker(_services.Log);
+            SpawnOptions = spawn ?? SessionSpawnOptions.Default;
             _rngFactory = rngFactory ?? new PhaseRunRngFactory();
             Player = new Player("Player");
-            Temperatures = new TemperatureState(_catalog, spawn ?? SessionSpawnOptions.Default);
+            Temperatures = new TemperatureState(_catalog, SpawnOptions);
             EnsureVm();
         }
 
         public ContentCatalog Catalog => _catalog;
+
+        /// <summary>The spawn options this engine was started with (Ticket 20 seam).</summary>
+        public SessionSpawnOptions SpawnOptions { get; }
 
         public string SessionId => _session.Id;
         public string SessionTitle => _session.Title;
