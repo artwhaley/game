@@ -724,13 +724,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void OnAddExit(object sender, RoutedEventArgs e)
         {
             if (_vm.SelectedPhase == null) return;
-            var (_, placements) = WithConnectionResult(connection =>
+            var (sessions, placements) = WithConnectionResult(connection =>
                 PhaseRepository.Usage(connection, _vm.SelectedPhase.Id));
             if (placements > 1)
             {
-                MessageBox.Show(this, "Add/delete exits requires placement count <= 1 " +
-                    "(this phase is used by more than one placement).",
-                    "Cannot Add Exit", MessageBoxButton.OK, MessageBoxImage.Warning);
+                // Port topology lock: offer Make Unique, then apply the add on the clone.
+                if (PromptSharedPortEdit(sessions, placements, (connection, newPhaseId) =>
+                {
+                    var exits = PhaseExitRepository.List(connection, newPhaseId);
+                    var ordinal = exits.Count;
+                    var exitId = "px-" + Guid.NewGuid().ToString("N").Substring(0, 12);
+                    PhaseExitRepository.Create(connection, newPhaseId,
+                        new PhaseExitDefinition { Id = exitId, Name = "Exit " + (ordinal + 1) }, ordinal);
+                    PhaseExitRepository.SyncProjectedSockets(connection, newPhaseId, exitId, ordinal);
+                })) return;
                 return;
             }
 
@@ -757,12 +764,18 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (!(sender is MenuItem menu) || !(menu.DataContext is ExitRowViewModel row)) return;
             if (_vm.SelectedPhase == null) return;
 
-            var (_, placements) = WithConnectionResult(connection =>
+            var (sessions, placements) = WithConnectionResult(connection =>
                 PhaseRepository.Usage(connection, _vm.SelectedPhase.Id));
             if (placements > 1)
             {
-                MessageBox.Show(this, "Add/delete exits requires placement count <= 1.",
-                    "Cannot Delete Exit", MessageBoxButton.OK, MessageBoxImage.Warning);
+                // Port topology lock: offer Make Unique, then apply the delete on the clone.
+                var exitName = row.Name;
+                if (PromptSharedPortEdit(sessions, placements, (connection, newPhaseId) =>
+                {
+                    var exits = PhaseExitRepository.List(connection, newPhaseId);
+                    var match = exits.Find(x => x.Name == exitName);
+                    if (match != null) PhaseExitRepository.Delete(connection, match.Id);
+                })) return;
                 return;
             }
 
@@ -792,6 +805,44 @@ namespace TruthCardGame.ReferenceHost.Wpf
             ReloadSessionEditor();
             ReloadPhaseEditor();
             StatusText.Text = "Deleted exit '" + row.Name + "' (projected socket + edge removed).";
+        }
+
+        /// <summary>
+        /// Shared-port topology lock popup (Ticket 17): changing a shared phase's
+        /// ports could break existing session graphs. Offers Make Unique (which
+        /// detaches the selected placement and applies the requested edit) or Cancel.
+        /// Returns true when the request was fully handled (either way).
+        /// </summary>
+        private bool PromptSharedPortEdit(int sessions, int placements, Action<SqliteConnection, string> applyExitEdit)
+        {
+            if (_vm.SessionGraph.SelectedNode?.Kind == "phase-reference")
+            {
+                var choice = MessageBox.Show(this,
+                    "This Phase is used in " + sessions + " session(s) / " + placements + " placement(s).\n" +
+                    "Changing its ports could break existing Session graphs.\n\n" +
+                    "[Make Unique] detaches the selected placement so it can own this edit.\n" +
+                    "[Cancel] leaves the shared phase untouched.",
+                    "Shared Phase Port Lock", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+                if (choice == MessageBoxResult.OK)
+                {
+                    // Make Unique receives a closure that reads the NEW phase id and
+                    // applies the requested edit to the clone (post-remap).
+                    MakeUniqueCurrentPlacement((connection, newPhaseId) =>
+                    {
+                        var exits = PhaseExitRepository.List(connection, newPhaseId);
+                        applyExitEdit(connection, newPhaseId);
+                    });
+                    StatusText.Text = "Placement made unique — the port edit was applied on the clone.";
+                }
+                return true;
+            }
+
+            MessageBox.Show(this,
+                "This Phase is used in " + sessions + " session(s) / " + placements + " placement(s).\n" +
+                "Select a PhaseReference placement in the Session canvas, then Make Unique " +
+                "to detach it before editing ports.",
+                "Shared Phase Port Lock", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return true;
         }
 
         /// <summary>
@@ -974,7 +1025,27 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void OnCopySession(object sender, RoutedEventArgs e)
         {
-            StatusText.Text = "Copy Session arrives with Ticket 17 (reuse/copy/make-unique).";
+            if (_vm.SelectedSession == null) return;
+            var source = _vm.SelectedSession;
+            var newId = "session-" + Guid.NewGuid().ToString("N").Substring(0, 12);
+            var clone = ContentCloner.CloneSession(source, newId, source.Title + " (copy)");
+            WithConnection(connection =>
+            {
+                ReuseWriter.WriteClonedSession(connection, clone.Session);
+                var layout = AuthoringLayoutRepository.LoadSessionNodePositions(connection, source.Id);
+                foreach (var pair in layout)
+                {
+                    if (clone.NodeIdMap.TryGetValue(pair.Key, out var newNodeId))
+                    {
+                        AuthoringLayoutRepository.SaveSessionNodePosition(connection, newId, newNodeId, pair.Value.X, pair.Value.Y);
+                    }
+                }
+            });
+
+            _vm.Content.Sessions.Add(clone.Session);
+            BindSessionList();
+            SessionList.SelectedItem = clone.Session;
+            StatusText.Text = "Copied session (Phase references stay shared — reuse is reuse).";
         }
 
         // ---------- palette actions (persisted authoring) ----------
@@ -1236,7 +1307,29 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void OnDuplicatePhase(object sender, RoutedEventArgs e)
         {
-            StatusText.Text = "Duplicate Phase arrives with Ticket 17 (reuse/copy/make-unique).";
+            if (_vm.SelectedPhase == null) return;
+            var source = _vm.SelectedPhase;
+            var newId = "phase-" + Guid.NewGuid().ToString("N").Substring(0, 12);
+            var clone = ContentCloner.ClonePhase(source, newId);
+            WithConnection(connection => ReuseWriter.WriteClonedPhase(connection, clone.Phase));
+
+            // Copy layout with remapped node ids.
+            WithConnection(connection =>
+            {
+                var layout = AuthoringLayoutRepository.LoadPhaseNodePositions(connection, source.Id);
+                foreach (var pair in layout)
+                {
+                    if (clone.NodeIdMap.TryGetValue(pair.Key, out var newNodeId))
+                    {
+                        AuthoringLayoutRepository.SavePhaseNodePosition(connection, newId, newNodeId, pair.Value.X, pair.Value.Y);
+                    }
+                }
+            });
+
+            _vm.Content.Phases.Add(clone.Phase);
+            BindPhaseList();
+            PhaseList.SelectedItem = clone.Phase;
+            StatusText.Text = "Duplicated phase — exits, graph, action instances and layout deep-cloned.";
         }
 
         private void OnShowSessions(object sender, RoutedEventArgs e)
@@ -1255,7 +1348,51 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void OnMakeUnique(object sender, RoutedEventArgs e)
         {
-            StatusText.Text = "Make Unique arrives with Ticket 17.";
+            MakeUniqueCurrentPlacement(applyExitEdit: null);
+        }
+
+        /// <summary>
+        /// Detaches the placement currently selected in the Session graph from its
+        /// shared Phase. Optionally applies a pending blocked exit edit (add/delete)
+        /// after the detach — the same authoring operation, one transaction.
+        /// </summary>
+        private void MakeUniqueCurrentPlacement(Action<SqliteConnection, string> applyExitEdit)
+        {
+            var placement = _vm.SessionGraph.SelectedNode;
+            if (placement == null || placement.Kind != "phase-reference" || string.IsNullOrEmpty(placement.RefId))
+            {
+                StatusText.Text = "Select a PhaseReference placement in the Session canvas first.";
+                return;
+            }
+            var sharedPhase = _vm.Content?.Phases.FirstOrDefault(p => p.Id == placement.RefId);
+            if (sharedPhase == null) { StatusText.Text = "Referenced phase not found."; return; }
+
+            var newId = "phase-" + Guid.NewGuid().ToString("N").Substring(0, 12);
+            var clone = ContentCloner.ClonePhase(sharedPhase, newId);
+
+            var editApplied = false;
+            WithConnection(connection =>
+            {
+                MakeUniqueRepository.MakeUnique(connection, sharedPhase, placement.Id, newId);
+                if (applyExitEdit != null)
+                {
+                    applyExitEdit(connection, newId);
+                    editApplied = true;
+                }
+            });
+
+            // Update the in-memory placement + content, then reload both canvases.
+            placement.RefId = newId;
+            _vm.Content.Phases.Add(clone.Phase);
+            BindPhaseList();
+            _vm.SelectPhaseById(newId);
+            _vm.PhaseGraph.HasPlacementContext = true;
+            SyncPhaseListSelection(newId);
+            ReloadSessionEditor();
+            ReloadPhaseEditor();
+            UpdatePhaseHeader();
+            StatusText.Text = "Made unique — placement now owns its own phase clone" +
+                (editApplied ? ", then applied the requested exit edit." : ".");
         }
 
         // ---------- drag a Phase from the Library onto the Session canvas ----------

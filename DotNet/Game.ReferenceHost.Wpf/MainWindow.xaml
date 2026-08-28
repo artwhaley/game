@@ -204,8 +204,8 @@
                                         Style="{StaticResource DarkButton}" ToolTip="Create a new empty session"/>
                                 <Button Content="Delete" Click="OnDeleteSession" Padding="6,1" Margin="0,0,3,0"
                                         Style="{StaticResource DarkButton}" ToolTip="Delete the selected session (cascades its graph)"/>
-                                <Button Content="Copy" Click="OnCopySession" Padding="6,1" IsEnabled="False"
-                                        Style="{StaticResource DarkButton}" ToolTip="Copy session (Ticket 17)"/>
+                                <Button Content="Copy" Click="OnCopySession" Padding="6,1"
+                                        Style="{StaticResource DarkButton}" ToolTip="Deep-clone the selected session (new ids; Phase references stay shared)"/>
                             </StackPanel>
                             <TextBox x:Name="SessionFilter" Style="{StaticResource DarkTextBox}" Margin="0,4,0,0"
                                      Padding="3,1" TextChanged="OnSessionFilterChanged" ToolTip="Filter sessions by title"/>
@@ -224,8 +224,8 @@
                                         Style="{StaticResource DarkButton}" ToolTip="Create a new empty phase"/>
                                 <Button Content="Delete" Click="OnDeletePhase" Padding="6,1" Margin="0,0,3,0"
                                         Style="{StaticResource DarkButton}" ToolTip="Delete the selected phase (blocked while referenced)"/>
-                                <Button Content="Duplicate" Click="OnDuplicatePhase" Padding="6,1" IsEnabled="False"
-                                        Style="{StaticResource DarkButton}" ToolTip="Duplicate phase (Ticket 17)"/>
+                                <Button Content="Duplicate" Click="OnDuplicatePhase" Padding="6,1"
+                                        Style="{StaticResource DarkButton}" ToolTip="Deep-clone the selected phase (new ids; Resources stay shared)"/>
                             </StackPanel>
                             <TextBox x:Name="PhaseFilter" Style="{StaticResource DarkTextBox}" Margin="0,4,0,0"
                                      Padding="3,1" TextChanged="OnPhaseFilterChanged" ToolTip="Filter phases by title"/>
