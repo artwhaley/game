@@ -200,11 +200,12 @@ namespace TruthCardGame.Content.Sqlite.Tests
         public void Card_CreateWithOwnedSequence_LoadsWithDefaultProgress()
         {
             var cardId = Id();
+            CatalogRepositories.CreateCardTag(_connection, new CardTagDefinition { Id = "tag-truth", Title = "Truth" });
             var card = new CardDefinition
             {
                 Id = cardId,
                 Title = "Repo Card",
-                Tags = { "truth" },
+                CardTagIds = { "tag-truth" },
                 Sequence = new ActionSequenceDefinition
                 {
                     Id = $"cseq-{cardId}",
@@ -221,7 +222,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
             var reloaded = loaded.Cards.Find(c => c.Id == cardId);
             Assert.IsNotNull(reloaded);
             Assert.AreEqual("Repo Card", reloaded.Title);
-            CollectionAssert.AreEqual(new[] { "truth" }, reloaded.Tags);
+            CollectionAssert.AreEqual(new[] { "tag-truth" }, reloaded.CardTagIds);
             Assert.AreEqual(1, reloaded.Sequence.Instances.Count);
             Assert.AreEqual(10f, ((IncrementProgressInstanceDefinition)reloaded.Sequence.Instances[0]).Amount);
         }

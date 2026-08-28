@@ -85,14 +85,11 @@ namespace TruthCardGame.Content.Sqlite.Tests
             SessionGraphRepository.AddEdge(_connection, "s1", new GraphEdgeDefinition { Id = "se2", SourceOutputId = "sn-ref-out", TargetNodeId = "sn-end" });
 
             // --- a card that yields +10 progress per draw ---
+            // (v5: no deck — the CardExecutor draws from the whole catalog
+            // through the eligibility/weighting pipeline.)
             var card = new CardDefinition { Id = "c1", Title = "Push" };
             card.Sequence = new ActionSequenceDefinition { Id = "c1-seq" };
             card.Sequence.Instances.Add(new IncrementProgressInstanceDefinition { Id = "c1-inc", Amount = 10f });
-            Sql.Execute(_connection, null,
-                "INSERT INTO card_deck (id, title) VALUES ('deck', 'Deck');");
-            Sql.Execute(_connection, null,
-                "INSERT INTO card (id, title, action_sequence_id) VALUES (@id, @title, @seq);",
-                ("id", card.Id), ("title", card.Title), ("seq", "c1-seq"));
             Sql.Execute(_connection, null,
                 "INSERT INTO action_sequence (id) VALUES (@id);", ("id", "c1-seq"));
             Sql.Execute(_connection, null,
@@ -103,7 +100,8 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 "INSERT INTO action_instance_increment_progress (action_instance_id, amount) VALUES (@i, 10);",
                 ("i", "c1-inc"));
             Sql.Execute(_connection, null,
-                "INSERT INTO card_deck_card (deck_id, ordinal, card_id) VALUES ('deck', 0, @id);", ("id", card.Id));
+                "INSERT INTO card (id, title, action_sequence_id) VALUES (@id, @title, @seq);",
+                ("id", card.Id), ("title", card.Title), ("seq", "c1-seq"));
 
             // --- DB -> snapshot -> real Core engine, to completion ---
             var content = GameContentSnapshotLoader.Load(_connection);

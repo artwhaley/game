@@ -28,7 +28,6 @@ namespace TruthCardGame.Core
         public ContentCatalog(GameContentDefinition content)
         {
             if (content == null) throw new ArgumentNullException(nameof(content));
-            if (content.Deck == null) throw new InvalidOperationException("ContentCatalog: content.Deck must not be null.");
 
             _sessions = Index(content.Sessions, "Session", s => s.Id);
             _phases = Index(content.Phases, "Phase", p => p.Id);

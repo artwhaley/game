@@ -53,18 +53,21 @@ namespace TruthCardGame.Content.Sqlite.Tests
         }
 
         [Test]
-        public void CreateRenameTags_AndLoaderRoundTrip()
+        public void CreateRenameCardQuery_AndLoaderRoundTrip()
         {
             PhaseRepository.Create(_connection, "p1", "Cold Start");
-            PhaseRepository.ReplaceRequiredTags(_connection, "p1", new[] { "cold", "opening" });
-            PhaseRepository.ReplaceExcludedTags(_connection, "p1", new[] { "boss" });
+            CatalogRepositories.CreateCardTag(_connection, new CardTagDefinition { Id = "tag-cold", Title = "Cold" });
+            CatalogRepositories.CreateCardTag(_connection, new CardTagDefinition { Id = "tag-opening", Title = "Opening" });
+            CatalogRepositories.CreateCardTag(_connection, new CardTagDefinition { Id = "tag-boss", Title = "Boss" });
+            PhaseRepository.ReplaceCardQuery(_connection, "p1",
+                new[] { "tag-cold", "tag-opening" }, new[] { "tag-boss" });
 
             var content = GameContentSnapshotLoader.Load(_connection);
             var phase = content.Phases.Find(p => p.Id == "p1");
             Assert.IsNotNull(phase);
             Assert.AreEqual("Cold Start", phase.Title);
-            CollectionAssert.AreEqual(new[] { "cold", "opening" }, phase.MustIncludeTags);
-            CollectionAssert.AreEqual(new[] { "boss" }, phase.MustExcludeTags);
+            CollectionAssert.AreEqual(new[] { "tag-cold", "tag-opening" }, phase.MustHaveAllCardTags);
+            CollectionAssert.AreEqual(new[] { "tag-boss" }, phase.MustHaveAnyCardTags);
         }
 
         [Test]

@@ -172,17 +172,19 @@ namespace TruthCardGame.Content.Sqlite.Tests
             Assert.AreEqual(expected.SessionTypes.Count, actual.SessionTypes.Count, "session types");
             Assert.AreEqual(expected.Temperatures.Count, actual.Temperatures.Count, "temperatures");
             Assert.AreEqual(expected.Resources.Count, actual.Resources.Count, "resources");
-            CollectionAssert.AreEqual(expected.Deck.CardIds, actual.Deck.CardIds, "deck order");
-
-            CollectionAssert.AreEquivalent(
-                KeysOf(expected.Cards), KeysOf(actual.Cards), "card ids preserved");
+            Assert.AreEqual(expected.CardTagDefinitions.Count, actual.CardTagDefinitions.Count, "card tags");
+            Assert.AreEqual(expected.Cards.Count, actual.Cards.Count, "cards");
 
             foreach (var expectedCard in expected.Cards)
             {
                 var actualCard = actual.Cards.Find(c => c.Id == expectedCard.Id);
                 Assert.IsNotNull(actualCard);
                 Assert.AreEqual(expectedCard.Title, actualCard.Title);
-                CollectionAssert.AreEqual(expectedCard.Tags, actualCard.Tags);
+                Assert.AreEqual(expectedCard.BodyText, actualCard.BodyText);
+                CollectionAssert.AreEqual(expectedCard.CardTagIds, actualCard.CardTagIds);
+                CollectionAssert.AreEqual(expectedCard.KinkIds, actualCard.KinkIds);
+                CollectionAssert.AreEqual(expectedCard.RequiredEquipmentIds, actualCard.RequiredEquipmentIds);
+                CollectionAssert.AreEqual(expectedCard.RequiredCapabilityIds, actualCard.RequiredCapabilityIds);
                 AssertSequencesEqual(expectedCard.Sequence, actualCard.Sequence);
             }
 
@@ -191,8 +193,8 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 var actualPhase = actual.Phases.Find(p => p.Id == expectedPhase.Id);
                 Assert.IsNotNull(actualPhase);
                 Assert.AreEqual(expectedPhase.Title, actualPhase.Title);
-                CollectionAssert.AreEqual(expectedPhase.MustIncludeTags, actualPhase.MustIncludeTags);
-                CollectionAssert.AreEqual(expectedPhase.MustExcludeTags, actualPhase.MustExcludeTags);
+                CollectionAssert.AreEqual(expectedPhase.MustHaveAllCardTags, actualPhase.MustHaveAllCardTags);
+                CollectionAssert.AreEqual(expectedPhase.MustHaveAnyCardTags, actualPhase.MustHaveAnyCardTags);
                 Assert.AreEqual(expectedPhase.Exits.Count, actualPhase.Exits.Count, $"exits on {expectedPhase.Id}");
 
                 for (var i = 0; i < expectedPhase.Exits.Count; i++)
@@ -236,12 +238,6 @@ namespace TruthCardGame.Content.Sqlite.Tests
                     }
                 }
             }
-        }
-
-        private static System.Collections.Generic.IEnumerable<string> KeysOf(
-            System.Collections.Generic.List<CardDefinition> cards)
-        {
-            foreach (var card in cards) yield return card.Id;
         }
 
         private static GraphNodeDefinition FindNode(System.Collections.Generic.IEnumerable<GraphNodeDefinition> nodes, string id)

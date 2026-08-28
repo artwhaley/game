@@ -674,8 +674,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
             try
             {
                 PhaseTitleBox.Text = _vm.SelectedPhase.Title;
-                PhaseIncludeTagsBox.Text = string.Join(", ", _vm.SelectedPhase.MustIncludeTags);
-                PhaseExcludeTagsBox.Text = string.Join(", ", _vm.SelectedPhase.MustExcludeTags);
+                var allTitles = new List<string>();
+                var anyTitles = new List<string>();
+                foreach (var tagId in _vm.SelectedPhase.MustHaveAllCardTags)
+                {
+                    var tag = _vm.Content.CardTagDefinitions.FirstOrDefault(t => t.Id == tagId);
+                    allTitles.Add(tag?.Title ?? tagId);
+                }
+                foreach (var tagId in _vm.SelectedPhase.MustHaveAnyCardTags)
+                {
+                    var tag = _vm.Content.CardTagDefinitions.FirstOrDefault(t => t.Id == tagId);
+                    anyTitles.Add(tag?.Title ?? tagId);
+                }
+                PhaseIncludeTagsBox.Text = string.Join(", ", allTitles);
+                PhaseExcludeTagsBox.Text = string.Join(", ", anyTitles);
             }
             finally
             {
@@ -697,13 +709,33 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void OnPhaseTagsChanged(object sender, TextChangedEventArgs e)
         {
             if (_syncingPhaseMeta || _vm.SelectedPhase == null) return;
-            var include = SplitTags(PhaseIncludeTagsBox.Text);
-            var exclude = SplitTags(PhaseExcludeTagsBox.Text);
-            PushOrMerge(new SetPhaseTagsCommand(OpenConnection, _vm.SelectedPhase.Id,
-                _vm.SelectedPhase.MustIncludeTags, _vm.SelectedPhase.MustExcludeTags, include, exclude));
-            _vm.SelectedPhase.MustIncludeTags = include;
-            _vm.SelectedPhase.MustExcludeTags = exclude;
-            StatusText.Text = "Phase tags updated.";
+            var allTitles = SplitTags(PhaseIncludeTagsBox.Text);
+            var anyTitles = SplitTags(PhaseExcludeTagsBox.Text);
+
+            var all = ResolveCardTagTitles(allTitles);
+            var any = ResolveCardTagTitles(anyTitles);
+
+            PushOrMerge(new SetPhaseCardQueryCommand(OpenConnection, _vm.SelectedPhase.Id,
+                _vm.SelectedPhase.MustHaveAllCardTags, _vm.SelectedPhase.MustHaveAnyCardTags, all, any));
+            _vm.SelectedPhase.MustHaveAllCardTags = all;
+            _vm.SelectedPhase.MustHaveAnyCardTags = any;
+            StatusText.Text = "Phase card query updated.";
+        }
+
+        /// <summary>Maps typed tag titles back to stable CardTagDefinition ids; unknown titles resolve to nothing (fail-loud at save time via FK).</summary>
+        private List<string> ResolveCardTagTitles(List<string> titles)
+        {
+            var result = new List<string>();
+            foreach (var title in titles)
+            {
+                var tag = _vm.Content.CardTagDefinitions.FirstOrDefault(t =>
+                    string.Equals(t.Title, title, StringComparison.OrdinalIgnoreCase));
+                if (tag != null && !result.Contains(tag.Id))
+                {
+                    result.Add(tag.Id);
+                }
+            }
+            return result;
         }
 
         private static List<string> SplitTags(string text)

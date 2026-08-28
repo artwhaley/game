@@ -6,7 +6,7 @@ namespace TruthCardGame.Content.Sqlite
 {
     /// <summary>
     /// Narrow authoring repository: Phase metadata rows (create / rename /
-    /// delete / include-exclude tags) plus a usage-count read (distinct
+    /// delete / card query tags) plus a usage-count read (distinct
     /// referencing sessions and total placements) for the Phase header.
     /// Deleting a phase cascades its low-level graph; the schema's RESTRICT
     /// foreign key blocks deleting a phase that a session still references.
@@ -20,7 +20,6 @@ namespace TruthCardGame.Content.Sqlite
                 "INSERT INTO phase (id, title, min_cards, max_cards) VALUES (@id, @title, 0, 0);",
                 ("id", id), ("title", (object)title ?? DBNull.Value));
         }
-
         /// <summary>Creates a new authoring phase with its singular Entry node and initial layout atomically.</summary>
         public static void CreateWithEntry(DbConnection connection, string id, string title)
         {
@@ -67,27 +66,23 @@ namespace TruthCardGame.Content.Sqlite
             Sql.Execute(connection, null, "DELETE FROM phase WHERE id = @id;", ("id", id));
         }
 
-        public static void ReplaceRequiredTags(DbConnection connection, string phaseId, IReadOnlyList<string> tags)
+        /// <summary>
+        /// Replaces the Phase's include-only Card tag query (v5). Empty ALL =
+        /// no restriction; empty ANY = no restriction.
+        /// </summary>
+        public static void ReplaceCardQuery(DbConnection connection, string phaseId,
+            IReadOnlyList<string> allTagIds, IReadOnlyList<string> anyTagIds)
         {
-            ReplaceTags(connection, "phase_required_tag", phaseId, tags);
-        }
+            if (string.IsNullOrEmpty(phaseId)) throw new ArgumentException("Phase id required.", nameof(phaseId));
+            if (allTagIds == null) throw new ArgumentNullException(nameof(allTagIds));
+            if (anyTagIds == null) throw new ArgumentNullException(nameof(anyTagIds));
 
-        public static void ReplaceExcludedTags(DbConnection connection, string phaseId, IReadOnlyList<string> tags)
-        {
-            ReplaceTags(connection, "phase_excluded_tag", phaseId, tags);
-        }
-
-        public static void ReplaceAllTags(DbConnection connection, string phaseId,
-            IReadOnlyList<string> includeTags, IReadOnlyList<string> excludeTags)
-        {
-            if (includeTags == null) throw new ArgumentNullException(nameof(includeTags));
-            if (excludeTags == null) throw new ArgumentNullException(nameof(excludeTags));
             using (var transaction = connection.BeginTransaction())
             {
                 try
                 {
-                    ReplaceTags(connection, transaction, "phase_required_tag", phaseId, includeTags);
-                    ReplaceTags(connection, transaction, "phase_excluded_tag", phaseId, excludeTags);
+                    ReplaceQueryTags(connection, transaction, "phase_card_all_tag", phaseId, allTagIds);
+                    ReplaceQueryTags(connection, transaction, "phase_card_any_tag", phaseId, anyTagIds);
                     transaction.Commit();
                 }
                 catch
@@ -98,31 +93,19 @@ namespace TruthCardGame.Content.Sqlite
             }
         }
 
-        private static void ReplaceTags(DbConnection connection, string table, string phaseId, IReadOnlyList<string> tags)
+        private static void ReplaceQueryTags(DbConnection connection, DbTransaction transaction, string table, string phaseId, IReadOnlyList<string> tagIds)
         {
-            if (string.IsNullOrEmpty(phaseId)) throw new ArgumentException("Phase id required.", nameof(phaseId));
-            if (tags == null) throw new ArgumentNullException(nameof(tags));
-
-            ReplaceTags(connection, null, table, phaseId, tags);
-        }
-
-        private static void ReplaceTags(DbConnection connection, DbTransaction transaction, string table, string phaseId, IReadOnlyList<string> tags)
-        {
-            if (string.IsNullOrEmpty(phaseId)) throw new ArgumentException("Phase id required.", nameof(phaseId));
-            if (tags == null) throw new ArgumentNullException(nameof(tags));
-
             Sql.Execute(connection, transaction,
                 $"DELETE FROM {table} WHERE phase_id = @phase;", ("phase", phaseId));
-            Sql.EnsureTags(connection, transaction, tags);
-            for (var i = 0; i < tags.Count; i++)
+            for (var i = 0; i < tagIds.Count; i++)
             {
-                if (string.IsNullOrEmpty(tags[i]))
+                if (string.IsNullOrEmpty(tagIds[i]))
                 {
                     throw new InvalidOperationException($"{table}: null/empty tag at index {i} for '{phaseId}'.");
                 }
                 Sql.Execute(connection, transaction,
                     $"INSERT INTO {table} (phase_id, tag_id, ordinal) VALUES (@phase, @tag, @ordinal);",
-                    ("phase", phaseId), ("tag", tags[i]), ("ordinal", i));
+                    ("phase", phaseId), ("tag", tagIds[i]), ("ordinal", i));
             }
         }
 

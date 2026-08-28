@@ -20,5 +20,10 @@ namespace TruthCardGame.Core
         {
             return _random.Next(minInclusive, maxExclusive);
         }
+
+        public float NextFloat(float minInclusive, float maxExclusive)
+        {
+            return minInclusive + (float)_random.NextDouble() * (maxExclusive - minInclusive);
+        }
     }
 }

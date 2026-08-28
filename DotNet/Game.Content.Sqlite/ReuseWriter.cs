@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Data.Common;
 using TruthCardGame.Content;
 
@@ -31,8 +32,7 @@ namespace TruthCardGame.Content.Sqlite
                             ("id", exit.Id), ("phase", phase.Id), ("ordinal", i), ("name", exit.Name));
                     }
 
-                    WriteTags(connection, transaction, "phase_required_tag", phase.Id, phase.MustIncludeTags);
-                    WriteTags(connection, transaction, "phase_excluded_tag", phase.Id, phase.MustExcludeTags);
+                    WriteCardQuery(connection, transaction, phase);
 
                     foreach (var node in phase.Graph.Nodes)
                     {
@@ -68,7 +68,16 @@ namespace TruthCardGame.Content.Sqlite
                     Sql.Execute(connection, transaction,
                         "INSERT INTO session (id, title, session_type_id) VALUES (@id, @title, @type);",
                         ("id", session.Id), ("title", session.Title), ("type", session.SessionTypeId));
-                    WriteTags(connection, transaction, "session_tag", session.Id, session.Tags);
+
+                    var weighting = session.CardWeighting ?? new SessionCardWeightingDefinition();
+                    Sql.Execute(connection, transaction,
+                        "INSERT INTO session_card_weighting " +
+                        "(session_id, love_base, love_happiness_gain, like_base, like_happiness_gain, torture_base, torture_unhappiness_gain) " +
+                        "VALUES (@id, @lb, @lg, @kb, @kg, @tb, @tg);",
+                        ("id", session.Id),
+                        ("lb", (double)weighting.LoveBase), ("lg", (double)weighting.LoveHappinessGain),
+                        ("kb", (double)weighting.LikeBase), ("kg", (double)weighting.LikeHappinessGain),
+                        ("tb", (double)weighting.TortureBase), ("tg", (double)weighting.TortureUnhappinessGain));
 
                     foreach (var node in session.Graph.Nodes)
                     {
@@ -93,19 +102,20 @@ namespace TruthCardGame.Content.Sqlite
             }
         }
 
-        private static void WriteTags(DbConnection connection, DbTransaction transaction, string table, string parentId, System.Collections.Generic.IReadOnlyList<string> tagNames)
+        private static void WriteCardQuery(DbConnection connection, DbTransaction transaction, PhaseDefinition phase)
         {
-            Sql.Execute(connection, transaction,
-                $"DELETE FROM {table} WHERE {(table == "session_tag" ? "session_id" : "phase_id")} = @parent;",
-                ("parent", parentId));
-            Sql.EnsureTags(connection, transaction, tagNames);
-            var parentColumn = table == "session_tag" ? "session_id" : "phase_id";
-            for (var i = 0; i < tagNames.Count; i++)
+            WriteQueryTable(connection, transaction, "phase_card_all_tag", phase.Id, phase.MustHaveAllCardTags);
+            WriteQueryTable(connection, transaction, "phase_card_any_tag", phase.Id, phase.MustHaveAnyCardTags);
+        }
+
+        private static void WriteQueryTable(DbConnection connection, DbTransaction transaction, string table, string phaseId, IReadOnlyList<string> tagIds)
+        {
+            for (var i = 0; i < tagIds.Count; i++)
             {
-                if (string.IsNullOrEmpty(tagNames[i])) continue;
+                if (string.IsNullOrEmpty(tagIds[i])) continue;
                 Sql.Execute(connection, transaction,
-                    $"INSERT INTO {table} ({parentColumn}, tag_id, ordinal) VALUES (@parent, @tag, @ordinal);",
-                    ("parent", parentId), ("tag", tagNames[i]), ("ordinal", i));
+                    $"INSERT INTO {table} (phase_id, tag_id, ordinal) VALUES (@parent, @tag, @ordinal);",
+                    ("parent", phaseId), ("tag", tagIds[i]), ("ordinal", i));
             }
         }
     }

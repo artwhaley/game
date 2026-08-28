@@ -64,8 +64,14 @@ namespace TruthCardGame.Content.Sqlite.Tests
                     connection.Open();
                     using (var command = connection.CreateCommand())
                     {
-                        command.CommandText = "SELECT COUNT(*) FROM phase_slot;";
-                        Assert.AreEqual(0L, command.ExecuteScalar(), "migrated canonical copy must have no PhaseSlot rows");
+                        command.CommandText = "SELECT COUNT(*) FROM session_card_weighting;";
+                        var weightingRows = Convert.ToInt64(command.ExecuteScalar());
+                        using (var sessionCount = connection.CreateCommand())
+                        {
+                            sessionCount.CommandText = "SELECT COUNT(*) FROM session;";
+                            Assert.AreEqual(Convert.ToInt64(sessionCount.ExecuteScalar()), weightingRows,
+                                "every session migrated to default card weighting");
+                        }
                     }
                 }
             }
@@ -87,7 +93,11 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 Assert.Greater(content.Sessions.Count, 0, "sessions survived the migration");
                 Assert.Greater(content.Phases.Count, 0, "phases survived the migration");
                 Assert.Greater(content.Cards.Count, 0, "cards survived the migration");
-                Assert.Greater(content.Deck.CardIds.Count, 0, "deck survived the migration");
+                Assert.Greater(content.CardTagDefinitions.Count, 0, "card tags survived the migration");
+                foreach (var card in content.Cards)
+                {
+                    Assert.Greater(card.CardTagIds.Count, 0, $"card '{card.Id}' kept its tag assignments through v5");
+                }
 
                 foreach (var session in content.Sessions)
                 {

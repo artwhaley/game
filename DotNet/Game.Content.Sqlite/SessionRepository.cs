@@ -1,5 +1,6 @@
 using System;
 using System.Data.Common;
+using TruthCardGame.Content;
 
 namespace TruthCardGame.Content.Sqlite
 {
@@ -70,6 +71,36 @@ namespace TruthCardGame.Content.Sqlite
             Sql.Execute(connection, null,
                 "UPDATE session SET session_type_id = @type WHERE id = @id;",
                 ("type", sessionTypeId), ("id", id));
+        }
+
+        /// <summary>Replaces the Session's Card preference weighting (v5); nonnegative values only.</summary>
+        public static void ReplaceCardWeighting(DbConnection connection, string sessionId, SessionCardWeightingDefinition weighting)
+        {
+            if (string.IsNullOrEmpty(sessionId)) throw new ArgumentException("Session id required.", nameof(sessionId));
+            if (weighting == null) throw new ArgumentNullException(nameof(weighting));
+            ValidateNonnegative(weighting, sessionId);
+
+            Sql.Execute(connection, null,
+                "INSERT INTO session_card_weighting " +
+                "(session_id, love_base, love_happiness_gain, like_base, like_happiness_gain, torture_base, torture_unhappiness_gain) " +
+                "VALUES (@id, @lb, @lg, @kb, @kg, @tb, @tg) " +
+                "ON CONFLICT(session_id) DO UPDATE SET love_base = @lb, love_happiness_gain = @lg, like_base = @kb, " +
+                "like_happiness_gain = @kg, torture_base = @tb, torture_unhappiness_gain = @tg;",
+                ("id", sessionId),
+                ("lb", (double)weighting.LoveBase), ("lg", (double)weighting.LoveHappinessGain),
+                ("kb", (double)weighting.LikeBase), ("kg", (double)weighting.LikeHappinessGain),
+                ("tb", (double)weighting.TortureBase), ("tg", (double)weighting.TortureUnhappinessGain));
+        }
+
+        private static void ValidateNonnegative(SessionCardWeightingDefinition weighting, string sessionId)
+        {
+            if (weighting.LoveBase < 0f || weighting.LoveHappinessGain < 0f ||
+                weighting.LikeBase < 0f || weighting.LikeHappinessGain < 0f ||
+                weighting.TortureBase < 0f || weighting.TortureUnhappinessGain < 0f)
+            {
+                throw new InvalidOperationException(
+                    $"Session '{sessionId}': Card weighting values must be nonnegative.");
+            }
         }
 
         public static void Delete(DbConnection connection, string id)

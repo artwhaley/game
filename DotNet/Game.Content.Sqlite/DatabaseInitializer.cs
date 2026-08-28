@@ -36,7 +36,6 @@ namespace TruthCardGame.Content.Sqlite
                 try
                 {
                     WriteReferenceEntities(connection, transaction, content);
-                    InsertTags(connection, transaction, content);
 
                     foreach (var phase in content.Phases)
                     {
@@ -47,8 +46,6 @@ namespace TruthCardGame.Content.Sqlite
                     {
                         WriteCard(connection, transaction, card);
                     }
-
-                    WriteDeck(connection, transaction, content.Deck);
 
                     foreach (var session in content.Sessions)
                     {
@@ -68,16 +65,24 @@ namespace TruthCardGame.Content.Sqlite
         private static void WriteReferenceEntities(DbConnection connection, DbTransaction transaction, GameContentDefinition content)
         {
             // session_type and temperature_definition are reference data that
-            // migration 2 pre-seeds (INSERT OR IGNORE) on every database, so the
+            // migrations pre-seed (INSERT OR IGNORE) on every database, so the
             // initializer must be idempotent against those rows rather than
-            // re-inserting them. Resources are ordinary content and also use
-            // OR IGNORE so re-seeding a partial database is harmless.
+            // re-inserting them. Resources and the v5 catalogs are ordinary
+            // content and also use OR IGNORE so re-seeding a partial database
+            // is harmless.
             foreach (var sessionType in content.SessionTypes)
             {
                 RequireId(sessionType?.Id, "SessionType");
                 Sql.Execute(connection, transaction,
-                    "INSERT OR IGNORE INTO session_type (id, title) VALUES (@id, @title);",
-                    ("id", sessionType.Id), ("title", sessionType.Title));
+                    "INSERT OR IGNORE INTO session_type (id, title, sort_order) VALUES (@id, @title, @sort);",
+                    ("id", sessionType.Id), ("title", sessionType.Title), ("sort", sessionType.SortOrder));
+                for (var i = 0; i < sessionType.RequiredCapabilityIds.Count; i++)
+                {
+                    Sql.Execute(connection, transaction,
+                        "INSERT OR IGNORE INTO session_type_required_smart_toy_capability (session_type_id, capability_id, ordinal) " +
+                        "VALUES (@type, @cap, @ordinal);",
+                        ("type", sessionType.Id), ("cap", sessionType.RequiredCapabilityIds[i]), ("ordinal", i));
+                }
             }
 
             foreach (var temperature in content.Temperatures)
@@ -89,6 +94,41 @@ namespace TruthCardGame.Content.Sqlite
                     ("id", temperature.Id), ("title", temperature.Title),
                     ("min", (double)temperature.MinValue), ("max", (double)temperature.MaxValue),
                     ("defaultValue", (double)temperature.DefaultValue));
+            }
+
+            foreach (var tag in content.CardTagDefinitions)
+            {
+                RequireId(tag?.Id, "CardTagDefinition");
+                Sql.Execute(connection, transaction,
+                    "INSERT OR IGNORE INTO card_tag_definition (id, title, sort_order) VALUES (@id, @title, @sort);",
+                    ("id", tag.Id), ("title", tag.Title), ("sort", tag.SortOrder));
+            }
+
+            foreach (var kink in content.KinkDefinitions)
+            {
+                RequireId(kink?.Id, "KinkDefinition");
+                Sql.Execute(connection, transaction,
+                    "INSERT OR IGNORE INTO kink_definition (id, title, description, sort_order) VALUES (@id, @title, @desc, @sort);",
+                    ("id", kink.Id), ("title", kink.Title),
+                    ("desc", (object)kink.Description ?? DBNull.Value), ("sort", kink.SortOrder));
+            }
+
+            foreach (var equipment in content.EquipmentDefinitions)
+            {
+                RequireId(equipment?.Id, "EquipmentDefinition");
+                Sql.Execute(connection, transaction,
+                    "INSERT OR IGNORE INTO equipment_definition (id, title, category, sort_order) VALUES (@id, @title, @cat, @sort);",
+                    ("id", equipment.Id), ("title", equipment.Title),
+                    ("cat", (object)equipment.Category ?? DBNull.Value), ("sort", equipment.SortOrder));
+            }
+
+            foreach (var capability in content.SmartToyCapabilityDefinitions)
+            {
+                RequireId(capability?.Id, "SmartToyCapabilityDefinition");
+                Sql.Execute(connection, transaction,
+                    "INSERT OR IGNORE INTO smart_toy_capability_definition (id, title, category, sort_order) VALUES (@id, @title, @cat, @sort);",
+                    ("id", capability.Id), ("title", capability.Title),
+                    ("cat", (object)capability.Category ?? DBNull.Value), ("sort", capability.SortOrder));
             }
 
             foreach (var resource in content.Resources)
@@ -115,31 +155,13 @@ namespace TruthCardGame.Content.Sqlite
             ActionSequenceWriter.Write(connection, transaction, card.Sequence);
 
             Sql.Execute(connection, transaction,
-                "INSERT INTO card (id, title, action_sequence_id) VALUES (@id, @title, @seq);",
-                ("id", card.Id), ("title", card.Title), ("seq", card.Sequence.Id));
-            ReplaceTags(connection, transaction, "card_tag", "card_id", card.Id, card.Tags);
-        }
+                "INSERT INTO card (id, title, body_text, action_sequence_id) VALUES (@id, @title, @body, @seq);",
+                ("id", card.Id), ("title", card.Title), ("body", (object)card.BodyText ?? DBNull.Value), ("seq", card.Sequence.Id));
 
-        private static void WriteDeck(DbConnection connection, DbTransaction transaction, CardDeckDefinition deck)
-        {
-            if (deck == null || string.IsNullOrEmpty(deck.Id)) return;
-
-            Sql.Execute(connection, transaction,
-                "INSERT INTO card_deck (id, title) VALUES (@id, @title);",
-                ("id", deck.Id), ("title", (object)deck.Title ?? DBNull.Value));
-
-            for (var i = 0; i < deck.CardIds.Count; i++)
-            {
-                var cardId = deck.CardIds[i];
-                if (string.IsNullOrEmpty(cardId))
-                {
-                    throw new InvalidOperationException("Deck entry at index " + i + " is null/empty (dense lists have no null slots).");
-                }
-
-                Sql.Execute(connection, transaction,
-                    "INSERT INTO card_deck_card (deck_id, ordinal, card_id) VALUES (@deck, @ordinal, @card);",
-                    ("deck", deck.Id), ("ordinal", i), ("card", cardId));
-            }
+            ReplaceRelations(connection, transaction, "card_tag", "card_id", "tag_id", card.Id, card.CardTagIds);
+            ReplaceRelations(connection, transaction, "card_kink", "card_id", "kink_id", card.Id, card.KinkIds);
+            ReplaceRelations(connection, transaction, "card_required_equipment", "card_id", "equipment_id", card.Id, card.RequiredEquipmentIds);
+            ReplaceRelations(connection, transaction, "card_required_smart_toy_capability", "card_id", "capability_id", card.Id, card.RequiredCapabilityIds);
         }
 
         // ---- phases ----
@@ -165,8 +187,8 @@ namespace TruthCardGame.Content.Sqlite
                     ("id", exit.Id), ("phase", phase.Id), ("ordinal", i), ("name", exit.Name));
             }
 
-            ReplaceTags(connection, transaction, "phase_required_tag", "phase_id", phase.Id, phase.MustIncludeTags);
-            ReplaceTags(connection, transaction, "phase_excluded_tag", "phase_id", phase.Id, phase.MustExcludeTags);
+            ReplaceRelations(connection, transaction, "phase_card_all_tag", "phase_id", "tag_id", phase.Id, phase.MustHaveAllCardTags);
+            ReplaceRelations(connection, transaction, "phase_card_any_tag", "phase_id", "tag_id", phase.Id, phase.MustHaveAnyCardTags);
 
             foreach (var node in phase.Graph.Nodes)
             {
@@ -265,7 +287,16 @@ namespace TruthCardGame.Content.Sqlite
             Sql.Execute(connection, transaction,
                 "INSERT INTO session (id, title, session_type_id) VALUES (@id, @title, @type);",
                 ("id", session.Id), ("title", session.Title), ("type", session.SessionTypeId));
-            ReplaceTags(connection, transaction, "session_tag", "session_id", session.Id, session.Tags);
+
+            var weighting = session.CardWeighting ?? new SessionCardWeightingDefinition();
+            Sql.Execute(connection, transaction,
+                "INSERT OR IGNORE INTO session_card_weighting " +
+                "(session_id, love_base, love_happiness_gain, like_base, like_happiness_gain, torture_base, torture_unhappiness_gain) " +
+                "VALUES (@id, @lb, @lg, @kb, @kg, @tb, @tg);",
+                ("id", session.Id),
+                ("lb", (double)weighting.LoveBase), ("lg", (double)weighting.LoveHappinessGain),
+                ("kb", (double)weighting.LikeBase), ("kg", (double)weighting.LikeHappinessGain),
+                ("tb", (double)weighting.TortureBase), ("tg", (double)weighting.TortureUnhappinessGain));
 
             foreach (var node in session.Graph.Nodes)
             {
@@ -371,54 +402,25 @@ namespace TruthCardGame.Content.Sqlite
             }
         }
 
-        // ---- tags ----
+        // ---- relations ----
 
-        private static void InsertTags(DbConnection connection, DbTransaction transaction, GameContentDefinition content)
-        {
-            var collected = new List<string>();
-
-            void Add(IEnumerable<string> source)
-            {
-                if (source == null) return;
-                foreach (var name in source)
-                {
-                    if (!string.IsNullOrEmpty(name) && !collected.Contains(name))
-                    {
-                        collected.Add(name);
-                    }
-                }
-            }
-
-            foreach (var session in content.Sessions) Add(session?.Tags);
-            foreach (var phase in content.Phases)
-            {
-                if (phase == null) continue;
-                Add(phase.MustIncludeTags);
-                Add(phase.MustExcludeTags);
-            }
-            foreach (var card in content.Cards) Add(card?.Tags);
-
-            Sql.EnsureTags(connection, transaction, collected);
-        }
-
-        private static void ReplaceTags(DbConnection connection, DbTransaction transaction, string table, string parentColumn, string parentId, IReadOnlyList<string> tagNames)
+        private static void ReplaceRelations(DbConnection connection, DbTransaction transaction,
+            string table, string parentColumn, string relationColumn, string parentId, IReadOnlyList<string> relationIds)
         {
             Sql.Execute(connection, transaction,
                 $"DELETE FROM {table} WHERE {parentColumn} = @parent;",
                 ("parent", parentId));
 
-            Sql.EnsureTags(connection, transaction, tagNames);
-
-            for (var i = 0; i < tagNames.Count; i++)
+            for (var i = 0; i < relationIds.Count; i++)
             {
-                if (string.IsNullOrEmpty(tagNames[i]))
+                if (string.IsNullOrEmpty(relationIds[i]))
                 {
-                    throw new InvalidOperationException($"{table}: null/empty tag at index {i} for '{parentId}'.");
+                    throw new InvalidOperationException($"{table}: null/empty id at index {i} for '{parentId}'.");
                 }
 
                 Sql.Execute(connection, transaction,
-                    $"INSERT INTO {table} ({parentColumn}, tag_id, ordinal) VALUES (@parent, @tag, @ordinal);",
-                    ("parent", parentId), ("tag", tagNames[i]), ("ordinal", i));
+                    $"INSERT INTO {table} ({parentColumn}, {relationColumn}, ordinal) VALUES (@parent, @rel, @ordinal);",
+                    ("parent", parentId), ("rel", relationIds[i]), ("ordinal", i));
             }
         }
 
@@ -468,8 +470,8 @@ namespace TruthCardGame.Content.Sqlite
 
         private static bool IsCoreContentEmpty(DbConnection connection)
         {
-            // NOTE: session_type and temperature_definition are EXCLUDED: migration 2
-            // guarantees their default seeds even on a blank database, so counting them
+            // NOTE: session_type and temperature_definition are EXCLUDED: migrations
+            // guarantee their default seeds even on a blank database, so counting them
             // would make 'fresh' databases look non-empty forever.
             using (var command = connection.CreateCommand())
             {
@@ -478,8 +480,9 @@ namespace TruthCardGame.Content.Sqlite
                     "(SELECT COUNT(*) FROM phase) + (SELECT COUNT(*) FROM phase_graph_node) + " +
                     "(SELECT COUNT(*) FROM card) + (SELECT COUNT(*) FROM action_instance) + " +
                     "(SELECT COUNT(*) FROM action_sequence) + (SELECT COUNT(*) FROM action_instance_session_goto) + " +
-                    "(SELECT COUNT(*) FROM resource) + (SELECT COUNT(*) FROM tag) + " +
-                    "(SELECT COUNT(*) FROM card_deck);";
+                    "(SELECT COUNT(*) FROM resource) + (SELECT COUNT(*) FROM card_tag_definition) + " +
+                    "(SELECT COUNT(*) FROM kink_definition) + (SELECT COUNT(*) FROM equipment_definition) + " +
+                    "(SELECT COUNT(*) FROM smart_toy_capability_definition);";
                 return Convert.ToInt64(command.ExecuteScalar()) == 0L;
             }
         }

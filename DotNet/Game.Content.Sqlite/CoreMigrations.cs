@@ -38,7 +38,10 @@ namespace TruthCardGame.Content.Sqlite
             new CoreMigration(3, "wpf-authoring-layout",
                 LoadEmbeddedScript("SQLITE-SCHEMA-V3-WPF-AUTHORING.sql")),
             new CoreMigration(4, "phase-goto-nullable-exit",
-                LoadEmbeddedScript("SQLITE-SCHEMA-V4-PHASE-GOTO-NULL.sql"))
+                LoadEmbeddedScript("SQLITE-SCHEMA-V4-PHASE-GOTO-NULL.sql")),
+            new CoreMigration(5, "milestone-b-cards-profile-selection",
+                LoadEmbeddedScript("SQLITE-SCHEMA-V5-MILESTONE-B.sql"),
+                Migration5Transform.Transform)
         };
 
         private static string LoadEmbeddedScript(string resourceName)

@@ -6,36 +6,26 @@ using TruthCardGame.Content;
 namespace TruthCardGame.Content.Sqlite
 {
     /// <summary>
-    /// Narrow v2 repository: SessionType rows. Stable IDs, no generic
-    /// abstraction — just the domain operations the Workbench needs.
+    /// Legacy v2 SessionType writes. Superseded by
+    /// <see cref="CatalogRepositories"/> (v5: sort_order + required
+    /// capabilities); these remain for compatibility with existing callers
+    /// during the Milestone B transition.
     /// </summary>
     public static class SessionTypeRepository
     {
         public static void Create(DbConnection connection, string id, string title)
         {
-            if (string.IsNullOrEmpty(id)) throw new ArgumentException("SessionType id required.", nameof(id));
-            Sql.Execute(connection, null,
-                "INSERT OR IGNORE INTO session_type (id, title) VALUES (@id, @title);",
-                ("id", id), ("title", (object)title ?? DBNull.Value));
+            CatalogRepositories.CreateSessionType(connection, new SessionTypeDefinition { Id = id, Title = title });
         }
 
         public static void Rename(DbConnection connection, string id, string title)
         {
-            Sql.Execute(connection, null,
-                "UPDATE session_type SET title = @title WHERE id = @id;",
-                ("title", (object)title ?? DBNull.Value), ("id", id));
+            CatalogRepositories.RenameSessionType(connection, id, title);
         }
 
         public static List<SessionTypeDefinition> List(DbConnection connection)
         {
-            var result = new List<SessionTypeDefinition>();
-            Sql.QueryAll(connection, "SELECT id, title FROM session_type ORDER BY id;",
-                reader => result.Add(new SessionTypeDefinition
-                {
-                    Id = reader.GetString(0),
-                    Title = reader.IsDBNull(1) ? "" : reader.GetString(1),
-                }));
-            return result;
+            return CatalogRepositories.ListSessionTypes(connection);
         }
     }
 

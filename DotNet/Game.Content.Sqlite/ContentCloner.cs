@@ -35,8 +35,8 @@ namespace TruthCardGame.Content.Sqlite
                     Title = source.Title,
                 },
             };
-            clone.Phase.MustIncludeTags.AddRange(source.MustIncludeTags);
-            clone.Phase.MustExcludeTags.AddRange(source.MustExcludeTags);
+            clone.Phase.MustHaveAllCardTags.AddRange(source.MustHaveAllCardTags);
+            clone.Phase.MustHaveAnyCardTags.AddRange(source.MustHaveAnyCardTags);
 
             for (var i = 0; i < source.Exits.Count; i++)
             {
@@ -99,9 +99,17 @@ namespace TruthCardGame.Content.Sqlite
                     Id = newSessionId,
                     Title = title ?? source.Title,
                     SessionTypeId = source.SessionTypeId,
+                    CardWeighting = new SessionCardWeightingDefinition
+                    {
+                        LoveBase = source.CardWeighting?.LoveBase ?? 1f,
+                        LoveHappinessGain = source.CardWeighting?.LoveHappinessGain ?? 1f,
+                        LikeBase = source.CardWeighting?.LikeBase ?? 1f,
+                        LikeHappinessGain = source.CardWeighting?.LikeHappinessGain ?? 1f,
+                        TortureBase = source.CardWeighting?.TortureBase ?? 1f,
+                        TortureUnhappinessGain = source.CardWeighting?.TortureUnhappinessGain ?? 1f,
+                    },
                 },
             };
-            clone.Session.Tags.AddRange(source.Tags);
 
             var oldNodeToNew = new Dictionary<string, string>();
             var oldOutputToNew = new Dictionary<string, string>();

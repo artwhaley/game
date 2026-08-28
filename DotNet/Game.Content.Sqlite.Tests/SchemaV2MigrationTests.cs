@@ -177,14 +177,13 @@ namespace TruthCardGame.Content.Sqlite.Tests
         }
 
         [Test]
-        public void LegacyRows_BehavePerPosture_SlotsCleared_OthersKept_UnknownHostUntouched()
+        public void LegacyRows_BehavePerPosture_SupersededTablesDropped_UnknownHostUntouched()
         {
             var canonical = V1FixturePath();
             Assume.That(File.Exists(canonical), Is.True);
 
             File.Copy(canonical, _dbPath, overwrite: true);
 
-            long legacyActionsBefore, cardActionRowsBefore, optionRowsBefore;
             using (var setup = new SqliteConnection("Data Source=" + _dbPath))
             {
                 setup.Open();
@@ -192,26 +191,37 @@ namespace TruthCardGame.Content.Sqlite.Tests
                     "CREATE TABLE IF NOT EXISTS unity_fake_action_binding (" +
                     "resource_id TEXT PRIMARY KEY, asset_guid TEXT NOT NULL);");
                 Execute(setup, "INSERT INTO unity_fake_action_binding VALUES ('r','guid-x');");
-
-                legacyActionsBefore = Count(setup, "action");
-                cardActionRowsBefore = Count(setup, "card_action");
-                optionRowsBefore = Count(setup, "choice_option");
             }
 
             using (var connection = OpenFresh())
             {
                 CoreMigrator.EnsureSchema(connection);
 
-                Assert.AreEqual(legacyActionsBefore, Count(connection, "action"),
-                    "top-level configured-action rows remain physically present (ignored)");
-                Assert.AreEqual(cardActionRowsBefore, Count(connection, "card_action"));
-                Assert.AreEqual(optionRowsBefore, Count(connection, "choice_option"));
+                // v5 drops the superseded v1 structures (audit decision):
+                foreach (var dropped in new[] { "tag", "session_tag", "phase_required_tag", "phase_excluded_tag",
+                    "card_deck", "card_deck_card", "phase_slot", "phase_slot_candidate",
+                    "action", "action_debug", "action_stat_increase", "action_choice", "choice_option",
+                    "action_cutscene", "card_action" })
+                {
+                    AssertTableMissing(connection, dropped);
+                }
 
-                Assert.AreEqual(0L, Count(connection, "phase_slot"), "slot rows cleared");
-                Assert.AreEqual(0L, Count(connection, "phase_slot_candidate"), "candidate rows cleared");
+                // Card tag assignments were preserved through the copy.
+                Assert.Greater(Count(connection, "card_tag"), 0, "card tag assignments migrated to v5 definitions");
+                Assert.Greater(Count(connection, "card_tag_definition"), 0, "card tag definitions created");
 
                 Assert.AreEqual(1L, Count(connection, "unity_fake_action_binding"),
                     "unknown host tables survive core migrations untouched");
+            }
+        }
+
+        private static void AssertTableMissing(SqliteConnection connection, string name)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=@name;";
+                command.Parameters.AddWithValue("@name", name);
+                Assert.AreEqual(0L, Convert.ToInt64(command.ExecuteScalar()), "table should be dropped: " + name);
             }
         }
 

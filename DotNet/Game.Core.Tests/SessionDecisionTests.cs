@@ -30,7 +30,6 @@ namespace TruthCardGame.Core.Tests
         {
             _content = new GameContentDefinition
             {
-                Deck = new CardDeckDefinition { Id = "deck", Title = "D" },
                 SessionTypes = { new SessionTypeDefinition { Id = "type", Title = "Standard" } },
                 Temperatures =
                 {

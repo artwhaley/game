@@ -585,42 +585,42 @@ namespace TruthCardGame.Content.Sqlite
         protected override void UndoCore(DbConnection connection) => PhaseRepository.Rename(connection, _phaseId, _oldTitle);
     }
 
-    /// <summary>Replaces both phase tag lists as one coalesced metadata edit.</summary>
-    public sealed class SetPhaseTagsCommand : AuthoringCommandBase
+    /// <summary>Replaces the phase Card tag query (ALL/ANY, include-only) as one coalesced metadata edit.</summary>
+    public sealed class SetPhaseCardQueryCommand : AuthoringCommandBase
     {
         private readonly string _phaseId;
-        private readonly List<string> _oldInclude;
-        private readonly List<string> _oldExclude;
-        private List<string> _newInclude;
-        private List<string> _newExclude;
+        private readonly List<string> _oldAll;
+        private readonly List<string> _oldAny;
+        private List<string> _newAll;
+        private List<string> _newAny;
 
-        public SetPhaseTagsCommand(Func<DbConnection> conn, string phaseId,
-            IReadOnlyList<string> oldInclude, IReadOnlyList<string> oldExclude,
-            IReadOnlyList<string> newInclude, IReadOnlyList<string> newExclude) : base(conn)
+        public SetPhaseCardQueryCommand(Func<DbConnection> conn, string phaseId,
+            IReadOnlyList<string> oldAll, IReadOnlyList<string> oldAny,
+            IReadOnlyList<string> newAll, IReadOnlyList<string> newAny) : base(conn)
         {
             _phaseId = phaseId;
-            _oldInclude = new List<string>(oldInclude ?? new List<string>());
-            _oldExclude = new List<string>(oldExclude ?? new List<string>());
-            _newInclude = new List<string>(newInclude ?? new List<string>());
-            _newExclude = new List<string>(newExclude ?? new List<string>());
+            _oldAll = new List<string>(oldAll ?? new List<string>());
+            _oldAny = new List<string>(oldAny ?? new List<string>());
+            _newAll = new List<string>(newAll ?? new List<string>());
+            _newAny = new List<string>(newAny ?? new List<string>());
         }
 
-        public override string Name => "Edit phase tags";
-        public override string MergeKey => "phasetags:" + _phaseId;
+        public override string Name => "Edit phase card query";
+        public override string MergeKey => "phasecardquery:" + _phaseId;
 
         public override bool Merge(IAuthoringCommand incoming)
         {
-            if (!(incoming is SetPhaseTagsCommand tags)) return false;
-            _newInclude = new List<string>(tags._newInclude);
-            _newExclude = new List<string>(tags._newExclude);
+            if (!(incoming is SetPhaseCardQueryCommand query)) return false;
+            _newAll = new List<string>(query._newAll);
+            _newAny = new List<string>(query._newAny);
             return true;
         }
 
         protected override void ExecuteCore(DbConnection connection) =>
-            PhaseRepository.ReplaceAllTags(connection, _phaseId, _newInclude, _newExclude);
+            PhaseRepository.ReplaceCardQuery(connection, _phaseId, _newAll, _newAny);
 
         protected override void UndoCore(DbConnection connection) =>
-            PhaseRepository.ReplaceAllTags(connection, _phaseId, _oldInclude, _oldExclude);
+            PhaseRepository.ReplaceCardQuery(connection, _phaseId, _oldAll, _oldAny);
     }
 
     /// <summary>Session type change (discrete ComboBox pick).</summary>

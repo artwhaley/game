@@ -27,6 +27,7 @@ namespace TruthCardGame.Core
         private readonly CoreServices _services;
         private readonly BackgroundActionTracker _tracker;
         private readonly PhaseRunRngFactory _rngFactory;
+        private readonly CardSelectionProfile _selectionProfile;
         private readonly SessionDefinition _session;
         private readonly ActionExecutor _executor;
         private readonly int _executionBudget;
@@ -59,16 +60,21 @@ namespace TruthCardGame.Core
         public event Action<string> RuntimeError;
         public event Action SessionCompleted;
 
+        /// <summary>Forwarded from active PhaseGraphVms (selection diagnostics seam).</summary>
+        public event Action<CardSelector.SelectionResult> CardSelectionEvaluated;
+
         public SessionGraphVm(
             GameContentDefinition content, string sessionId, CoreServices services,
             BackgroundActionTracker tracker, PhaseRunRngFactory rngFactory,
-            int executionBudget = PhaseGraphVm.DefaultExecutionBudget)
+            int executionBudget = PhaseGraphVm.DefaultExecutionBudget,
+            CardSelectionProfile selectionProfile = null)
         {
             _content = content ?? throw new ArgumentNullException(nameof(content));
             _catalog = new ContentCatalog(content);
             _services = services ?? throw new ArgumentNullException(nameof(services));
             _tracker = tracker ?? throw new ArgumentNullException(nameof(tracker));
             _rngFactory = rngFactory ?? new PhaseRunRngFactory();
+            _selectionProfile = selectionProfile ?? new CardSelectionProfile();
             if (executionBudget <= 0) throw new ArgumentOutOfRangeException(nameof(executionBudget));
             _executionBudget = executionBudget;
             _session = _catalog.SessionById(sessionId);
@@ -302,7 +308,7 @@ namespace TruthCardGame.Core
         {
             var run = new PhaseRun(reference.Id, reference.PhaseId, _rngFactory.Create());
             _activeRun = run;
-            _activePhaseVm = new PhaseGraphVm(_content, _catalog.PhaseById(reference.PhaseId), _services, _tracker, _executionBudget);
+            _activePhaseVm = CreatePhaseVm(_catalog.PhaseById(reference.PhaseId));
             WirePhaseEvents(_activePhaseVm);
             return Task.CompletedTask;
         }
@@ -526,7 +532,7 @@ namespace TruthCardGame.Core
             else
             {
                 _activeRun = frame.PhaseRun;
-                _activePhaseVm = new PhaseGraphVm(_content, _catalog.PhaseById(frame.PhaseRun.PhaseId), _services, _tracker, _executionBudget);
+                _activePhaseVm = CreatePhaseVm(_catalog.PhaseById(frame.PhaseRun.PhaseId));
                 WirePhaseEvents(_activePhaseVm);
             }
             _pendingResume = frame;
@@ -625,6 +631,12 @@ namespace TruthCardGame.Core
                 $"Session '{_session.Id}': node '{node.Id}' has no Normal output to follow.");
         }
 
+        private PhaseGraphVm CreatePhaseVm(PhaseDefinition phase)
+        {
+            return new PhaseGraphVm(_content, phase, _services, _tracker, _executionBudget,
+                _selectionProfile, _session.CardWeighting, _session.Id);
+        }
+
         private void WirePhaseEvents(PhaseGraphVm vm)
         {
             vm.PhaseEntered += id => PhaseEntered?.Invoke(id);
@@ -633,6 +645,7 @@ namespace TruthCardGame.Core
             vm.CardFinished += card => CardFinished?.Invoke(card);
             vm.VariableCheckEvaluated += (check, value, result) => VariableCheckEvaluated?.Invoke(check, value, result);
             vm.RuntimeError += message => RuntimeError?.Invoke(message);
+            vm.CardSelectionEvaluated += result => CardSelectionEvaluated?.Invoke(result);
         }
     }
 

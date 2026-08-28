@@ -44,22 +44,6 @@ namespace TruthCardGame.Content.Sqlite
         }
 
         /// <summary>
-        /// Ensures a tag row exists for each name. Tag ids are the tag names
-        /// themselves (name is UNIQUE), matching the initializer convention.
-        /// </summary>
-        public static void EnsureTags(DbConnection connection, DbTransaction transaction, IReadOnlyList<string> names)
-        {
-            if (names == null) return;
-            foreach (var name in names)
-            {
-                if (string.IsNullOrEmpty(name)) continue;
-                Execute(connection, transaction,
-                    "INSERT OR IGNORE INTO tag (id, name) VALUES (@id, @name);",
-                    ("id", name), ("name", name));
-            }
-        }
-
-        /// <summary>
         /// Reassigns ordinals of a (parent, ordinal)-keyed ordered table
         /// without violating the unique constraint midway: shift every row by
         /// a large offset first, then stamp the new order. The caller's list

@@ -108,15 +108,16 @@ namespace TruthCardGame.Core.Tests
         {
             var selector = new SessionSelector(_catalog);
 
-            // "intense" tag exists only on the Intense session; the filter must
-            // restrict selection to it regardless of RNG offset.
+            // The eligibility filter restricts selection to the Intense
+            // session by id regardless of RNG offset (Session free-form tags
+            // are gone with the old tag system; filters use stable ids).
             Assert.IsTrue(selector.TrySelect(
                 SampleContent.TypeStandard,
                 new FixedRandomSource(0),
                 out var chosen,
-                session => session.Tags.Contains("intense")));
+                session => session.Id == SampleContent.SessionIntense));
             Assert.IsNotNull(chosen);
-            Assert.IsTrue(chosen.Tags.Contains("intense"));
+            Assert.AreEqual(SampleContent.SessionIntense, chosen.Id);
         }
 
         [Test]

@@ -36,17 +36,14 @@ namespace TruthCardGame.Content.Sqlite.Tests
         }
 
         [Test]
-        public void EnsureSchema_AppliesV1_AndCoreTablesExist()
+        public void EnsureSchema_AppliesAllMigrations_AndCoreTablesExist()
         {
             ConnectionInitializer.Initialize(_connection);
             var version = CoreMigrator.EnsureSchema(_connection);
 
-            Assert.GreaterOrEqual(version, 4, "all core migrations apply on a fresh database");
+            Assert.AreEqual(CoreMigrations.MaxVersion, version, "all core migrations apply on a fresh database");
             Assert.IsTrue(TableExists(_connection, "session"));
-            Assert.IsTrue(TableExists(_connection, "phase_slot"));
-            Assert.IsTrue(TableExists(_connection, "phase_slot_candidate"));
-            Assert.IsTrue(TableExists(_connection, "action_choice"));
-            Assert.IsTrue(TableExists(_connection, "card_action"));
+            Assert.IsTrue(TableExists(_connection, "card"));
             Assert.IsTrue(TableExists(_connection, "resource"));
             // v2 additions:
             Assert.IsTrue(TableExists(_connection, "action_instance"));
@@ -56,6 +53,23 @@ namespace TruthCardGame.Content.Sqlite.Tests
             Assert.IsTrue(TableExists(_connection, "wpf_session_node_layout"));
             Assert.IsTrue(TableExists(_connection, "wpf_phase_node_layout"));
             Assert.IsTrue(TableExists(_connection, "wpf_viewport_state"));
+            // v5 Milestone B additions:
+            Assert.IsTrue(TableExists(_connection, "card_tag_definition"));
+            Assert.IsTrue(TableExists(_connection, "kink_definition"));
+            Assert.IsTrue(TableExists(_connection, "equipment_definition"));
+            Assert.IsTrue(TableExists(_connection, "smart_toy_capability_definition"));
+            Assert.IsTrue(TableExists(_connection, "card_kink"));
+            Assert.IsTrue(TableExists(_connection, "card_required_equipment"));
+            Assert.IsTrue(TableExists(_connection, "card_required_smart_toy_capability"));
+            Assert.IsTrue(TableExists(_connection, "phase_card_all_tag"));
+            Assert.IsTrue(TableExists(_connection, "phase_card_any_tag"));
+            Assert.IsTrue(TableExists(_connection, "session_card_weighting"));
+            Assert.IsTrue(TableExists(_connection, "session_type_required_smart_toy_capability"));
+            // v5 drops the superseded v1 structures:
+            Assert.IsFalse(TableExists(_connection, "phase_slot"));
+            Assert.IsFalse(TableExists(_connection, "card_deck"));
+            Assert.IsFalse(TableExists(_connection, "action"));
+            Assert.IsFalse(TableExists(_connection, "tag"));
         }
 
         [Test]
@@ -69,7 +83,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
             using (var reopened = OpenNewConnection())
             {
                 CoreMigrator.EnsureSchema(reopened);
-                Assert.AreEqual(4, MigrationRowCount(reopened), "one ledger row per migration");
+                Assert.AreEqual(CoreMigrations.MaxVersion, MigrationRowCount(reopened), "one ledger row per migration");
             }
         }
 
@@ -109,24 +123,19 @@ namespace TruthCardGame.Content.Sqlite.Tests
             ConnectionInitializer.Initialize(_connection);
             CoreMigrator.EnsureSchema(_connection);
 
+            var applied = CoreMigrations.All;
             using (var command = _connection.CreateCommand())
             {
                 command.CommandText = "SELECT version, name FROM core_schema_migration ORDER BY version;";
                 using (var reader = command.ExecuteReader())
                 {
-                    Assert.IsTrue(reader.Read());
-                    Assert.AreEqual(1, reader.GetInt32(0));
-                    Assert.AreEqual("core-schema-v1", reader.GetString(1));
-                    Assert.IsTrue(reader.Read());
-                    Assert.AreEqual(2, reader.GetInt32(0));
-                    Assert.AreEqual("core-graph-schema-v2", reader.GetString(1));
-                    Assert.IsTrue(reader.Read());
-                    Assert.AreEqual(3, reader.GetInt32(0));
-                    Assert.AreEqual("wpf-authoring-layout", reader.GetString(1));
-                    Assert.IsTrue(reader.Read());
-                    Assert.AreEqual(4, reader.GetInt32(0));
-                    Assert.AreEqual("phase-goto-nullable-exit", reader.GetString(1));
-                    Assert.IsFalse(reader.Read());
+                    for (var i = 0; i < applied.Count; i++)
+                    {
+                        Assert.IsTrue(reader.Read(), "missing ledger row for migration " + applied[i].Version);
+                        Assert.AreEqual(applied[i].Version, reader.GetInt32(0));
+                        Assert.AreEqual(applied[i].Name, reader.GetString(1));
+                    }
+                    Assert.IsFalse(reader.Read(), "more ledger rows than registered migrations");
                 }
             }
         }

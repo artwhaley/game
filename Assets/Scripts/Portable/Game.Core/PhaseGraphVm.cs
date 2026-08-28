@@ -23,11 +23,17 @@ namespace TruthCardGame.Core
         /// <summary>Default shared safety ceiling per RunUntilYield call.</summary>
         public const int DefaultExecutionBudget = 10000;
 
+        /// <summary>Canonical Happiness temperature id (weighting input; 50 when absent).</summary>
+        public const string HappinessTemperatureId = "happiness";
+
         private readonly ContentCatalog _catalog;
         private readonly CoreServices _services;
         private readonly BackgroundActionTracker _tracker;
         private readonly ActionExecutor _executor;
         private readonly CardSelector _cardSelector;
+        private readonly CardSelectionProfile _selectionProfile;
+        private readonly SessionCardWeightingDefinition _sessionWeighting;
+        private readonly string _sessionId;
         private readonly PhaseDefinition _phase;
         private readonly int _executionBudget;
 
@@ -42,14 +48,21 @@ namespace TruthCardGame.Core
         public event Action<VariableCheckNodeDefinition, float, bool> VariableCheckEvaluated;
         public event Action<string> RuntimeError;      // message
 
+        public event Action<CardSelector.SelectionResult> CardSelectionEvaluated;
+
         public PhaseGraphVm(GameContentDefinition content, PhaseDefinition phase, CoreServices services,
-            BackgroundActionTracker tracker, int executionBudget = DefaultExecutionBudget)
+            BackgroundActionTracker tracker, int executionBudget = DefaultExecutionBudget,
+            CardSelectionProfile selectionProfile = null, SessionCardWeightingDefinition sessionWeighting = null,
+            string sessionId = null)
         {
             _catalog = new ContentCatalog(content);
             _services = services ?? throw new ArgumentNullException(nameof(services));
             _tracker = tracker ?? throw new ArgumentNullException(nameof(tracker));
             _executor = new ActionExecutor(_tracker);
-            _cardSelector = new CardSelector(content.Deck, _catalog);
+            _cardSelector = new CardSelector(content, _catalog);
+            _selectionProfile = selectionProfile ?? new CardSelectionProfile();
+            _sessionWeighting = sessionWeighting ?? new SessionCardWeightingDefinition();
+            _sessionId = sessionId ?? "";
             _phase = phase ?? throw new ArgumentNullException(nameof(phase));
             if (executionBudget <= 0) throw new ArgumentOutOfRangeException(nameof(executionBudget));
             _executionBudget = executionBudget;
@@ -228,10 +241,15 @@ namespace TruthCardGame.Core
                 {
                     case CardExecutorNodeDefinition cardExecutor:
                     {
-                        var selected = DrawCard(run);
-                        if (selected == null)
+                        CardDefinition selected;
+                        try
                         {
-                            return Fail(run, $"no eligible card for phase '{_phase.Id}' (tags: include [{Join(_phase.MustIncludeTags)}], exclude [{Join(_phase.MustExcludeTags)}]).");
+                            selected = DrawCard(run, context);
+                        }
+                        catch (NoEligibleCardException ex)
+                        {
+                            // Loud typed failure — never skip, relax, or alter flow.
+                            return Fail(run, ex.Message);
                         }
 
                         CardStarted?.Invoke(selected);
@@ -431,14 +449,24 @@ namespace TruthCardGame.Core
 
         // ---------- card selection ----------
 
-        private CardDefinition DrawCard(PhaseRun run)
+        private CardDefinition DrawCard(PhaseRun run, ActionExecutionContext context)
         {
-            if (!_cardSelector.TryDrawCard(_phase.MustIncludeTags, _phase.MustExcludeTags, run.CardRng, out var card))
+            var happiness = 50f;
+            try
             {
-                return null;
+                happiness = context.Temperatures.Get(HappinessTemperatureId);
             }
-            run.DrawHistory.Add(card.Id);
-            return card;
+            catch (InvalidOperationException)
+            {
+                // No Happiness temperature authored: selection proceeds at 50.
+            }
+
+            var evaluation = _cardSelector.Evaluate(_phase, _selectionProfile, _sessionWeighting, happiness, _sessionId);
+            CardSelectionEvaluated?.Invoke(evaluation);
+
+            var selected = _cardSelector.Draw(_phase, _selectionProfile, _sessionWeighting, happiness, _sessionId, run.CardRng);
+            run.DrawHistory.Add(selected.Id);
+            return selected;
         }
 
         // ---------- variable check ----------
@@ -525,12 +553,6 @@ namespace TruthCardGame.Core
                 baseContext.Temperatures,
                 run.Progress,
                 scope);
-        }
-
-        private static string Join(IReadOnlyList<string> values)
-        {
-            if (values == null || values.Count == 0) return "";
-            return string.Join(",", values);
         }
     }
 }

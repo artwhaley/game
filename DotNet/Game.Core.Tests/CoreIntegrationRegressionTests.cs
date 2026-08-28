@@ -34,7 +34,6 @@ namespace TruthCardGame.Core.Tests
         {
             _content = new GameContentDefinition
             {
-                Deck = new CardDeckDefinition { Id = "deck", Title = "Deck" },
                 SessionTypes = { new SessionTypeDefinition { Id = SampleContent.TypeStandard, Title = "Standard" } },
                 Temperatures =
                 {
@@ -243,11 +242,10 @@ namespace TruthCardGame.Core.Tests
         private void AddCard(string id, string title, string[] tags, params ActionInstanceDefinition[] actions)
         {
             var card = new CardDefinition { Id = id, Title = title };
-            if (tags != null) card.Tags.AddRange(tags);
+            if (tags != null) card.CardTagIds.AddRange(tags);
             card.Sequence = new ActionSequenceDefinition { Id = "seq-" + id };
             foreach (var action in actions) card.Sequence.Instances.Add(action);
             _content.Cards.Add(card);
-            _content.Deck.CardIds.Add(id);
         }
 
         /// <summary>Scripted RNG: pops offsets in order; returns 0 when exhausted.</summary>
@@ -260,6 +258,13 @@ namespace TruthCardGame.Core.Tests
                 if (_offsets.Count == 0) return minInclusive;
                 var offset = _offsets.Dequeue();
                 return Math.Min(minInclusive + offset, maxExclusive - 1);
+            }
+
+            public float NextFloat(float minInclusive, float maxExclusive)
+            {
+                if (_offsets.Count == 0) return minInclusive;
+                var offset = _offsets.Dequeue();
+                return Math.Min(minInclusive + offset, maxExclusive - 0.0001f);
             }
         }
 

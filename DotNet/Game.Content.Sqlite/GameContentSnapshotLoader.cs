@@ -6,14 +6,15 @@ using TruthCardGame.Content;
 namespace TruthCardGame.Content.Sqlite
 {
     /// <summary>
-    /// Reconstructs a complete portable GameContentDefinition from a SQLite v2
-    /// core database (schema per Docs/GraphWorkbench/03-schema-v2-design.md).
+    /// Reconstructs a complete portable GameContentDefinition from a SQLite v5
+    /// core database (schema per Docs/MilestoneB/02-schema-audit.md).
     ///
-    /// Reads ONLY v2 structures: session types, temperature definitions,
-    /// session/phase graphs with typed nodes, output sockets and edges, owned
-    /// action sequences/instances (+ explicit subtype rows), cards with their
-    /// owned sequence, resources, and the deck. Legacy PhaseSlot/top-level-action
-    /// rows are ignored entirely.
+    /// Reads: session types (+ required capabilities), temperature definitions,
+    /// catalog definitions (Card Tags, Kinks, Equipment, Smart Toy
+    /// capabilities), session/phase graphs with typed nodes, output sockets and
+    /// edges, owned action sequences/instances (+ explicit subtype rows), cards
+    /// with body text/relations/owned sequence, resources, and per-Session
+    /// card weighting.
     ///
     /// Fail-loud rules: unknown node types / port kinds / instance types, missing
     /// subtype rows, unwired socket payloads, and flow-control instances marked
@@ -49,7 +50,10 @@ namespace TruthCardGame.Content.Sqlite
             content.SessionTypes.AddRange(LoadSessionTypes(connection));
             content.Temperatures.AddRange(LoadTemperatures(connection));
             content.Resources.AddRange(LoadResources(connection));
-            content.Deck = LoadDeck(connection);
+            content.CardTagDefinitions.AddRange(LoadCardTagDefinitions(connection));
+            content.KinkDefinitions.AddRange(LoadKinkDefinitions(connection));
+            content.EquipmentDefinitions.AddRange(LoadEquipmentDefinitions(connection));
+            content.SmartToyCapabilityDefinitions.AddRange(LoadSmartToyCapabilityDefinitions(connection));
             content.Cards.AddRange(LoadCards(connection, sequences));
             content.Phases.AddRange(LoadPhases(connection, sequences));
             content.Sessions.AddRange(LoadSessions(connection, sequences));
@@ -62,13 +66,77 @@ namespace TruthCardGame.Content.Sqlite
         private static List<SessionTypeDefinition> LoadSessionTypes(DbConnection connection)
         {
             var types = new List<SessionTypeDefinition>();
-            QueryAll(connection, "SELECT id, title FROM session_type ORDER BY id;",
+            QueryAll(connection, "SELECT id, title, sort_order FROM session_type ORDER BY sort_order, id;",
                 reader => types.Add(new SessionTypeDefinition
                 {
                     Id = reader.GetString(0),
                     Title = reader.GetString(1),
+                    SortOrder = reader.GetInt32(2),
                 }));
+
+            foreach (var type in types)
+            {
+                QueryAll(connection,
+                    "SELECT capability_id FROM session_type_required_smart_toy_capability WHERE session_type_id = @id ORDER BY ordinal;",
+                    reader => type.RequiredCapabilityIds.Add(reader.GetString(0)),
+                    Param("id", type.Id));
+            }
             return types;
+        }
+
+        private static List<CardTagDefinition> LoadCardTagDefinitions(DbConnection connection)
+        {
+            var tags = new List<CardTagDefinition>();
+            QueryAll(connection, "SELECT id, title, sort_order FROM card_tag_definition ORDER BY sort_order, title;",
+                reader => tags.Add(new CardTagDefinition
+                {
+                    Id = reader.GetString(0),
+                    Title = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    SortOrder = reader.GetInt32(2),
+                }));
+            return tags;
+        }
+
+        private static List<KinkDefinition> LoadKinkDefinitions(DbConnection connection)
+        {
+            var kinks = new List<KinkDefinition>();
+            QueryAll(connection, "SELECT id, title, description, sort_order FROM kink_definition ORDER BY sort_order, title;",
+                reader => kinks.Add(new KinkDefinition
+                {
+                    Id = reader.GetString(0),
+                    Title = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    Description = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                    SortOrder = reader.GetInt32(3),
+                }));
+            return kinks;
+        }
+
+        private static List<EquipmentDefinition> LoadEquipmentDefinitions(DbConnection connection)
+        {
+            var items = new List<EquipmentDefinition>();
+            QueryAll(connection, "SELECT id, title, category, sort_order FROM equipment_definition ORDER BY sort_order, title;",
+                reader => items.Add(new EquipmentDefinition
+                {
+                    Id = reader.GetString(0),
+                    Title = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    Category = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                    SortOrder = reader.GetInt32(3),
+                }));
+            return items;
+        }
+
+        private static List<SmartToyCapabilityDefinition> LoadSmartToyCapabilityDefinitions(DbConnection connection)
+        {
+            var items = new List<SmartToyCapabilityDefinition>();
+            QueryAll(connection, "SELECT id, title, category, sort_order FROM smart_toy_capability_definition ORDER BY sort_order, title;",
+                reader => items.Add(new SmartToyCapabilityDefinition
+                {
+                    Id = reader.GetString(0),
+                    Title = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    Category = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                    SortOrder = reader.GetInt32(3),
+                }));
+            return items;
         }
 
         private static List<TemperatureDefinition> LoadTemperatures(DbConnection connection)
@@ -99,27 +167,26 @@ namespace TruthCardGame.Content.Sqlite
             return resources;
         }
 
-        private static CardDeckDefinition LoadDeck(DbConnection connection)
+        private static void LoadSessionWeighting(DbConnection connection, SessionDefinition session)
         {
-            var deckId = "";
-            var title = "";
-            QueryOne(connection, "SELECT id, title FROM card_deck ORDER BY id LIMIT 1;",
+            var weighting = new SessionCardWeightingDefinition();
+            QueryOne(connection,
+                "SELECT love_base, love_happiness_gain, like_base, like_happiness_gain, torture_base, torture_unhappiness_gain " +
+                "FROM session_card_weighting WHERE session_id = @id;",
                 reader =>
                 {
-                    deckId = reader.GetString(0);
-                    title = reader.IsDBNull(1) ? "" : reader.GetString(1);
-                });
+                    weighting.LoveBase = Convert.ToSingle(reader.GetValue(0));
+                    weighting.LoveHappinessGain = Convert.ToSingle(reader.GetValue(1));
+                    weighting.LikeBase = Convert.ToSingle(reader.GetValue(2));
+                    weighting.LikeHappinessGain = Convert.ToSingle(reader.GetValue(3));
+                    weighting.TortureBase = Convert.ToSingle(reader.GetValue(4));
+                    weighting.TortureUnhappinessGain = Convert.ToSingle(reader.GetValue(5));
+                },
+                Param("id", session.Id));
 
-            if (string.IsNullOrEmpty(deckId))
-            {
-                return new CardDeckDefinition();
-            }
-
-            var deck = new CardDeckDefinition { Id = deckId, Title = title };
-            QueryAll(connection, "SELECT card_id FROM card_deck_card WHERE deck_id = @deck ORDER BY ordinal;",
-                reader => deck.CardIds.Add(reader.GetString(0)),
-                Param("deck", deckId));
-            return deck;
+            // A missing weighting row means defaults — v5 repositories always
+            // write one, but tolerate hand-authored databases without it.
+            session.CardWeighting = weighting;
         }
 
         // ---- cards ----
@@ -134,12 +201,14 @@ namespace TruthCardGame.Content.Sqlite
             foreach (var id in ids)
             {
                 string title = "";
+                string bodyText = "";
                 string sequenceId = "";
-                QueryOne(connection, "SELECT title, action_sequence_id FROM card WHERE id = @id;",
+                QueryOne(connection, "SELECT title, body_text, action_sequence_id FROM card WHERE id = @id;",
                     reader =>
                     {
                         title = reader.GetString(0);
-                        sequenceId = reader.IsDBNull(1) ? null : reader.GetString(1);
+                        bodyText = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                        sequenceId = reader.IsDBNull(2) ? null : reader.GetString(2);
                     },
                     Param("id", id));
 
@@ -148,9 +217,18 @@ namespace TruthCardGame.Content.Sqlite
                     throw new InvalidOperationException($"Loader: card '{id}' has no owned action_sequence_id.");
                 }
 
-                var card = new CardDefinition { Id = id, Title = title };
-                card.Tags.AddRange(OrderedTagNames(connection,
-                    "SELECT t.name FROM card_tag ct JOIN tag t ON t.id = ct.tag_id WHERE ct.card_id = @id ORDER BY ct.ordinal;",
+                var card = new CardDefinition { Id = id, Title = title, BodyText = bodyText };
+                card.CardTagIds.AddRange(OrderedRelationIds(connection,
+                    "SELECT tag_id FROM card_tag WHERE card_id = @id ORDER BY ordinal;",
+                    Param("id", id)));
+                card.KinkIds.AddRange(OrderedRelationIds(connection,
+                    "SELECT kink_id FROM card_kink WHERE card_id = @id ORDER BY ordinal;",
+                    Param("id", id)));
+                card.RequiredEquipmentIds.AddRange(OrderedRelationIds(connection,
+                    "SELECT equipment_id FROM card_required_equipment WHERE card_id = @id ORDER BY ordinal;",
+                    Param("id", id)));
+                card.RequiredCapabilityIds.AddRange(OrderedRelationIds(connection,
+                    "SELECT capability_id FROM card_required_smart_toy_capability WHERE card_id = @id ORDER BY ordinal;",
                     Param("id", id)));
                 card.Sequence = sequences.Load(sequenceId);
                 cards.Add(card);
@@ -175,11 +253,11 @@ namespace TruthCardGame.Content.Sqlite
                     reader => title = reader.GetString(0), Param("id", id));
 
                 var phase = new PhaseDefinition { Id = id, Title = title };
-                phase.MustIncludeTags.AddRange(OrderedTagNames(connection,
-                    "SELECT t.name FROM phase_required_tag prt JOIN tag t ON t.id = prt.tag_id WHERE prt.phase_id = @id ORDER BY prt.ordinal;",
+                phase.MustHaveAllCardTags.AddRange(OrderedRelationIds(connection,
+                    "SELECT tag_id FROM phase_card_all_tag WHERE phase_id = @id ORDER BY ordinal;",
                     Param("id", id)));
-                phase.MustExcludeTags.AddRange(OrderedTagNames(connection,
-                    "SELECT t.name FROM phase_excluded_tag pet JOIN tag t ON t.id = pet.tag_id WHERE pet.phase_id = @id ORDER BY pet.ordinal;",
+                phase.MustHaveAnyCardTags.AddRange(OrderedRelationIds(connection,
+                    "SELECT tag_id FROM phase_card_any_tag WHERE phase_id = @id ORDER BY ordinal;",
                     Param("id", id)));
 
                 QueryAll(connection, "SELECT id, name FROM phase_exit WHERE phase_id = @phase ORDER BY ordinal;",
@@ -334,9 +412,7 @@ namespace TruthCardGame.Content.Sqlite
                     Title = title,
                     SessionTypeId = sessionTypeId,
                 };
-                session.Tags.AddRange(OrderedTagNames(connection,
-                    "SELECT t.name FROM session_tag st JOIN tag t ON t.id = st.tag_id WHERE st.session_id = @id ORDER BY st.ordinal;",
-                    Param("id", id)));
+                LoadSessionWeighting(connection, session);
 
                 var graph = LoadGraph(
                     connection,
@@ -538,11 +614,11 @@ namespace TruthCardGame.Content.Sqlite
 
         // ---- tags/helpers ----
 
-        private static List<string> OrderedTagNames(DbConnection connection, string sql, params (string Name, object Value)[] parameters)
+        private static List<string> OrderedRelationIds(DbConnection connection, string sql, params (string Name, object Value)[] parameters)
         {
-            var names = new List<string>();
-            QueryAll(connection, sql, reader => names.Add(reader.GetString(0)), parameters);
-            return names;
+            var ids = new List<string>();
+            QueryAll(connection, sql, reader => ids.Add(reader.GetString(0)), parameters);
+            return ids;
         }
 
         private static VariableSourceKind ParseSourceKind(string value, string nodeId)

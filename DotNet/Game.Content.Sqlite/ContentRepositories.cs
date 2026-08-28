@@ -104,9 +104,10 @@ namespace TruthCardGame.Content.Sqlite
                 {
                     ActionSequenceWriter.Write(connection, transaction, card.Sequence);
                     Sql.Execute(connection, transaction,
-                        "INSERT INTO card (id, title, action_sequence_id) VALUES (@id, @title, @seq);",
-                        ("id", card.Id), ("title", (object)card.Title ?? DBNull.Value), ("seq", card.Sequence.Id));
-                    ReplaceTags(connection, transaction, card.Id, card.Tags);
+                        "INSERT INTO card (id, title, body_text, action_sequence_id) VALUES (@id, @title, @body, @seq);",
+                        ("id", card.Id), ("title", (object)card.Title ?? DBNull.Value),
+                        ("body", (object)card.BodyText ?? DBNull.Value), ("seq", card.Sequence.Id));
+                    ReplaceRelations(connection, transaction, card.Id, card.CardTagIds);
                     transaction.Commit();
                 }
                 catch
@@ -117,16 +118,15 @@ namespace TruthCardGame.Content.Sqlite
             }
         }
 
-        private static void ReplaceTags(DbConnection connection, DbTransaction transaction, string cardId, IReadOnlyList<string> tags)
+        private static void ReplaceRelations(DbConnection connection, DbTransaction transaction, string cardId, IReadOnlyList<string> tagIds)
         {
             Sql.Execute(connection, transaction,
                 "DELETE FROM card_tag WHERE card_id = @card;", ("card", cardId));
-            Sql.EnsureTags(connection, transaction, tags);
-            for (var i = 0; i < tags.Count; i++)
+            for (var i = 0; i < tagIds.Count; i++)
             {
                 Sql.Execute(connection, transaction,
                     "INSERT INTO card_tag (card_id, tag_id, ordinal) VALUES (@card, @tag, @ordinal);",
-                    ("card", cardId), ("tag", tags[i]), ("ordinal", i));
+                    ("card", cardId), ("tag", tagIds[i]), ("ordinal", i));
             }
         }
     }

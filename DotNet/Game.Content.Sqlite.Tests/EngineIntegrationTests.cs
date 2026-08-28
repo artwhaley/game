@@ -86,6 +86,13 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 var offset = _offsets.Dequeue();
                 return Math.Min(minInclusive + offset, maxExclusive - 1);
             }
+
+            public float NextFloat(float minInclusive, float maxExclusive)
+            {
+                if (_offsets.Count == 0) return minInclusive;
+                var offset = _offsets.Dequeue();
+                return Math.Min(minInclusive + offset, maxExclusive - 0.0001f);
+            }
         }
 
         private sealed class InstantDelay : IGameDelay

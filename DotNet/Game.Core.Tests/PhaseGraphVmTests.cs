@@ -236,7 +236,7 @@ namespace TruthCardGame.Core.Tests
             var phase = new PhaseDefinition
             {
                 Id = "no-card",
-                MustIncludeTags = { "does-not-exist-tag" },
+                MustHaveAllCardTags = { "does-not-exist-tag" },
             };
             var entry = Out(new PhaseEntryNodeDefinition { Id = "n-entry" });
             var exec = new CardExecutorNodeDefinition { Id = "n-exec" };

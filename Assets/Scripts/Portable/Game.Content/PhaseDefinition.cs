@@ -8,19 +8,20 @@ namespace TruthCardGame.Content
     /// authored graph executes a Phase GOTO, RETURN, or EndSession; a dead-end
     /// without a control transfer is a runtime graph error.
     ///
-    /// MinCards/MaxCards are obsolete (deleted): card cadence is authored graph
-    /// control now. MustInclude/MustExcludeTags remain the card-selection filters.
+    /// Phase classification tags are gone (Sessions hand-author an exact Phase
+    /// set). Card selection is the include-only Card tag query below; NOT-style
+    /// exclusion is deliberately deferred to a future status-effect system.
     /// </summary>
     public sealed class PhaseDefinition
     {
         public string Id { get; set; } = "";
         public string Title { get; set; } = "";
 
-        /// <summary>Card must carry ALL of these tags to be eligible in this Phase.</summary>
-        public List<string> MustIncludeTags { get; set; } = new List<string>();
+        /// <summary>Card must carry ALL of these CardTags to be eligible (empty = no restriction).</summary>
+        public List<string> MustHaveAllCardTags { get; set; } = new List<string>();
 
-        /// <summary>Card carrying ANY of these tags is excluded from this Phase.</summary>
-        public List<string> MustExcludeTags { get; set; } = new List<string>();
+        /// <summary>Card must carry ANY of these CardTags to be eligible (empty = no restriction).</summary>
+        public List<string> MustHaveAnyCardTags { get; set; } = new List<string>();
 
         /// <summary>Ordered exported exits; identity is the exit ID, display name is editable freely.</summary>
         public List<PhaseExitDefinition> Exits { get; set; } = new List<PhaseExitDefinition>();

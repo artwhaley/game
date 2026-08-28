@@ -4,30 +4,37 @@ using TruthCardGame.Content;
 namespace TruthCardGame.Content.Samples
 {
     /// <summary>
-    /// Code-built snapshot of the Unity sample content, reshaped to the Graph
-    /// Workbench v2 model (Docs/GraphWorkbench/05-implementation-map.md).
+    /// Code-built snapshot of the Unity sample content, reshaped to the
+    /// Milestone B model (Docs/MilestoneB/02-schema-audit.md).
     ///
-    /// - Authored stable IDs, titles, and tags stay faithful to Assets/Content.
-    /// - Every Phase carries the standard executable graph from the schema-design
-    ///   contract: Entry → CardExecutor → happiness-fail check → progress-complete
-    ///   check, looping back to the CardExecutor until an exit fires. The terminal
-    ///   "The End" phase omits the fail path and exports only its Complete exit.
-    /// - Sessions wire projected reference sockets per contract: Complete → next
-    ///   reference (last one: SessionEnd), Fail → SessionEnd directly.
+    /// - Authored stable IDs and titles stay faithful to Assets/Content.
+    /// - Card tags are dedicated CardTagDefinition rows with stable IDs;
+    ///   phases carry include-only ALL/ANY Card queries (no exclusion).
+    /// - Every Phase carries the standard executable graph: Entry →
+    ///   CardExecutor → happiness-fail check → progress-complete check,
+    ///   looping back to the CardExecutor until an exit fires. The terminal
+    ///   "The End" phase omits the fail path and exports only Complete.
+    /// - Sessions wire projected reference sockets per contract: Complete →
+    ///   next reference (last one: SessionEnd), Fail → SessionEnd directly.
     ///
-    /// This replaces the JSON parity fixtures removed by the SQLite stack: tests,
-    /// seeds, and hosts all build content from here.
+    /// Tests, seeds, and hosts all build content from here.
     /// </summary>
     public static class SampleContent
     {
         // ---- stable ids kept faithful to the Unity sample assets ----
 
-        public const string StarterDeckId = "b8399104a3ee4bd7b0b61771d76d0e0f";
-
         public const string TypeStandard = "type-standard";
         public const string TemperatureHappiness = "happiness";
 
         public const string ResourceCutsceneIntro = "res-cutscene-intro-a-familiar-face";
+
+        // Card tag definitions (v5): stable catalog ids, faithful titles.
+        public const string CardTagCutscene = "cardtag-cutscene";
+        public const string CardTagParty = "cardtag-party";
+        public const string CardTagTruth = "cardtag-truth";
+        public const string CardTagSolo = "cardtag-solo";
+        public const string CardTagDare = "cardtag-dare";
+        public const string CardTagEnding = "cardtag-ending";
 
         public const string SessionIntense = "9ac9fbe9ced7463a8627356e21644096";   // Intense
         public const string SessionRelaxing = "8741477f677e443f828f87267c32d537";  // Relaxing
@@ -56,22 +63,6 @@ namespace TruthCardGame.Content.Samples
         {
             var content = new GameContentDefinition
             {
-                Deck = new CardDeckDefinition
-                {
-                    Id = StarterDeckId,
-                    Title = "Starter Deck",
-                    CardIds =
-                    {
-                        CardCutsceneIntro,
-                        CardCourageBoost,
-                        CardAmbientWhispers,
-                        CardTwinWhispers,
-                        CardFaceTheCrowd,
-                        CardTheCrowdWatches,
-                        CardDareAndCelebrate,
-                        CardTheEnd,
-                    },
-                },
                 SessionTypes = { new SessionTypeDefinition { Id = TypeStandard, Title = "Standard" } },
                 Temperatures =
                 {
@@ -83,6 +74,15 @@ namespace TruthCardGame.Content.Samples
                         MaxValue = 100f,
                         DefaultValue = 50f,
                     },
+                },
+                CardTagDefinitions =
+                {
+                    new CardTagDefinition { Id = CardTagCutscene, Title = "Cutscene", SortOrder = 0 },
+                    new CardTagDefinition { Id = CardTagParty, Title = "Party", SortOrder = 1 },
+                    new CardTagDefinition { Id = CardTagTruth, Title = "Truth", SortOrder = 2 },
+                    new CardTagDefinition { Id = CardTagSolo, Title = "Solo", SortOrder = 3 },
+                    new CardTagDefinition { Id = CardTagDare, Title = "Dare", SortOrder = 4 },
+                    new CardTagDefinition { Id = CardTagEnding, Title = "Ending", SortOrder = 5 },
                 },
                 Resources = { new ResourceDefinition { Id = ResourceCutsceneIntro, Name = "A Familiar Face" } },
             };
@@ -96,12 +96,12 @@ namespace TruthCardGame.Content.Samples
             content.Cards.Add(BuildCardGrandFinale());
             content.Cards.Add(BuildCardFinalTally());
 
-            content.Phases.Add(StandardPhase(PhaseWarmUp, "Warm Up", excludeTags: TagList("ending")));
+            content.Phases.Add(StandardPhase(PhaseWarmUp, "Warm Up"));
             content.Phases.Add(StandardPhase(PhaseBuild, "Build"));
-            content.Phases.Add(StandardPhase(PhaseHighIntensity, "High Intensity", includeTags: TagList("party")));
+            content.Phases.Add(StandardPhase(PhaseHighIntensity, "High Intensity", allTags: TagList(CardTagParty)));
             content.Phases.Add(StandardPhase(PhaseTeasing, "Teasing"));
             content.Phases.Add(StandardPhase(PhaseWindDown, "Wind Down"));
-            content.Phases.Add(TerminalPhase(PhaseTheEndPhase, "The End", includeTags: TagList("ending")));
+            content.Phases.Add(TerminalPhase(PhaseTheEndPhase, "The End", allTags: TagList(CardTagEnding)));
 
             var phaseIndex = new Dictionary<string, PhaseDefinition>();
             foreach (var phase in content.Phases)
@@ -109,9 +109,9 @@ namespace TruthCardGame.Content.Samples
                 phaseIndex[phase.Id] = phase;
             }
 
-            content.Sessions.Add(BuildSession(SessionIntense, "Intense", "intense",
+            content.Sessions.Add(BuildSession(SessionIntense, "Intense",
                 phaseIndex[PhaseWarmUp], phaseIndex[PhaseBuild], phaseIndex[PhaseHighIntensity]));
-            content.Sessions.Add(BuildSession(SessionRelaxing, "Relaxing", "relaxing",
+            content.Sessions.Add(BuildSession(SessionRelaxing, "Relaxing",
                 phaseIndex[PhaseWarmUp], phaseIndex[PhaseTeasing], phaseIndex[PhaseWindDown],
                 phaseIndex[PhaseTheEndPhase]));
 
@@ -131,7 +131,7 @@ namespace TruthCardGame.Content.Samples
         /// jumps straight to SessionEnd. Only exits actually exported by the
         /// referenced phase receive sockets.
         /// </summary>
-        private static SessionDefinition BuildSession(string id, string title, string tag, params PhaseDefinition[] phases)
+        private static SessionDefinition BuildSession(string id, string title, params PhaseDefinition[] phases)
         {
             var start = new SessionStartNodeDefinition { Id = $"n-{id}-start" };
             start.Outputs.Add(NormalOut(start.Id));
@@ -193,7 +193,6 @@ namespace TruthCardGame.Content.Samples
             {
                 Id = id,
                 Title = title,
-                Tags = { tag },
                 SessionTypeId = TypeStandard,
                 Graph = new SessionGraphDefinition
                 {
@@ -206,18 +205,18 @@ namespace TruthCardGame.Content.Samples
         // ---- phase graphs ----
 
         /// <summary>The standard two-exit low-level graph. Fail check feeds a GOTO Fail action node; progress check loops or completes.</summary>
-        private static PhaseDefinition StandardPhase(string id, string title, List<string> includeTags = null, List<string> excludeTags = null)
+        private static PhaseDefinition StandardPhase(string id, string title, List<string> allTags = null)
         {
-            return PhaseGraph(id, title, includeTags, excludeTags, withFailPath: true);
+            return PhaseGraph(id, title, allTags, withFailPath: true);
         }
 
         /// <summary>Terminal variant without a fail exit/check.</summary>
-        private static PhaseDefinition TerminalPhase(string id, string title, List<string> includeTags = null, List<string> excludeTags = null)
+        private static PhaseDefinition TerminalPhase(string id, string title, List<string> allTags = null)
         {
-            return PhaseGraph(id, title, includeTags, excludeTags, withFailPath: false);
+            return PhaseGraph(id, title, allTags, withFailPath: false);
         }
 
-        private static PhaseDefinition PhaseGraph(string id, string title, List<string> includeTags, List<string> excludeTags, bool withFailPath)
+        private static PhaseDefinition PhaseGraph(string id, string title, List<string> allTags, bool withFailPath)
         {
             var entry = NormalOut(new PhaseEntryNodeDefinition { Id = $"pn-{id}-entry" });
             var draw = NormalOut(new CardExecutorNodeDefinition { Id = $"pn-{id}-draw" });
@@ -289,8 +288,7 @@ namespace TruthCardGame.Content.Samples
             {
                 Id = id,
                 Title = title,
-                MustIncludeTags = AddAll(includeTags),
-                MustExcludeTags = AddAll(excludeTags),
+                MustHaveAllCardTags = AddAll(allTags),
                 Exits = exits,
                 Graph = new PhaseGraphDefinition
                 {
@@ -422,7 +420,7 @@ namespace TruthCardGame.Content.Samples
             {
                 Id = CardCutsceneIntro,
                 Title = "A Familiar Face",
-                Tags = { "cutscene" },
+                CardTagIds = { CardTagCutscene },
                 Sequence = Seq(
                     Wait("inst-intro-wait"),
                     new CutsceneInstanceDefinition { Id = "inst-intro-cutscene", ResourceId = ResourceCutsceneIntro },
@@ -436,7 +434,7 @@ namespace TruthCardGame.Content.Samples
             {
                 Id = CardCourageBoost,
                 Title = "Courage Boost",
-                Tags = { "party", "truth" },
+                CardTagIds = { CardTagParty, CardTagTruth },
                 Sequence = Seq(
                     Wait("inst-courage-wait"),
                     new StatIncreaseInstanceDefinition { Id = "inst-courage-up", StatKey = "courage", Amount = 1f },
@@ -450,7 +448,7 @@ namespace TruthCardGame.Content.Samples
             {
                 Id = CardAmbientWhispers,
                 Title = "Ambient Whispers",
-                Tags = { "solo", "truth" },
+                CardTagIds = { CardTagSolo, CardTagTruth },
                 Sequence = Seq(
                     Wait("inst-ambient-wait"),
                     new DebugInstanceDefinition { Id = "inst-ambient-whisper", Message = "A soft whisper at the edge of hearing." },
@@ -464,7 +462,7 @@ namespace TruthCardGame.Content.Samples
             {
                 Id = CardTwinWhispers,
                 Title = "Twin Whispers",
-                Tags = { "solo" },
+                CardTagIds = { CardTagSolo },
                 Sequence = Seq(
                     Wait("inst-twin-wait"),
                     new PromptChoiceInstanceDefinition
@@ -494,7 +492,7 @@ namespace TruthCardGame.Content.Samples
             {
                 Id = CardFaceTheCrowd,
                 Title = "Face the Crowd",
-                Tags = { "party", "dare" },
+                CardTagIds = { CardTagParty, CardTagDare },
                 Sequence = Seq(
                     Wait("inst-crowdcard-wait"),
                     new PromptChoiceInstanceDefinition
@@ -525,7 +523,7 @@ namespace TruthCardGame.Content.Samples
             {
                 Id = CardTheCrowdWatches,
                 Title = "The Crowd Watches",
-                Tags = { "party", "dare" },
+                CardTagIds = { CardTagParty, CardTagDare },
                 Sequence = Seq(
                     Wait("inst-watchful-wait"),
                     new DebugInstanceDefinition { Id = "inst-watchful-jeer", Message = "The crowd leans in; nobody speaks first.", IsBlocking = false },
@@ -539,7 +537,7 @@ namespace TruthCardGame.Content.Samples
             {
                 Id = CardDareAndCelebrate,
                 Title = "Dare & Celebrate",
-                Tags = { "party", "dare" },
+                CardTagIds = { CardTagParty, CardTagDare },
                 Sequence = Seq(
                     Wait("inst-dare-wait"),
                     new StatIncreaseInstanceDefinition { Id = "inst-dare-spark", StatKey = "spark", Amount = 3f },
@@ -554,7 +552,7 @@ namespace TruthCardGame.Content.Samples
             {
                 Id = CardTheEnd,
                 Title = "The End",
-                Tags = { "ending" },
+                CardTagIds = { CardTagEnding },
                 Sequence = Seq(
                     Wait("inst-theend-wait"),
                     // Ends the whole session the moment this card executes.

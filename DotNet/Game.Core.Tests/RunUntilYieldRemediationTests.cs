@@ -26,7 +26,6 @@ namespace TruthCardGame.Core.Tests
                 new StatIncreaseInstanceDefinition { Id = "after", StatKey = "courage", Amount = 2f });
             content.Phases.Add(phase);
             content.Cards.Add(card);
-            content.Deck.CardIds.Add(card.Id);
             content.Sessions.Add(Session("session", phase.Id));
 
             var engine = new GameSessionEngine(content, "session", Services());
@@ -80,7 +79,6 @@ namespace TruthCardGame.Core.Tests
             content.Phases.Add(main);
             content.Phases.Add(recovery);
             content.Cards.Add(card);
-            content.Deck.CardIds.Add(card.Id);
             content.Sessions.Add(SessionWithRecovery("session", main.Id, recovery.Id));
 
             var vm = new SessionGraphVm(content, "session", Services(),
@@ -116,7 +114,6 @@ namespace TruthCardGame.Core.Tests
             var card = Card("terminal", new EndSessionInstanceDefinition { Id = "end" });
             content.Phases.Add(phase);
             content.Cards.Add(card);
-            content.Deck.CardIds.Add(card.Id);
             content.Sessions.Add(Session("session", phase.Id));
 
             var engine = new GameSessionEngine(content, "session", Services());
@@ -133,7 +130,6 @@ namespace TruthCardGame.Core.Tests
         {
             return new GameContentDefinition
             {
-                Deck = new CardDeckDefinition { Id = "deck", Title = "Deck" },
                 SessionTypes = { new SessionTypeDefinition { Id = "standard", Title = "Standard" } },
             };
         }

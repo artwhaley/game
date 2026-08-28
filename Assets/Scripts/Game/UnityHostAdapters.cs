@@ -13,6 +13,11 @@ namespace TruthCardGame
         {
             return UnityEngine.Random.Range(minInclusive, maxExclusive);
         }
+
+        public float NextFloat(float minInclusive, float maxExclusive)
+        {
+            return UnityEngine.Random.Range(minInclusive, maxExclusive);
+        }
     }
 
     /// <summary>Scaled-game-time delay (WaitForSeconds equivalent), main-thread via Task.Yield.</summary>

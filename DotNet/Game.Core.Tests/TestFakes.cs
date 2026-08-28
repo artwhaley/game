@@ -33,6 +33,11 @@ namespace TruthCardGame.Core.Tests
             }
             return minInclusive + offset;
         }
+
+        public float NextFloat(float minInclusive, float maxExclusive)
+        {
+            throw new InvalidOperationException("FixedRandomSource does not provide floats.");
+        }
     }
 
     public sealed class RecordingLog : IGameLog

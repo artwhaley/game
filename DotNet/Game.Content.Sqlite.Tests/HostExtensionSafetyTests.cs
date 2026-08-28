@@ -7,20 +7,22 @@ using TruthCardGame.Content;
 namespace TruthCardGame.Content.Sqlite.Tests
 {
     /// <summary>
-    /// Ticket 11: prove the core DB is safe for host extensions (Unity/WPF).
-    /// A test-only extension table — the exact shape a Unity binding layer
-    /// would own — must survive every ordinary authoring operation, cascade
-    /// only on intentional action deletes, never be rebuilt by core
-    /// migrations, and be invisible to snapshot loading.
+    /// Ticket 11 boundary, updated for v5: prove the core DB is safe for host
+    /// extensions (Unity/WPF). A test-only extension table — the exact shape a
+    /// Unity binding layer would own — must survive every ordinary authoring
+    /// operation, cascade only on intentional deletes, never be rebuilt by
+    /// core migrations, and be invisible to snapshot loading. Host tables now
+    /// bind to action_instance (v2+ ownership); the v1 top-level action table
+    /// they originally bound to was dropped by migration 5.
     /// </summary>
     [TestFixture]
     public class HostExtensionSafetyTests
     {
         private const string CreateHostTable =
             "CREATE TABLE IF NOT EXISTS unity_fake_action_binding (" +
-            "  action_id TEXT PRIMARY KEY, " +
+            "  action_instance_id TEXT PRIMARY KEY, " +
             "  payload TEXT NOT NULL, " +
-            "  FOREIGN KEY(action_id) REFERENCES action(id) ON DELETE CASCADE" +
+            "  FOREIGN KEY(action_instance_id) REFERENCES action_instance(id) ON DELETE CASCADE" +
             ");";
 
         private string _dbPath;
@@ -46,23 +48,26 @@ namespace TruthCardGame.Content.Sqlite.Tests
 
         private static string Id() => "id-" + Guid.NewGuid().ToString("N").Substring(0, 12);
 
-        // --- 1. In-place Action update preserves binding ----------------------
+        private void InsertInstance(string id, string sequenceId, int ordinal, string type)
+        {
+            Execute("INSERT INTO action_sequence (id) VALUES ('" + sequenceId + "');");
+            Execute("INSERT INTO action_instance (id, action_sequence_id, ordinal, action_type, is_blocking) " +
+                    "VALUES ('" + id + "', '" + sequenceId + "', " + ordinal + ", '" + type + "', 0);");
+        }
+
+        // --- 1. In-place Action Instance update preserves binding -------------
 
         [Test]
-        public void UpdateActionInPlace_PreservesHostBinding()
+        public void UpdateInstanceInPlace_PreservesHostBinding()
         {
-            var actionId = Id();
-            Execute("INSERT INTO action (id, name, action_type, is_blocking) VALUES ('" + actionId + "', 'Old', 'debug', 0);");
-            InsertBinding(actionId, "payload-a");
+            var instanceId = Id();
+            InsertInstance(instanceId, "seq-" + Id(), 0, ActionType.Debug);
 
-            Execute("UPDATE action SET name = 'New', is_blocking = 1 WHERE id = '" + actionId + "';");
+            Execute("INSERT INTO unity_fake_action_binding (action_instance_id, payload) VALUES ('" + instanceId + "', 'payload-a');");
 
-            Assert.AreEqual("payload-a", BindingPayload(actionId));
-            using (var command = _connection.CreateCommand())
-            {
-                command.CommandText = "SELECT name FROM action WHERE id = '" + actionId + "';";
-                Assert.AreEqual("New", command.ExecuteScalar());
-            }
+            Execute("UPDATE action_instance SET is_blocking = 1 WHERE id = '" + instanceId + "';");
+
+            Assert.AreEqual("payload-a", BindingPayload(instanceId));
         }
 
         // --- 2. Unrelated Session/Phase edits preserve bindings ---------------
@@ -70,184 +75,153 @@ namespace TruthCardGame.Content.Sqlite.Tests
         [Test]
         public void UnrelatedSessionAndPhaseEdits_PreserveHostBinding()
         {
-            var actionId = Id();
-            Execute("INSERT INTO action (id, action_type, is_blocking) VALUES ('" + actionId + "', 'debug', 0);");
-            InsertBinding(actionId, "payload-a");
+            var instanceId = Id();
+            InsertInstance(instanceId, "seq-" + Id(), 0, ActionType.Debug);
+            Execute("INSERT INTO unity_fake_action_binding (action_instance_id, payload) VALUES ('" + instanceId + "', 'payload-a');");
 
             var sessionId = Id();
-            SessionRepository.Create(_connection, sessionId, "S", new[] { "intense" });
-            SessionRepository.UpdateTitle(_connection, sessionId, "S2");
-            SessionRepository.ReplaceTags(_connection, sessionId, new[] { "relaxing" });
+            SessionRepository.Create(_connection, sessionId, "S", "type-standard");
+            SessionRepository.Rename(_connection, sessionId, "S2");
+            SessionRepository.ReplaceCardWeighting(_connection, sessionId, new SessionCardWeightingDefinition { LikeBase = 2f });
 
             var phaseId = Id();
-            PhaseRepository.Create(_connection, new PhaseDefinition { Id = phaseId, Title = "P", MustIncludeTags = { "solo" } });
-            PhaseRepository.Update(_connection, phaseId, "P2", 2, 4);
-            PhaseRepository.ReplaceMustExcludeTags(_connection, phaseId, new[] { "dare" });
+            PhaseRepository.Create(_connection, phaseId, "P");
+            PhaseRepository.Rename(_connection, phaseId, "P2");
 
-            Assert.AreEqual("payload-a", BindingPayload(actionId));
+            Assert.AreEqual("payload-a", BindingPayload(instanceId));
         }
 
-        // --- 3. Card-action reorder preserves Action rows/bindings ------------
+        // --- 3. Sequence reorder preserves instance rows/bindings ------------
 
         [Test]
-        public void CardActionReorder_PreservesActionRowsAndBindings()
+        public void SequenceInstanceReorder_PreservesInstanceRowsAndBindings()
         {
-            var a1 = Id();
-            var a2 = Id();
-            Execute("INSERT INTO action (id, action_type, is_blocking) VALUES ('" + a1 + "', 'debug', 0), ('" + a2 + "', 'debug', 0);");
-            InsertBinding(a1, "b1");
-            InsertBinding(a2, "b2");
+            var i1 = Id();
+            var i2 = Id();
+            var sequenceId = "seq-" + Id();
+            InsertInstance(i1, sequenceId, 0, ActionType.Debug);
+            InsertInstance(i2, sequenceId, 1, ActionType.Debug);
+            Execute("INSERT INTO unity_fake_action_binding (action_instance_id, payload) VALUES ('" + i1 + "', 'b1');");
+            Execute("INSERT INTO unity_fake_action_binding (action_instance_id, payload) VALUES ('" + i2 + "', 'b2');");
 
-            var cardId = Id();
-            Execute("INSERT INTO card (id, title) VALUES ('" + cardId + "', 'C');");
-            Execute("INSERT INTO card_action (card_id, ordinal, action_id) VALUES ('" + cardId + "', 0, '" + a1 + "'), ('" + cardId + "', 1, '" + a2 + "');");
-
-            // Swap ordinals safely: move both to unique temp ordinals, then to final positions.
+            // Swap ordinals safely via the large-offset reorder convention.
             using (var transaction = _connection.BeginTransaction())
             {
-                Execute("UPDATE card_action SET ordinal = 90 WHERE card_id = '" + cardId + "' AND ordinal = 0;");
-                Execute("UPDATE card_action SET ordinal = 91 WHERE card_id = '" + cardId + "' AND ordinal = 1;");
-                Execute("UPDATE card_action SET ordinal = 0 WHERE card_id = '" + cardId + "' AND action_id = '" + a2 + "';");
-                Execute("UPDATE card_action SET ordinal = 1 WHERE card_id = '" + cardId + "' AND action_id = '" + a1 + "';");
+                Execute("UPDATE action_instance SET ordinal = 90 WHERE id = '" + i1 + "';");
+                Execute("UPDATE action_instance SET ordinal = 91 WHERE id = '" + i2 + "';");
+                Execute("UPDATE action_instance SET ordinal = 0 WHERE id = '" + i2 + "';");
+                Execute("UPDATE action_instance SET ordinal = 1 WHERE id = '" + i1 + "';");
                 transaction.Commit();
             }
 
             using (var command = _connection.CreateCommand())
             {
-                command.CommandText = "SELECT action_id FROM card_action WHERE card_id = '" + cardId + "' ORDER BY ordinal;";
+                command.CommandText = "SELECT id FROM action_instance WHERE action_sequence_id = '" + sequenceId + "' ORDER BY ordinal;";
                 using (var reader = command.ExecuteReader())
                 {
                     Assert.IsTrue(reader.Read());
-                    Assert.AreEqual(a2, reader.GetString(0));
+                    Assert.AreEqual(i2, reader.GetString(0));
                     Assert.IsTrue(reader.Read());
-                    Assert.AreEqual(a1, reader.GetString(0));
+                    Assert.AreEqual(i1, reader.GetString(0));
                     Assert.IsFalse(reader.Read());
                 }
             }
-            Assert.AreEqual("b1", BindingPayload(a1));
-            Assert.AreEqual("b2", BindingPayload(a2));
-            AssertRowCount("action", 2);
+            Assert.AreEqual("b1", BindingPayload(i1));
+            Assert.AreEqual("b2", BindingPayload(i2));
+            AssertRowCount("action_instance", 2);
         }
 
-        // --- 4. PhaseSlot reorder preserves Phase rows ------------------------
+        // --- 4. Card relation reorder preserves definition rows --------------
 
         [Test]
-        public void PhaseSlotReorder_PreservesPhaseRows()
+        public void CardTagReorder_PreservesDefinitionRows()
         {
-            var sessionId = Id();
-            SessionRepository.Create(_connection, sessionId, "S", null);
-            var p1 = Id();
-            var p2 = Id();
-            PhaseRepository.Create(_connection, new PhaseDefinition { Id = p1, Title = "P1", MinCards = 1, MaxCards = 3 });
-            PhaseRepository.Create(_connection, new PhaseDefinition { Id = p2, Title = "P2", MinCards = 2, MaxCards = 4 });
-            var slotA = Id();
-            var slotB = Id();
-            PhaseSlotRepository.Create(_connection, sessionId, slotA, "A");
-            PhaseSlotRepository.Create(_connection, sessionId, slotB, "B");
-            PhaseSlotRepository.AddCandidate(_connection, slotA, Id(), p1);
-            PhaseSlotRepository.AddCandidate(_connection, slotB, Id(), p2);
+            var tagA = Id();
+            var tagB = Id();
+            CatalogRepositories.CreateCardTag(_connection, new CardTagDefinition { Id = tagA, Title = "A" });
+            CatalogRepositories.CreateCardTag(_connection, new CardTagDefinition { Id = tagB, Title = "B" });
+            var cardId = Id();
+            CardRepository.Create(_connection, new CardDefinition { Id = cardId, Title = "C", CardTagIds = { tagA, tagB } });
 
-            PhaseSlotRepository.Reorder(_connection, sessionId, new[] { slotB, slotA });
+            AssertRowCount("card_tag", 2);
+            AssertRowCount("card_tag_definition", 2);
 
-            Assert.AreEqual("P1", PhaseRepository.Get(_connection, p1).Title);
-            Assert.AreEqual("P2", PhaseRepository.Get(_connection, p2).Title);
-            AssertRowCount("phase", 2);
+            // Removing one relation leaves the definition rows alone.
+            Execute("DELETE FROM card_tag WHERE card_id = '" + cardId + "' AND tag_id = '" + tagA + "';");
+            AssertRowCount("card_tag_definition", 2);
+            AssertRowCount("card_tag", 1);
         }
 
-        // --- 5. Intentional Action delete cascades owned host binding ---------
+        // --- 5. Intentional instance delete cascades owned host binding -------
 
         [Test]
-        public void IntentionalActionDelete_CascadesOwnedHostBinding()
+        public void IntentionalInstanceDelete_CascadesOwnedHostBinding()
         {
-            var actionId = Id();
-            Execute("INSERT INTO action (id, action_type, is_blocking) VALUES ('" + actionId + "', 'debug', 0);");
-            InsertBinding(actionId, "payload-a");
+            var instanceId = Id();
+            InsertInstance(instanceId, "seq-" + Id(), 0, ActionType.Debug);
+            Execute("INSERT INTO unity_fake_action_binding (action_instance_id, payload) VALUES ('" + instanceId + "', 'payload-a');");
 
-            // Scoped, parameterized delete — the only delete pattern the codebase uses.
+            // Scoped delete — the only delete pattern the codebase uses.
             using (var transaction = _connection.BeginTransaction())
             {
                 using (var command = _connection.CreateCommand())
                 {
                     command.Transaction = transaction;
-                    command.CommandText = "DELETE FROM action WHERE id = @id;";
+                    command.CommandText = "DELETE FROM action_instance WHERE id = @id;";
                     var parameter = command.CreateParameter();
                     parameter.ParameterName = "@id";
-                    parameter.Value = actionId;
+                    parameter.Value = instanceId;
                     command.Parameters.Add(parameter);
                     command.ExecuteNonQuery();
                 }
                 transaction.Commit();
             }
 
-            AssertRowCount("action", 0);
             AssertRowCount("unity_fake_action_binding", 0);
         }
 
-        // --- 6. Referenced Action delete is blocked until core refs removed ---
-
-        [Test]
-        public void ReferencedActionDelete_IsBlocked_UntilCoreRefsRemoved()
-        {
-            var actionId = Id();
-            Execute("INSERT INTO action (id, action_type, is_blocking) VALUES ('" + actionId + "', 'debug', 0);");
-            InsertBinding(actionId, "payload-a");
-
-            var cardId = Id();
-            Execute("INSERT INTO card (id, title) VALUES ('" + cardId + "', 'C');");
-            Execute("INSERT INTO card_action (card_id, ordinal, action_id) VALUES ('" + cardId + "', 0, '" + actionId + "');");
-
-            Assert.Throws<SqliteException>(() => Execute("DELETE FROM action WHERE id = '" + actionId + "';"));
-            AssertRowCount("action", 1);
-
-            // Remove the core reference, then the intentional delete succeeds and cascades the binding.
-            Execute("DELETE FROM card_action WHERE card_id = '" + cardId + "' AND ordinal = 0;");
-            Execute("DELETE FROM action WHERE id = '" + actionId + "';");
-            AssertRowCount("action", 0);
-            AssertRowCount("unity_fake_action_binding", 0);
-        }
-
-        // --- 7. Core migrations preserve unknown host tables ------------------
+        // --- 6. Core migrations preserve unknown host tables ------------------
 
         [Test]
         public void CoreMigrations_PreserveUnknownHostTables()
         {
-            // Simulate the real extension-first upgrade path: core v1 applied,
+            // Simulate the real extension-first upgrade path: core applied,
             // host extension installs its binding table, then an older core
             // (empty migration ledger) re-applies the migration on top. The
             // host table and its rows must survive untouched.
             Execute("DELETE FROM core_schema_migration;");
-            var actionId = Id();
-            Execute("INSERT INTO action (id, action_type, is_blocking) VALUES ('" + actionId + "', 'debug', 0);");
-            InsertBinding(actionId, "kept");
+            var instanceId = Id();
+            InsertInstance(instanceId, "seq-" + Id(), 0, ActionType.Debug);
+            Execute("INSERT INTO unity_fake_action_binding (action_instance_id, payload) VALUES ('" + instanceId + "', 'kept');");
 
             CoreMigrator.EnsureSchema(_connection);
 
             AssertRowCount("unity_fake_action_binding", 1);
-            Assert.AreEqual("kept", BindingPayload(actionId));
+            Assert.AreEqual("kept", BindingPayload(instanceId));
 
             // Idempotent re-run also leaves the host table and its rows alone.
             CoreMigrator.EnsureSchema(_connection);
-            Assert.AreEqual("kept", BindingPayload(actionId));
+            Assert.AreEqual("kept", BindingPayload(instanceId));
         }
 
-        // --- 8. Snapshot loading ignores host tables --------------------------
+        // --- 7. Snapshot loading ignores host tables --------------------------
 
         [Test]
         public void SnapshotLoading_IgnoresHostTables()
         {
-            var actionId = Id();
-            Execute("INSERT INTO action (id, action_type, is_blocking) VALUES ('" + actionId + "', 'debug', 0);");
-            Execute("INSERT INTO action_debug (action_id) VALUES ('" + actionId + "');");
-            InsertBinding(actionId, "payload-a");
+            var instanceId = Id();
+            InsertInstance(instanceId, "seq-" + Id(), 0, ActionType.Debug);
+            Execute("INSERT INTO action_instance_debug (action_instance_id) VALUES ('" + instanceId + "');");
+            Execute("INSERT INTO unity_fake_action_binding (action_instance_id, payload) VALUES ('" + instanceId + "', 'payload-a');");
 
             var snapshot = GameContentSnapshotLoader.Load(_connection);
-            Assert.IsNotEmpty(snapshot.Actions);
+            Assert.IsNotEmpty(snapshot.Cards, "snapshot loads core content");
 
-            Assert.AreEqual("payload-a", BindingPayload(actionId));
+            Assert.AreEqual("payload-a", BindingPayload(instanceId));
             AssertRowCount("unity_fake_action_binding", 1);
         }
 
-        // --- 9. Normal authoring never truncates/rebuilds core content --------
+        // --- 8. Normal authoring never truncates/rebuilds core content --------
 
         [Test]
         public void NormalAuthoring_NeverTruncatesOrRebuildsCoreContent()
@@ -255,42 +229,24 @@ namespace TruthCardGame.Content.Sqlite.Tests
             // Seed an unrelated, complete content island.
             var keptSession = Id();
             var keptPhase = Id();
-            var keptAction = Id();
-            var keptSlot = Id();
-            SessionRepository.Create(_connection, keptSession, "Kept", new[] { "intense" });
-            PhaseRepository.Create(_connection, new PhaseDefinition { Id = keptPhase, Title = "Kept Phase", MinCards = 1, MaxCards = 3, MustIncludeTags = { "solo" } });
-            Execute("INSERT INTO action (id, action_type, is_blocking) VALUES ('" + keptAction + "', 'debug', 0);");
-            InsertBinding(keptAction, "kept-binding");
-            PhaseSlotRepository.Create(_connection, keptSession, keptSlot, "Kept Slot");
-            PhaseSlotRepository.AddCandidate(_connection, keptSlot, Id(), keptPhase);
+            var keptInstance = Id();
+            SessionRepository.Create(_connection, keptSession, "Kept", "type-standard");
+            PhaseRepository.Create(_connection, keptPhase, "Kept Phase");
+            InsertInstance(keptInstance, "seq-" + Id(), 0, ActionType.Debug);
+            Execute("INSERT INTO unity_fake_action_binding (action_instance_id, payload) VALUES ('" + keptInstance + "', 'kept-binding');");
 
-            // Full authoring cycle on a different session: create, edit, reorder,
-            // replace tags, add/remove candidates, delete.
+            // Full authoring cycle on a different session: create, edit, delete.
             var sessionId = Id();
-            SessionRepository.Create(_connection, sessionId, "Working", new[] { "new" });
+            SessionRepository.Create(_connection, sessionId, "Working", "type-standard");
             var p1 = Id();
-            var p2 = Id();
-            PhaseRepository.Create(_connection, new PhaseDefinition { Id = p1, Title = "P1" });
-            PhaseRepository.Create(_connection, new PhaseDefinition { Id = p2, Title = "P2" });
-            var slotA = Id();
-            var slotB = Id();
-            PhaseSlotRepository.Create(_connection, sessionId, slotA, "A");
-            PhaseSlotRepository.Create(_connection, sessionId, slotB, "B");
-            var candA = Id();
-            var candB = Id();
-            PhaseSlotRepository.AddCandidate(_connection, slotA, candA, p1);
-            PhaseSlotRepository.AddCandidate(_connection, slotB, candB, p2);
-            PhaseSlotRepository.Reorder(_connection, sessionId, new[] { slotB, slotA });
-            PhaseSlotRepository.ReorderCandidates(_connection, slotB, new[] { candB });
-            SessionRepository.UpdateTitle(_connection, sessionId, "Working 2");
-            SessionRepository.ReplaceTags(_connection, sessionId, new[] { "intense", "dare" });
-            PhaseRepository.ReplaceMustIncludeTags(_connection, p1, new[] { "party" });
+            PhaseRepository.Create(_connection, p1, "P1");
+            SessionRepository.Rename(_connection, sessionId, "Working 2");
             SessionRepository.Delete(_connection, sessionId);
 
             // The unrelated island is untouched, bit for bit.
-            Assert.AreEqual("Kept", SessionRepository.Get(_connection, keptSession).Title);
-            Assert.AreEqual("Kept Phase", PhaseRepository.Get(_connection, keptPhase).Title);
-            Assert.AreEqual("kept-binding", BindingPayload(keptAction));
+            Assert.AreEqual("Kept", SessionTitle(keptSession));
+            Assert.AreEqual("Kept Phase", PhaseTitle(keptPhase));
+            Assert.AreEqual("kept-binding", BindingPayload(keptInstance));
             using (var command = _connection.CreateCommand())
             {
                 command.CommandText = "SELECT COUNT(*) FROM phase WHERE id = '" + keptPhase + "';";
@@ -300,14 +256,29 @@ namespace TruthCardGame.Content.Sqlite.Tests
 
         // --- Helpers -----------------------------------------------------------
 
-        private void InsertBinding(string actionId, string payload) =>
-            Execute("INSERT INTO unity_fake_action_binding (action_id, payload) VALUES ('" + actionId + "', '" + payload + "');");
-
-        private string BindingPayload(string actionId)
+        private string BindingPayload(string instanceId)
         {
             using (var command = _connection.CreateCommand())
             {
-                command.CommandText = "SELECT payload FROM unity_fake_action_binding WHERE action_id = '" + actionId + "';";
+                command.CommandText = "SELECT payload FROM unity_fake_action_binding WHERE action_instance_id = '" + instanceId + "';";
+                return (string)command.ExecuteScalar();
+            }
+        }
+
+        private string SessionTitle(string sessionId)
+        {
+            using (var command = _connection.CreateCommand())
+            {
+                command.CommandText = "SELECT title FROM session WHERE id = '" + sessionId + "';";
+                return (string)command.ExecuteScalar();
+            }
+        }
+
+        private string PhaseTitle(string phaseId)
+        {
+            using (var command = _connection.CreateCommand())
+            {
+                command.CommandText = "SELECT title FROM phase WHERE id = '" + phaseId + "';";
                 return (string)command.ExecuteScalar();
             }
         }
@@ -327,24 +298,6 @@ namespace TruthCardGame.Content.Sqlite.Tests
             {
                 command.CommandText = sql;
                 command.ExecuteNonQuery();
-            }
-        }
-
-        private static void ExecuteOn(SqliteConnection connection, string sql)
-        {
-            using (var command = connection.CreateCommand())
-            {
-                command.CommandText = sql;
-                command.ExecuteNonQuery();
-            }
-        }
-
-        private static object ScalarOn(SqliteConnection connection, string sql)
-        {
-            using (var command = connection.CreateCommand())
-            {
-                command.CommandText = sql;
-                return command.ExecuteScalar();
             }
         }
     }
