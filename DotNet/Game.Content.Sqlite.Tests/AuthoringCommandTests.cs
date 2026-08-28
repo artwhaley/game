@@ -96,6 +96,29 @@ namespace TruthCardGame.Content.Sqlite.Tests
             Assert.AreEqual("Go?", AuthoringUndo.GetDecisionPrompt(_connection, "session", "d1"));
         }
 
+        [Test]
+        public void MergedEditAfterUndo_InvalidatesRedoBranch()
+        {
+            SessionRepository.Create(_connection, "s1", "Alpha", "type-standard");
+            var node = new SessionStartNodeDefinition { Id = "s1-start" };
+            node.Outputs.Add(new GraphOutputDefinition { Id = "s1-start-out", Kind = GraphPortKind.Normal });
+            SessionGraphRepository.AddNode(_connection, "s1", node);
+            AuthoringLayoutRepository.SaveSessionNodePosition(_connection, "s1", node.Id, 10, 20);
+
+            var stack = new AuthoringCommandStack();
+            stack.PushOrMerge(new MoveNodeCommand(Conn, "session", "s1", node.Id,
+                new Point2(10, 20), new Point2(100, 200)));
+            stack.PushOrMerge(new RenameSessionCommand(Conn, "s1", "Alpha", "Beta"));
+            stack.Undo();
+            Assert.IsTrue(stack.CanRedo);
+
+            // This merges into the still-current MoveNode entry. The redo of
+            // RenameSession must nevertheless be discarded.
+            stack.PushOrMerge(new MoveNodeCommand(Conn, "session", "s1", node.Id,
+                new Point2(10, 20), new Point2(300, 400)));
+            Assert.IsFalse(stack.CanRedo);
+        }
+
         // ---------- node add/delete ----------
 
         [Test]
@@ -156,6 +179,32 @@ namespace TruthCardGame.Content.Sqlite.Tests
             Assert.AreEqual(2, restoredSequence.Instances.Count);
             Assert.AreEqual("increment", restoredSequence.Instances[0].Id);
             Assert.AreEqual(25f, ((IncrementProgressInstanceDefinition)restoredSequence.Instances[0]).Amount);
+        }
+
+        [Test]
+        public void ActionInstance_Insert_ShiftsRowsAndKeepsTypedValues()
+        {
+            PhaseRepository.CreateWithEntry(_connection, "p1", "Phase");
+            var action = new ActionNodeDefinition
+            {
+                Id = "action",
+                Sequence = new ActionSequenceDefinition { Id = "action-sequence" },
+            };
+            PhaseGraphRepository.AddNode(_connection, "p1", action);
+            ActionInstanceRepository.AppendDefault(_connection, action.Sequence.Id,
+                ActionOwnerScope.PhaseActionSequence, ActionTypeKeys.WaitForContinue, "wait");
+            ActionInstanceRepository.AppendDefault(_connection, action.Sequence.Id,
+                ActionOwnerScope.PhaseActionSequence, ActionTypeKeys.IncrementProgress, "increment");
+            ActionInstanceRepository.Insert(_connection, action.Sequence.Id,
+                ActionOwnerScope.PhaseActionSequence,
+                new StatIncreaseInstanceDefinition { Id = "stat", StatKey = "courage", Amount = 3f }, 1);
+
+            var loaded = GameContentSnapshotLoader.Load(_connection).Phases.Find(p => p.Id == "p1");
+            var sequence = ((ActionNodeDefinition)loaded.Graph.Nodes.Find(n => n.Id == "action")).Sequence;
+            Assert.AreEqual("wait", sequence.Instances[0].Id);
+            Assert.AreEqual("stat", sequence.Instances[1].Id);
+            Assert.AreEqual("increment", sequence.Instances[2].Id);
+            Assert.AreEqual(3f, ((StatIncreaseInstanceDefinition)sequence.Instances[1]).Amount);
         }
 
         [Test]
@@ -300,6 +349,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
             Assert.AreEqual(1, Count("action_instance_session_goto WHERE action_instance_id='" + instanceId + "' AND label='leave'"));
             Assert.AreEqual(1, Count("session_node_output WHERE id='" + portId + "'"));
             Assert.AreEqual(1, Count("session_graph_edge WHERE source_port_id='" + portId + "' AND target_node_id='s1-start'"));
+            Assert.AreEqual(1, Count("session_graph_edge WHERE id='e1'"), "undo restores the original Session edge id");
         }
 
         [Test]
@@ -486,6 +536,34 @@ namespace TruthCardGame.Content.Sqlite.Tests
             Assert.AreEqual("p1", Scalar("SELECT phase_id FROM session_node_phase WHERE node_id='s1-ref'").ToString());
             Assert.AreEqual(0, Count("phase WHERE id='p-unique'"), "clone removed in the same undo");
             Assert.AreEqual(1, Count("phase_exit WHERE id='px-c'"), "shared phase untouched");
+        }
+
+        [Test]
+        public void MakeUniquePlusDeleteExit_UsesStableExitIdWhenNamesDuplicate()
+        {
+            var shared = new PhaseDefinition { Id = "p1", Title = "Cold" };
+            shared.Exits.Add(new PhaseExitDefinition { Id = "px-a", Name = "Duplicate" });
+            shared.Exits.Add(new PhaseExitDefinition { Id = "px-b", Name = "Duplicate" });
+            ReuseWriter.WriteClonedPhase(_connection, shared);
+            var session = BuildPlacementSession();
+            ReuseWriter.WriteClonedSession(_connection, session);
+            PhaseExitRepository.SyncProjectedSockets(_connection, "p1", "px-a", 0);
+            PhaseExitRepository.SyncProjectedSockets(_connection, "p1", "px-b", 1);
+
+            var portMap = AuthoringUndo.PlacementExitMap(_connection, "s1-ref");
+            var clone = ContentCloner.ClonePhase(shared, "p-unique");
+            var stack = new AuthoringCommandStack();
+            stack.PushOrMerge(new CompositeCommand("Make unique + delete exit",
+                new MakeUniqueCommand(Conn, shared, "s1-ref", "p-unique", portMap),
+                new DeleteExitOnCloneCommand(Conn, "p-unique", clone.ExitIdMap["px-b"])));
+
+            Assert.AreEqual(1, Count("phase_exit WHERE id='p-unique-exit-1' AND name='Duplicate'"));
+            Assert.AreEqual(0, Count("phase_exit WHERE id='p-unique-exit-2'"),
+                "the selected duplicate-named exit, not the first by name, is deleted");
+
+            stack.Undo();
+            Assert.AreEqual(0, Count("phase WHERE id='p-unique'"));
+            Assert.AreEqual(2, Count("phase_exit WHERE phase_id='p1'"), "shared exits remain untouched");
         }
 
         // ---------- helpers ----------

@@ -19,6 +19,8 @@ namespace TruthCardGame.Core
     {
         public string TypeKey { get; set; } = "";
         public string DisplayLabel { get; set; } = "";
+        public string AuthoringCategory { get; set; } = "Other";
+        public string SearchKeywords { get; set; } = "";
         public ActionOwnerScope LegalScopes { get; set; } = ActionOwnerScope.None;
         public bool IsAlwaysBlocking { get; set; }
         public bool BlockingConfigurable { get; set; } = true;
@@ -104,6 +106,8 @@ namespace TruthCardGame.Core
             {
                 TypeKey = ActionTypeKeys.Debug,
                 DisplayLabel = "Debug Log",
+                AuthoringCategory = "Debug/Development",
+                SearchKeywords = "log trace development",
                 LegalScopes = ActionOwnerScope.All,
                 BlockingConfigurable = true,
                 DefaultBlocking = false,
@@ -115,6 +119,8 @@ namespace TruthCardGame.Core
             {
                 TypeKey = ActionTypeKeys.StatIncrease,
                 DisplayLabel = "Stat Increase",
+                AuthoringCategory = "State",
+                SearchKeywords = "stat modify value",
                 LegalScopes = ActionOwnerScope.All,
                 BlockingConfigurable = true,
                 DefaultBlocking = false,
@@ -126,6 +132,8 @@ namespace TruthCardGame.Core
             {
                 TypeKey = ActionTypeKeys.IncrementProgress,
                 DisplayLabel = "Increment Phase Progress",
+                AuthoringCategory = "State",
+                SearchKeywords = "progress increment phase",
                 // Progress lives on the active PhaseRun; session-level sequences
                 // have no PhaseRun, so this type is illegal there.
                 LegalScopes = ActionOwnerScope.CardSequence
@@ -141,6 +149,8 @@ namespace TruthCardGame.Core
             {
                 TypeKey = ActionTypeKeys.ModifyTemperature,
                 DisplayLabel = "Modify Temperature",
+                AuthoringCategory = "State",
+                SearchKeywords = "temperature happiness delta mutation",
                 LegalScopes = ActionOwnerScope.All,
                 BlockingConfigurable = true,
                 DefaultBlocking = false,
@@ -152,6 +162,8 @@ namespace TruthCardGame.Core
             {
                 TypeKey = ActionTypeKeys.Cutscene,
                 DisplayLabel = "Cutscene",
+                AuthoringCategory = "Activity/Host",
+                SearchKeywords = "play cutscene resource activity",
                 LegalScopes = ActionOwnerScope.All,
                 BlockingConfigurable = true,
                 DefaultBlocking = true,
@@ -163,6 +175,8 @@ namespace TruthCardGame.Core
             {
                 TypeKey = ActionTypeKeys.PromptChoice,
                 DisplayLabel = "Prompt Choice",
+                AuthoringCategory = "Pacing/Input",
+                SearchKeywords = "choice input prompt",
                 LegalScopes = ActionOwnerScope.All,
                 BlockingConfigurable = false,
                 DefaultBlocking = true,
@@ -174,6 +188,8 @@ namespace TruthCardGame.Core
             {
                 TypeKey = ActionTypeKeys.PhaseGoto,
                 DisplayLabel = "Phase GOTO",
+                AuthoringCategory = "Flow",
+                SearchKeywords = "goto phase exit transfer",
                 // A Card may transfer to another Phase and later resume its
                 // own remainder after RETURN; the Session VM carries the Card
                 // identity and continuation frame across that transfer.
@@ -191,6 +207,8 @@ namespace TruthCardGame.Core
             {
                 TypeKey = ActionTypeKeys.WaitForContinue,
                 DisplayLabel = "Wait For Continue",
+                AuthoringCategory = "Pacing/Input",
+                SearchKeywords = "wait yield continue pause",
                 LegalScopes = ActionOwnerScope.All,
                 IsAlwaysBlocking = true,
                 BlockingConfigurable = false,
@@ -203,6 +221,8 @@ namespace TruthCardGame.Core
             {
                 TypeKey = ActionTypeKeys.SessionGoto,
                 DisplayLabel = "Session GOTO",
+                AuthoringCategory = "Flow",
+                SearchKeywords = "goto session branch transfer",
                 LegalScopes = ActionOwnerScope.SessionDecisionOptionSequence,
                 IsAlwaysBlocking = true,
                 BlockingConfigurable = false,
@@ -214,7 +234,9 @@ namespace TruthCardGame.Core
             Add(new ActionTypeInfo
             {
                 TypeKey = ActionTypeKeys.Return,
-                DisplayLabel = "Return",
+                DisplayLabel = "RETURN",
+                AuthoringCategory = "Flow",
+                SearchKeywords = "return resume continuation",
                 LegalScopes = ActionOwnerScope.All,
                 IsAlwaysBlocking = true,
                 BlockingConfigurable = false,
@@ -227,6 +249,8 @@ namespace TruthCardGame.Core
             {
                 TypeKey = ActionTypeKeys.EndSession,
                 DisplayLabel = "End Session",
+                AuthoringCategory = "Flow",
+                SearchKeywords = "end stop terminal",
                 LegalScopes = ActionOwnerScope.All,
                 IsAlwaysBlocking = true,
                 BlockingConfigurable = false,

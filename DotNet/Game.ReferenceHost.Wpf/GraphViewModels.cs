@@ -91,14 +91,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// <summary>Inline VariableCheck editor data (null for non-check nodes).</summary>
         public VariableCheckData Check { get; set; }
 
-        /// <summary>PhaseGoto rows of an Action node (one per instance, empty when none).</summary>
-        public ObservableCollection<GotoRowData> GotoRows { get; } = new ObservableCollection<GotoRowData>();
-
         /// <summary>Ordered explicit Action Instance rows owned by this node.</summary>
         public ObservableCollection<ActionRowData> ActionRows { get; } = new ObservableCollection<ActionRowData>();
 
-        /// <summary>Registry-filtered type picker for this node's owned sequence.</summary>
-        public List<ActionTypeInfo> ActionTypeOptions { get; set; } = new List<ActionTypeInfo>();
+        /// <summary>Shared sequence editor for an Action node; decision options use the same type.</summary>
+        public ActionSequenceEditorViewModel ActionSequence { get; set; }
 
         private string _selectedActionTypeKey;
         public string SelectedActionTypeKey
@@ -115,12 +112,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
         }
 
         public bool CanEditActions { get; set; }
-
-        /// <summary>Exit choices for the GOTO ComboBoxes (shared per phase).</summary>
-        public List<ExitOption> GotoExitOptions { get; set; } = new List<ExitOption>();
-
-        /// <summary>True when the node is an Action node that can host PhaseGoto instances.</summary>
-        public bool CanAddGoto { get; set; }
 
         /// <summary>
         /// Decision-node editing: prompt text + 1-3 option rows (each with its own
@@ -195,49 +186,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public event PropertyChangedEventHandler PropertyChanged;
     }
 
-    /// <summary>
-    /// One inline GOTO row: instance id + currently selected exit (phase scope)
-    /// or editable label (session scope). Identity is the instance id either way.
-    /// </summary>
-    public sealed class GotoRowData : INotifyPropertyChanged
-    {
-        private string _exitId;
-        private string _label;
-
-        /// <summary>"phase" (exit ComboBox) or "session" (label TextBox).</summary>
-        public string Scope { get; set; }
-
-        public string InstanceId { get; set; }
-
-        public string ExitId
-        {
-            get => _exitId;
-            set
-            {
-                if (_exitId != value)
-                {
-                    _exitId = value;
-                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ExitId)));
-                }
-            }
-        }
-
-        public string Label
-        {
-            get => _label;
-            set
-            {
-                if (_label != value)
-                {
-                    _label = value;
-                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Label)));
-                }
-            }
-        }
-
-        public event PropertyChangedEventHandler PropertyChanged;
-    }
-
     /// <summary>Explicit, instance-local action editor row; fields map to one typed subtype.</summary>
     public sealed class ActionRowData : INotifyPropertyChanged
     {
@@ -245,6 +193,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private string _numberText;
 
         public GraphNodeViewModel Owner { get; set; }
+        public ActionSequenceEditorViewModel Sequence { get; set; }
         public ActionInstanceDefinition Definition { get; set; }
         public string SequenceId { get; set; }
         public int Ordinal { get; set; }
@@ -252,8 +201,42 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public string TypeKey { get; set; }
         public string DisplayLabel { get; set; }
         public List<ExitOption> ExitOptions { get; set; } = new List<ExitOption>();
+        public List<ActionParameterOption> ParameterOptions { get; set; } = new List<ActionParameterOption>();
+        public IEnumerable<ActionParameterOption> ChoiceOptions
+        {
+            get
+            {
+                if (TypeKey == ActionTypeKeys.PhaseGoto)
+                    return ExitOptions.Select(option => new ActionParameterOption { Id = option.Id, Name = option.Name });
+                return ParameterOptions;
+            }
+        }
         public string PersistedTextValue { get; set; }
         public string PersistedNumberText { get; set; }
+
+        public ActionEditorDescriptor Editor => ActionEditorRegistry.For(TypeKey);
+        public bool HasTextEditor => Editor.HasTextEditor;
+        public bool HasNumberEditor => Editor.HasNumberEditor;
+        public bool HasChoiceEditor => Editor.HasChoiceEditor;
+        public bool IsDanger => !string.IsNullOrEmpty(ValidationMessage);
+
+        public string ValidationMessage
+        {
+            get
+            {
+                if (Editor.HasNumberEditor && !string.IsNullOrWhiteSpace(NumberText) &&
+                    !float.TryParse(NumberText, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+                    return "Enter a number.";
+                if (TypeKey == ActionTypeKeys.PhaseGoto && string.IsNullOrWhiteSpace(TextValue))
+                    return "Assign a PhaseExit before playback.";
+                if (TypeKey == ActionTypeKeys.ModifyTemperature && string.IsNullOrWhiteSpace(TextValue))
+                    return "Select a Temperature.";
+                if (TypeKey == ActionTypeKeys.Cutscene &&
+                    (string.IsNullOrWhiteSpace(TextValue) || !ParameterOptions.Any(option => option.Id == TextValue)))
+                    return "Select an existing Resource.";
+                return null;
+            }
+        }
 
         public string TextValue
         {
@@ -265,6 +248,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     _textValue = value;
                     SyncDefinition();
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TextValue)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ValidationMessage)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDanger)));
                 }
             }
         }
@@ -279,6 +264,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     _numberText = value;
                     SyncDefinition();
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NumberText)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ValidationMessage)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDanger)));
                 }
             }
         }
@@ -326,7 +313,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         }
     }
 
-    /// <summary>One option row of a decision node (label + owned action sequence with GOTO rows).</summary>
+    /// <summary>One option row of a decision node (label + owned ordered ActionSequence).</summary>
     public sealed class DecisionRowData : INotifyPropertyChanged
     {
         private string _label;
@@ -352,10 +339,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
         }
 
-        public ObservableCollection<GotoRowData> GotoRows { get; } = new ObservableCollection<GotoRowData>();
-
-        /// <summary>Phase-scope exit choices for the option's GOTO ComboBoxes.</summary>
-        public List<ExitOption> GotoExitOptions { get; set; } = new List<ExitOption>();
+        public ObservableCollection<ActionRowData> ActionRows { get; } = new ObservableCollection<ActionRowData>();
+        public ActionSequenceEditorViewModel ActionSequence { get; set; }
 
         public event PropertyChangedEventHandler PropertyChanged;
     }
@@ -541,6 +526,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public ObservableCollection<GraphNodeViewModel> Nodes { get; } = new ObservableCollection<GraphNodeViewModel>();
         public ObservableCollection<ConnectionViewModel> Connections { get; } = new ObservableCollection<ConnectionViewModel>();
 
+        public List<ActionParameterOption> TemperatureOptions { get; private set; } = new List<ActionParameterOption>();
+        public List<ActionParameterOption> ResourceOptions { get; private set; } = new List<ActionParameterOption>();
+
         public PendingConnectionViewModel PendingConnection { get; }
         public ICommand DisconnectConnectorCommand { get; }
 
@@ -595,35 +583,14 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// <summary>An inline VariableCheck field changed (persist the comparison); the string is the property name.</summary>
         public event Action<GraphNodeViewModel, string> CheckChanged;
 
-        /// <summary>A GOTO row changed: exit selection (phase) or label (session); the string is the property name.</summary>
-        public event Action<GraphNodeViewModel, GotoRowData, string> GotoExitChanged;
-
         /// <summary>An explicit Action Instance parameter changed.</summary>
         public event Action<GraphNodeViewModel, ActionRowData, string> ActionChanged;
-
-        /// <summary>The user asked to add a new GOTO instance (phase: exit ComboBox; session: label).</summary>
-        public event Action<GraphNodeViewModel> GotoAddRequested;
-
-        /// <summary>The user asked to remove a GOTO instance.</summary>
-        public event Action<GraphNodeViewModel, GotoRowData> GotoRemoveRequested;
 
         /// <summary>A decision node's prompt changed (persist it).</summary>
         public event Action<GraphNodeViewModel> DecisionPromptChanged;
 
         /// <summary>A decision option row's label changed (persist it).</summary>
         public event Action<GraphNodeViewModel, DecisionRowData> DecisionRowChanged;
-
-        /// <summary>The user asked to add an option row to a decision node (max 3).</summary>
-        public event Action<GraphNodeViewModel> DecisionOptionAddRequested;
-
-        /// <summary>The user asked to remove an option row from a decision node (min 1).</summary>
-        public event Action<GraphNodeViewModel, DecisionRowData> DecisionOptionRemoveRequested;
-
-        /// <summary>The user asked to add a GOTO inside a decision option's sequence.</summary>
-        public event Action<GraphNodeViewModel, DecisionRowData> DecisionGotoAddRequested;
-
-        /// <summary>The user asked to remove a GOTO inside a decision option's sequence.</summary>
-        public event Action<GraphNodeViewModel, DecisionRowData, GotoRowData> DecisionGotoRemoveRequested;
 
         /// <summary>Pan or zoom changed (persist the viewport row).</summary>
         public event Action ViewportChanged;
@@ -647,6 +614,17 @@ namespace TruthCardGame.ReferenceHost.Wpf
             });
         }
 
+        public void ConfigureActionCatalog(GameContentDefinition content)
+        {
+            TemperatureOptions = (content?.Temperatures ?? new List<TemperatureDefinition>())
+                .Select(item => new ActionParameterOption { Id = item.Id, Name = string.IsNullOrEmpty(item.Title) ? item.Id : item.Title })
+                .ToList();
+            ResourceOptions = (content?.Resources ?? new List<ResourceDefinition>())
+                .Where(item => string.Equals(item.Kind, "cutscene", StringComparison.OrdinalIgnoreCase))
+                .Select(item => new ActionParameterOption { Id = item.Id, Name = string.IsNullOrEmpty(item.Name) ? item.Id : item.Name })
+                .ToList();
+        }
+
         /// <summary>Builds the node/connection graph from content definitions.</summary>
         public void Populate(IEnumerable<GraphNodeViewModel> nodes, IEnumerable<ConnectionViewModel> connections)
         {
@@ -661,13 +639,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 {
                     node.Check.PropertyChanged += (_, args) => CheckChanged?.Invoke(node, args.PropertyName);
                 }
-                foreach (var row in node.GotoRows)
+                if (node.ActionSequence != null)
+                    SubscribeActionSequence(node, node.ActionSequence);
+                else
                 {
-                    row.PropertyChanged += (_, args) => GotoExitChanged?.Invoke(node, row, args.PropertyName);
-                }
-                foreach (var row in node.ActionRows)
-                {
-                    row.PropertyChanged += (_, args) => ActionChanged?.Invoke(node, row, args.PropertyName);
+                    foreach (var row in node.ActionRows)
+                        row.PropertyChanged += (_, args) => ActionChanged?.Invoke(node, row, args.PropertyName);
                 }
                 if (node.DecisionScope != null)
                 {
@@ -687,15 +664,19 @@ namespace TruthCardGame.ReferenceHost.Wpf
                                 DecisionRowChanged?.Invoke(node, option);
                             }
                         };
-                        foreach (var row in option.GotoRows)
-                        {
-                            row.PropertyChanged += (_, args) => GotoExitChanged?.Invoke(node, row, args.PropertyName);
-                        }
+                        SubscribeActionSequence(node, option.ActionSequence);
                     }
                 }
                 Nodes.Add(node);
             }
             foreach (var connection in connections) Connections.Add(connection);
+        }
+
+        private void SubscribeActionSequence(GraphNodeViewModel node, ActionSequenceEditorViewModel sequence)
+        {
+            if (sequence == null) return;
+            foreach (var row in sequence.Rows)
+                row.PropertyChanged += (_, args) => ActionChanged?.Invoke(node, row, args.PropertyName);
         }
 
         private void OnNodePropertyChanged(object sender, PropertyChangedEventArgs e)
@@ -944,10 +925,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     PhaseGraphViewModel.PopulateDecisionEditing(vm, decision.Prompt, "session", decision.Options,
                         option => option.Id,
                         option => option.Label,
-                        option => option.Sequence?.Instances ?? new List<ActionInstanceDefinition>(),
-                        (option, instance) => instance is SessionGotoInstanceDefinition gotoInstance
-                            ? new GotoRowData { Scope = "session", InstanceId = gotoInstance.Id, Label = gotoInstance.Label }
-                            : null,
+                        option => option.Sequence,
+                        option => ActionOwnerScope.SessionDecisionOptionSequence,
+                        TemperatureOptions,
+                        ResourceOptions,
                         _ => new List<ExitOption>());
                 }
                 var input = new ConnectorViewModel { Id = node.Id + "-input", Title = "" };
@@ -1166,26 +1147,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 if (node is ActionNodeDefinition actionNode)
                 {
                     vm.CanEditActions = true;
-                    vm.ActionTypeOptions = ActionTypeRegistry.All
-                        .Where(info => (info.LegalScopes & ActionOwnerScope.PhaseActionSequence) != 0)
-                        .OrderBy(info => info.DisplayLabel, StringComparer.Ordinal).ToList();
-                    vm.SelectedActionTypeKey = vm.ActionTypeOptions.Count > 0
-                        ? vm.ActionTypeOptions[0].TypeKey : null;
-                    var ordinal = 0;
-                    foreach (var instance in actionNode.Sequence?.Instances ?? new List<ActionInstanceDefinition>())
-                    {
-                        vm.ActionRows.Add(ToActionRow(vm, actionNode.Sequence?.Id, instance, ordinal++, phase));
-                    }
+                    vm.ActionSequence = new ActionSequenceEditorViewModel(vm, actionNode.Sequence?.Id,
+                        ActionOwnerScope.PhaseActionSequence,
+                        actionNode.Sequence?.Instances,
+                        TemperatureOptions, ResourceOptions, ExitOptionsFor(phase), vm.ActionRows);
                 }
                 if (node is PhaseDecisionNodeDefinition phaseDecision)
                 {
                     PopulateDecisionEditing(vm, phaseDecision.Prompt, "phase", phaseDecision.Options,
                         option => option.Id,
                         option => option.Label,
-                        option => option.Sequence?.Instances ?? new List<ActionInstanceDefinition>(),
-                        (option, instance) => instance is PhaseGotoInstanceDefinition gotoInstance
-                            ? new GotoRowData { Scope = "phase", InstanceId = gotoInstance.Id, ExitId = gotoInstance.PhaseExitId }
-                            : null,
+                        option => option.Sequence,
+                        option => ActionOwnerScope.ChoiceOptionSequence,
+                        TemperatureOptions,
+                        ResourceOptions,
                         _ => ExitOptionsFor(phase));
                 }
                 var input = new ConnectorViewModel { Id = node.Id + "-input", Title = "" };
@@ -1222,18 +1197,24 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
         }
 
-        private static ActionRowData ToActionRow(GraphNodeViewModel owner, string sequenceId,
-            ActionInstanceDefinition instance, int ordinal, PhaseDefinition phase)
+        internal static ActionRowData ToActionRow(ActionSequenceEditorViewModel sequence,
+            ActionInstanceDefinition instance, int ordinal)
         {
+            var owner = sequence.OwnerNode;
             var info = ActionTypeRegistry.ForInstance(instance);
             var row = new ActionRowData
             {
                 Owner = owner,
+                Sequence = sequence,
                 Definition = instance,
-                SequenceId = sequenceId,
+                SequenceId = sequence.SequenceId,
                 Ordinal = ordinal,
                 TypeKey = info.TypeKey,
                 DisplayLabel = info.DisplayLabel,
+                ParameterOptions = info.TypeKey == ActionTypeKeys.ModifyTemperature
+                    ? sequence.TemperatureOptions
+                    : info.TypeKey == ActionTypeKeys.Cutscene ? sequence.ResourceOptions : new List<ActionParameterOption>(),
+                ExitOptions = sequence.ExitOptions,
             };
             switch (instance)
             {
@@ -1260,7 +1241,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     break;
                 case PhaseGotoInstanceDefinition phaseGoto:
                     row.TextValue = phaseGoto.PhaseExitId;
-                    row.ExitOptions = ExitOptionsFor(phase);
                     break;
                 case SessionGotoInstanceDefinition sessionGoto:
                     row.TextValue = sessionGoto.Label;
@@ -1328,8 +1308,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
             List<TDecisionOption> options,
             Func<TDecisionOption, string> optionIdOf,
             Func<TDecisionOption, string> labelOf,
-            Func<TDecisionOption, List<ActionInstanceDefinition>> instancesOf,
-            Func<TDecisionOption, ActionInstanceDefinition, GotoRowData> gotoRowOf,
+            Func<TDecisionOption, ActionSequenceDefinition> sequenceOf,
+            Func<TDecisionOption, ActionOwnerScope> actionScopeOf,
+            IEnumerable<ActionParameterOption> temperatureOptions,
+            IEnumerable<ActionParameterOption> resourceOptions,
             Func<string, List<ExitOption>> exitOptionsFor)
         {
             vm.DecisionScope = scope;
@@ -1343,13 +1325,18 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     NodeId = vm.Id,
                     Scope = scope,
                     Label = labelOf(option),
-                    GotoExitOptions = exitOptionsFor(optionIdOf(option)),
                 };
-                foreach (var instance in instancesOf(option))
+                row.ActionSequence = new ActionSequenceEditorViewModel(vm,
+                    sequenceOf(option)?.Id,
+                    actionScopeOf(option),
+                    sequenceOf(option)?.Instances,
+                    temperatureOptions,
+                    resourceOptions,
+                    exitOptionsFor(optionIdOf(option)),
+                    row.ActionRows)
                 {
-                    var gotoRow = gotoRowOf(option, instance);
-                    if (gotoRow != null) row.GotoRows.Add(gotoRow);
-                }
+                    OptionId = row.OptionId,
+                };
                 vm.DecisionRows.Add(row);
             }
         }
@@ -1501,6 +1488,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public void LoadContent(GameContentDefinition content)
         {
             Content = content;
+            SessionGraph.ConfigureActionCatalog(content);
+            PhaseGraph.ConfigureActionCatalog(content);
             var phasesById = content.Phases.ToDictionary(p => p.Id);
             SessionGraph.PhaseResolver = id =>
                 id != null && phasesById.TryGetValue(id, out var phase) ? phase : null;

@@ -60,6 +60,10 @@ namespace TruthCardGame.Content.Sqlite
                 if (_undo[_undo.Count - 1].Merge(command))
                 {
                     _undo[_undo.Count - 1].Execute();
+                    // A merged edit is still a new edit: any redo branch is
+                    // invalid and toolbar state must refresh immediately.
+                    _redo.Clear();
+                    Changed?.Invoke();
                     return;
                 }
             }
@@ -805,22 +809,22 @@ namespace TruthCardGame.Content.Sqlite
 
     /// <summary>
     /// Deletes an exit on a clone phase that only exists after Make Unique ran
-    /// (shared-port flow). The exit is located by name at Execute time and its
+    /// (shared-port flow). The cloned exit id is passed explicitly and its
     /// snapshot (id, ordinal, projected edges) captured then, so Undo restores
     /// the exit, its projected sockets and their edges on the clone.
     /// </summary>
     public sealed class DeleteExitOnCloneCommand : AuthoringCommandBase
     {
         private readonly string _newPhaseId;
-        private readonly string _exitName;
+        private readonly string _exitId;
         private PhaseExitDefinition _exit;
         private int _ordinal = -1;
         private List<ProjectedEdgeSnapshot> _projectedEdges = new List<ProjectedEdgeSnapshot>();
         private List<PhaseGotoSnapshot> _gotoSnapshots = new List<PhaseGotoSnapshot>();
 
-        public DeleteExitOnCloneCommand(Func<DbConnection> conn, string newPhaseId, string exitName) : base(conn)
+        public DeleteExitOnCloneCommand(Func<DbConnection> conn, string newPhaseId, string exitId) : base(conn)
         {
-            _newPhaseId = newPhaseId; _exitName = exitName;
+            _newPhaseId = newPhaseId; _exitId = exitId;
         }
 
         public override string Name => "Delete exit";
@@ -828,8 +832,8 @@ namespace TruthCardGame.Content.Sqlite
         protected override void ExecuteCore(DbConnection connection)
         {
             var exits = PhaseExitRepository.List(connection, _newPhaseId);
-            var match = exits.Find(x => x.Name == _exitName) ?? (exits.Count > 0 ? exits[0] : null);
-            if (match == null) throw new InvalidOperationException($"Exit '{_exitName}' not found on the unique clone.");
+            var match = exits.Find(x => x.Id == _exitId);
+            if (match == null) throw new InvalidOperationException($"Exit '{_exitId}' not found on the unique clone.");
             _exit = match;
             _ordinal = exits.IndexOf(match);
             _projectedEdges = AuthoringUndo.ExitProjectedEdges(connection, match.Id);
@@ -910,16 +914,35 @@ namespace TruthCardGame.Content.Sqlite
         private readonly ActionOwnerScope _scope;
         private readonly string _typeKey;
         private readonly string _instanceId;
+        private readonly ActionInstanceDefinition _configuredInstance;
+        private readonly int _ordinal;
 
         public AddActionInstanceCommand(Func<DbConnection> conn, string sequenceId, ActionOwnerScope scope,
-            string typeKey, string instanceId) : base(conn)
+            string typeKey, string instanceId) : this(conn, sequenceId, scope, typeKey, instanceId, null, -1)
+        {
+        }
+
+        public AddActionInstanceCommand(Func<DbConnection> conn, string sequenceId, ActionOwnerScope scope,
+            string typeKey, string instanceId, ActionInstanceDefinition configuredInstance, int ordinal = -1) : base(conn)
         {
             _sequenceId = sequenceId; _scope = scope; _typeKey = typeKey; _instanceId = instanceId;
+            _configuredInstance = configuredInstance;
+            _ordinal = ordinal;
         }
 
         public override string Name => "Add action";
-        protected override void ExecuteCore(DbConnection connection) =>
-            ActionInstanceRepository.AppendDefault(connection, _sequenceId, _scope, _typeKey, _instanceId);
+        protected override void ExecuteCore(DbConnection connection)
+        {
+            if (_configuredInstance == null)
+            {
+                ActionInstanceRepository.AppendDefault(connection, _sequenceId, _scope, _typeKey, _instanceId);
+                return;
+            }
+            if (_ordinal >= 0)
+                ActionInstanceRepository.Insert(connection, _sequenceId, _scope, _configuredInstance, _ordinal);
+            else
+                ActionInstanceRepository.Append(connection, _sequenceId, _scope, _configuredInstance);
+        }
         protected override void UndoCore(DbConnection connection) => ActionInstanceRepository.Delete(connection, _instanceId);
     }
 

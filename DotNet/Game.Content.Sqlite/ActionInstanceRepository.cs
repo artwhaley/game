@@ -19,6 +19,15 @@ namespace TruthCardGame.Content.Sqlite
             var info = ActionTypeRegistry.ByTypeKey(typeKey);
             var instance = info.DefaultInstance();
             instance.Id = instanceId;
+            Append(connection, sequenceId, scope, instance);
+        }
+
+        /// <summary>Appends a fully configured instance (used by FK-backed pickers and duplicate).</summary>
+        public static void Append(DbConnection connection, string sequenceId,
+            ActionOwnerScope scope, ActionInstanceDefinition instance)
+        {
+            if (instance == null) throw new ArgumentNullException(nameof(instance));
+            if (string.IsNullOrEmpty(instance.Id)) throw new ArgumentException("Instance id required.", nameof(instance));
             ActionTypeRegistry.ValidateScope(instance, scope);
 
             using (var transaction = connection.BeginTransaction())
@@ -29,6 +38,36 @@ namespace TruthCardGame.Content.Sqlite
                     Sql.QueryAll(connection,
                         "SELECT COALESCE(MAX(ordinal), -1) + 1 FROM action_instance WHERE action_sequence_id = @seq;",
                         reader => ordinal = reader.GetInt32(0), ("seq", sequenceId));
+                    ActionSequenceWriter.WriteSingleAt(connection, transaction, sequenceId, instance, ordinal);
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+
+        /// <summary>Inserts a configured instance at an ordinal, shifting later rows safely.</summary>
+        public static void Insert(DbConnection connection, string sequenceId,
+            ActionOwnerScope scope, ActionInstanceDefinition instance, int ordinal)
+        {
+            if (ordinal < 0) throw new ArgumentOutOfRangeException(nameof(ordinal));
+            if (instance == null) throw new ArgumentNullException(nameof(instance));
+            ActionTypeRegistry.ValidateScope(instance, scope);
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    Sql.Execute(connection, transaction,
+                        "UPDATE action_instance SET ordinal = ordinal + 1000000 " +
+                        "WHERE action_sequence_id = @seq AND ordinal >= @ordinal;",
+                        ("seq", sequenceId), ("ordinal", ordinal));
+                    Sql.Execute(connection, transaction,
+                        "UPDATE action_instance SET ordinal = ordinal - 999999 " +
+                        "WHERE action_sequence_id = @seq AND ordinal >= 1000000;",
+                        ("seq", sequenceId));
                     ActionSequenceWriter.WriteSingleAt(connection, transaction, sequenceId, instance, ordinal);
                     transaction.Commit();
                 }

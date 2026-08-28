@@ -19,7 +19,7 @@ namespace TruthCardGame.Content.Sqlite
         /// and semantic commands so stable IDs and host extension rows are not
         /// replaced wholesale.
         /// </remarks>
-        public static void ReplaceGraph(DbConnection connection, string phaseId, PhaseGraphDefinition graph)
+        internal static void ReplaceGraph(DbConnection connection, string phaseId, PhaseGraphDefinition graph)
         {
             if (graph == null) throw new ArgumentNullException(nameof(graph));
             var entryCount = 0;
@@ -300,7 +300,7 @@ namespace TruthCardGame.Content.Sqlite
         /// and semantic commands so stable IDs and host extension rows are not
         /// replaced wholesale.
         /// </remarks>
-        public static void ReplaceGraph(DbConnection connection, string sessionId, SessionGraphDefinition graph)
+        internal static void ReplaceGraph(DbConnection connection, string sessionId, SessionGraphDefinition graph)
         {
             if (graph == null) throw new ArgumentNullException(nameof(graph));
             var startCount = 0;

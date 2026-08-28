@@ -5,6 +5,8 @@ using System.Windows;
 using System.Windows.Controls;
 using NUnit.Framework;
 using Nodify;
+using TruthCardGame.Content;
+using TruthCardGame.Core;
 using TruthCardGame.ReferenceHost.Wpf;
 
 namespace TruthCardGame.ReferenceHost.Wpf.Tests
@@ -88,6 +90,44 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
                 host.Close();
                 resources.Close();
             }
+        }
+
+        [Test]
+        public void ActionPickerIsOwnerScopedAndSearchable()
+        {
+            var sessionChoices = ActionEditorRegistry.PickerChoices(ActionOwnerScope.SessionDecisionOptionSequence).ToList();
+            Assert.That(sessionChoices.Any(choice => choice.TypeKey == ActionTypeKeys.SessionGoto), Is.True);
+            Assert.That(sessionChoices.Any(choice => choice.TypeKey == ActionTypeKeys.PhaseGoto), Is.False);
+
+            var phaseChoices = ActionEditorRegistry.PickerChoices(ActionOwnerScope.ChoiceOptionSequence).ToList();
+            Assert.That(phaseChoices.Any(choice => choice.TypeKey == ActionTypeKeys.PhaseGoto), Is.True);
+            Assert.That(phaseChoices.Any(choice => choice.TypeKey == ActionTypeKeys.SessionGoto), Is.False);
+
+            var sequence = new ActionSequenceEditorViewModel(
+                new GraphNodeViewModel { Id = "action-test" }, "sequence-test",
+                ActionOwnerScope.PhaseActionSequence, null, null, null,
+                new[] { new ExitOption { Id = "", Name = "Unassigned" } });
+            sequence.SearchText = "temperature";
+            Assert.That(sequence.ActionTypePickerView.Cast<ActionTypeChoice>().All(choice =>
+                choice.SearchText.IndexOf("temperature", System.StringComparison.OrdinalIgnoreCase) >= 0), Is.True);
+        }
+
+        [Test]
+        public void TypedPhaseGotoRowShowsDangerUntilExitIsAssigned()
+        {
+            var sequence = new ActionSequenceEditorViewModel(
+                new GraphNodeViewModel { Id = "action-test" }, "sequence-test",
+                ActionOwnerScope.PhaseActionSequence,
+                new[] { new PhaseGotoInstanceDefinition { Id = "goto-test", PhaseExitId = "" } },
+                null, null,
+                new[] { new ExitOption { Id = "", Name = "Unassigned" }, new ExitOption { Id = "exit-a", Name = "Success" } });
+            var row = sequence.Rows.Single();
+
+            Assert.That(row.HasChoiceEditor, Is.True);
+            Assert.That(row.IsDanger, Is.True);
+            row.TextValue = "exit-a";
+            Assert.That(row.IsDanger, Is.False);
+            Assert.That(((PhaseGotoInstanceDefinition)row.Definition).PhaseExitId, Is.EqualTo("exit-a"));
         }
     }
 }

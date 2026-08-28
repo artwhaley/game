@@ -21,22 +21,24 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   `Game.Core` owns resolution and runtime. See
   [Extraction milestone](#extraction-milestone-01) below.
 - Editor builders generate scenes + starter content — no manual wiring.
-- Unity 6000.5.9f1 is pinned. Current remediation verification is recorded in
-  [`Docs/GraphWorkbenchRemediation/FINAL-REPORT.md`](Docs/GraphWorkbenchRemediation/FINAL-REPORT.md);
+- Unity 6000.5.9f1 is pinned. The current finish-pass verification is recorded
+  in [`Docs/GraphWorkbenchFinish/FINAL-REPORT.md`](Docs/GraphWorkbenchFinish/FINAL-REPORT.md);
   do not infer Unity or human acceptance from older milestone reports.
-- Current automated .NET gates: **105 Core tests passed**, **109 SQLite tests
-  passed, 1 skipped**, and **2 WPF layout-binding regression tests passed** (the
-  SQLite skip preserves the canonical DB's unconnected projected PhaseExit).
-  The WPF host builds and launches as a smoke check; interactive WPF and Unity
-  gates remain human/not-run unless the final report says otherwise.
+- Latest automated .NET gates: **105 Core tests passed**, **112 SQLite tests
+  passed, 1 skipped**, and **4 WPF Workbench regression tests passed**.
+  The SQLite skip preserves the canonical DB's known unconnected projected
+  PhaseExit. The WPF host has a clean build; launch and interactive acceptance
+  remain separate gates and are reported explicitly in the finish report.
 - Development rules: [`agents.md`](agents.md) · Unity CLI notes: [`unity-cli.md`](unity-cli.md)
 
 ## Graph Workbench milestone (0.3)
 
 The remediation ticket stack in `new tickets/Game_GraphWorkbench_Remediation_Patch_Stack/`
-patches the graph-model content architecture and WPF authoring tool. Automated,
-human, and not-run gates are separated in
-[`Docs/GraphWorkbenchRemediation/FINAL-REPORT.md`](Docs/GraphWorkbenchRemediation/FINAL-REPORT.md).
+established the graph-model content architecture and WPF authoring tool. The
+finish stack in `new tickets/Game_GraphWorkbench_Finish_Patch_Stack/` closes
+the remaining authoring correctness gaps. Automated, app-smoke, human, and
+not-run gates are separated in
+[`Docs/GraphWorkbenchFinish/FINAL-REPORT.md`](Docs/GraphWorkbenchFinish/FINAL-REPORT.md).
 
 - **Schema v2** — two-level graph model: `session_graph_node` (Start /
   PhaseReference / SessionDecision / End), `phase_graph_node` (Entry /
@@ -57,10 +59,12 @@ human, and not-run gates are separated in
   drag-drop Phase placement with live exit-socket projection, inline
   two-way Nodify ItemContainer location binding for durable Session and Phase
   node positions,
-  VariableCheck/GOTO/decision editors, exits strip, Copy Session /
-  Duplicate Phase / Make Unique with the shared-port lock, and semantic
-  undo/redo (Ctrl+Z / Ctrl+Y) over every edit, including typed Action Instance
-  add/remove/reorder/update, phase tags, and structural node creation.
+  VariableCheck and typed ActionSequence editors, owner-scoped searchable
+  Action-Type pickers, exits strip, Copy Session / Duplicate Phase / Make
+  Unique with the shared-port lock, and semantic undo/redo (Ctrl+Z / Ctrl+Y)
+  over every edit, including typed Action Instance add/remove/reorder/update,
+  phase tags, and structural node creation. SessionDecision and PhaseDecision
+  options use the same ordered ActionSequence editor as Action nodes.
 - **Live preview/debugger** — a collapsible strip runs the real Core engine
   against a fresh SQLite snapshot with amber node rings, transfer-edge and
   check-branch highlighting, and readable temperatures/progress/stack/PhaseRun

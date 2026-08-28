@@ -40,7 +40,7 @@ namespace TruthCardGame.Content.Sqlite
         public string NodeId;
         public string PortId;
         public int PortOrdinal;
-        public List<string> EdgeTargets = new List<string>();
+        public List<ProjectedEdgeSnapshot> Edges = new List<ProjectedEdgeSnapshot>();
     }
 
     /// <summary>Everything needed to restore one SessionDecision option row and its owned gotos.</summary>
@@ -68,7 +68,7 @@ namespace TruthCardGame.Content.Sqlite
     /// <summary>
     /// Read/restore operations behind the Ticket 18 semantic undo layer.
     /// Snapshot methods capture state before a destructive edit; Restore
-    /// methods re-insert captured rows (new edge ids) inside one transaction.
+    /// methods re-insert captured rows with their original stable identities.
     /// </summary>
     public static class AuthoringUndo
     {
@@ -173,8 +173,14 @@ namespace TruthCardGame.Content.Sqlite
             if (!string.IsNullOrEmpty(snapshot.PortId))
             {
                 Sql.QueryAll(connection,
-                    "SELECT target_node_id FROM session_graph_edge WHERE source_port_id = @port;",
-                    reader => snapshot.EdgeTargets.Add(reader.GetString(0)),
+                "SELECT id, session_id, target_node_id FROM session_graph_edge WHERE source_port_id = @port;",
+                    reader => snapshot.Edges.Add(new ProjectedEdgeSnapshot
+                    {
+                        EdgeId = reader.GetString(0),
+                        SessionId = reader.GetString(1),
+                        PortId = snapshot.PortId,
+                        TargetNodeId = reader.GetString(2),
+                    }),
                     ("port", snapshot.PortId));
             }
             return snapshot;
@@ -202,13 +208,13 @@ namespace TruthCardGame.Content.Sqlite
                         "VALUES (@id, @node, 'session_goto', @ordinal, @label, NULL, @i);",
                         ("id", snapshot.PortId), ("node", snapshot.NodeId), ("ordinal", snapshot.PortOrdinal),
                         ("label", (object)snapshot.Label ?? ""), ("i", snapshot.InstanceId));
-                    foreach (var target in snapshot.EdgeTargets)
+                    foreach (var edge in snapshot.Edges)
                     {
                         Sql.Execute(connection, transaction,
                             "INSERT INTO session_graph_edge (id, session_id, source_port_id, target_node_id) " +
-                            "SELECT 'se-' || lower(hex(randomblob(8))), session_id, @port, @target " +
-                            "FROM session_graph_node WHERE id = @target;",
-                            ("port", snapshot.PortId), ("target", target));
+                            "VALUES (@id, @session, @port, @target);",
+                            ("id", edge.EdgeId), ("session", edge.SessionId),
+                            ("port", snapshot.PortId), ("target", edge.TargetNodeId));
                     }
                     transaction.Commit();
                 }

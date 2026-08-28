@@ -1,4 +1,8 @@
-# Graph Workbench / SQLite Graph Content — Final Report (Ticket 21)
+# Graph Workbench / SQLite Graph Content — Superseded Milestone Report (Ticket 21)
+
+> This report documents the prior remediation milestone and is retained as
+> history. The finish patch stack is the current status and verification source:
+> [`Docs/GraphWorkbenchFinish/FINAL-REPORT.md`](../GraphWorkbenchFinish/FINAL-REPORT.md).
 
 Milestone 0.3 final handoff. Branch: `sqlite-content-graph` (pushed to
 `origin/sqlite-content-graph`). Ticket stack:

@@ -23,7 +23,7 @@ what's open, and where it should go next.*
 > architecture and WPF authoring tool were remediated via
 > `new tickets/Game_GraphWorkbench_Remediation_Patch_Stack/`. Current behavior
 > and verification are recorded in
-> [`Docs/GraphWorkbenchRemediation/FINAL-REPORT.md`](Docs/GraphWorkbenchRemediation/FINAL-REPORT.md).
+> [`Docs/GraphWorkbenchFinish/FINAL-REPORT.md`](Docs/GraphWorkbenchFinish/FINAL-REPORT.md).
 > Sessions compose **reusable Phases through a two-level graph model**
 > (session nodes Start/PhaseReference/Decision/End; phase nodes
 > Entry/CardExecutor/VariableCheck/Action/Decision/Return; typed Action
@@ -32,8 +32,9 @@ what's open, and where it should go next.*
 > exit assignment nullable for first-class unassigned authoring. The Nodify WPF
 > **Graph Workbench** (Library + stacked Session/Phase graphs + Inspector) is
 > the primary core-content authoring host with durable layout, live port
-> projection, exits/GOTO authoring, Copy/Duplicate/Make-Unique, typed Action
-> Instance editing, semantic undo/redo, and an embedded live Core preview/
+> projection, PhaseExit/GOTO authoring, shared typed ActionSequence editing for
+> nodes and decision options, Copy/Duplicate/Make-Unique, semantic undo/redo,
+> and an embedded live Core preview/
 > debugger. Runtime uses RunUntilYield/Continue with authored WaitForContinue
 > pacing; CardFinished is not a pacing boundary.
 > Authoritative design: [`Docs/GraphWorkbench/`](Docs/GraphWorkbench/).
@@ -78,7 +79,7 @@ Companion docs: [`agents.md`](agents.md) (operating rules),
   the same portable graph shape; it does not own runtime rules or min/max-card
   progression.
 - Verification and remaining human gates are maintained in
-  [`Docs/GraphWorkbenchRemediation/FINAL-REPORT.md`](Docs/GraphWorkbenchRemediation/FINAL-REPORT.md).
+  [`Docs/GraphWorkbenchFinish/FINAL-REPORT.md`](Docs/GraphWorkbenchFinish/FINAL-REPORT.md).
 
 ---
 

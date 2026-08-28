@@ -58,12 +58,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
     {
         private readonly WorkbenchViewModel _vm;
         private readonly AuthoringCommandStack _stack = new AuthoringCommandStack();
+        private readonly LibraryPaneController _library = new LibraryPaneController();
         private bool _loaded;
         private bool _syncingSessionMeta;
         private bool _syncingPhaseMeta;
         private bool _loadingPlacementPhase;
         private bool _suppressDisconnectCommands;
-        private string _sessionUsageFilterPhaseId;
 
         public MainWindow()
         {
@@ -209,26 +209,18 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     _vm.PhaseGraph.ViewportZoom, _vm.PhaseGraph.ViewportLocation.X, _vm.PhaseGraph.ViewportLocation.Y);
             });
 
-            _vm.PhaseGraph.GotoExitChanged += (node, row, field) =>
+            _vm.PhaseGraph.ActionChanged += (node, row, field) =>
             {
                 if (row == null || string.IsNullOrEmpty(row.InstanceId)) return;
-                if (row.Scope == "session")
-                {
-                    if (field != nameof(GotoRowData.Label)) return;
-                    var oldLabel = WithConnectionResult(connection =>
-                        AuthoringUndo.GetSessionGotoLabel(connection, row.InstanceId));
-                    PushOrMerge(new SetSessionGotoLabelCommand(OpenConnection, row.InstanceId, oldLabel, row.Label ?? ""));
-                }
-                else
-                {
-                    if (field != nameof(GotoRowData.ExitId)) return;
-                    var oldExit = WithConnectionResult(connection =>
-                        AuthoringUndo.GetPhaseGotoExit(connection, row.InstanceId));
-                    PushCommand(new SetPhaseGotoExitCommand(OpenConnection, row.InstanceId, oldExit, row.ExitId));
-                }
+                if (field != nameof(ActionRowData.TextValue) && field != nameof(ActionRowData.NumberText)) return;
+                PushOrMerge(new UpdateActionInstanceCommand(OpenConnection, row.InstanceId, row.TypeKey,
+                    row.PersistedTextValue, ParseFloat(row.PersistedNumberText),
+                    row.TextValue, ParseFloat(row.NumberText)));
+                row.PersistedTextValue = row.TextValue;
+                row.PersistedNumberText = row.NumberText;
             };
 
-            _vm.PhaseGraph.ActionChanged += (node, row, field) =>
+            _vm.SessionGraph.ActionChanged += (node, row, field) =>
             {
                 if (row == null || string.IsNullOrEmpty(row.InstanceId)) return;
                 if (field != nameof(ActionRowData.TextValue) && field != nameof(ActionRowData.NumberText)) return;
@@ -275,14 +267,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     oldLabel, option.Label ?? ""));
             };
 
-            _vm.SessionGraph.GotoExitChanged += (node, row, field) =>
-            {
-                if (row == null || string.IsNullOrEmpty(row.InstanceId) || row.Scope != "session") return;
-                if (field != nameof(GotoRowData.Label)) return;
-                var oldLabel = WithConnectionResult(connection =>
-                    AuthoringUndo.GetSessionGotoLabel(connection, row.InstanceId));
-                PushOrMerge(new SetSessionGotoLabelCommand(OpenConnection, row.InstanceId, oldLabel, row.Label ?? ""));
-            };
         }
 
         // ---------- undo/redo (ticket 18) ----------
@@ -453,44 +437,51 @@ namespace TruthCardGame.ReferenceHost.Wpf
             return new DeletePhaseNodeCommand(OpenConnection, _vm.SelectedPhase.Id, definition, edges, position);
         }
 
-        private void OnAddGoto(object sender, RoutedEventArgs e)
-        {
-            if (!(sender is FrameworkElement element) || !(element.DataContext is GraphNodeViewModel node)) return;
-            if (_vm.SelectedPhase == null)
-            {
-                StatusText.Text = "Select a phase first.";
-                return;
-            }
-            PushCommand(new AddPhaseGotoCommand(OpenConnection, node.Id, null),
-                reloadPhase: true);
-            StatusText.Text = "Added unassigned PhaseGoto instance (blocking).";
-        }
-
-        private void OnRemoveGoto(object sender, RoutedEventArgs e)
-        {
-            if (!(sender is FrameworkElement element) || !(element.DataContext is GotoRowData row)) return;
-            if (string.IsNullOrEmpty(row.InstanceId)) return;
-            var snapshot = WithConnectionResult(connection => AuthoringUndo.SnapshotPhaseGoto(connection, row.InstanceId));
-            PushCommand(new RemovePhaseGotoCommand(OpenConnection, snapshot), reloadPhase: true);
-            StatusText.Text = "Removed PhaseGoto instance.";
-        }
-
         private void OnAddActionInstance(object sender, RoutedEventArgs e)
         {
-            if (!(sender is FrameworkElement element) || !(element.DataContext is GraphNodeViewModel node)) return;
-            if (_vm.SelectedPhase == null || !node.CanEditActions || string.IsNullOrEmpty(node.SelectedActionTypeKey)) return;
-            var sequenceId = WithConnectionResult(connection => AuthoringUndo.NodeActionSequenceId(connection, node.Id));
-            var instanceId = node.Id + "-action-" + Guid.NewGuid().ToString("N").Substring(0, 8);
-            PushCommand(new AddActionInstanceCommand(OpenConnection, sequenceId,
-                ActionOwnerScope.PhaseActionSequence, node.SelectedActionTypeKey, instanceId), reloadPhase: true);
-            StatusText.Text = "Added " + ActionTypeRegistry.ByTypeKey(node.SelectedActionTypeKey).DisplayLabel + " action.";
+            if (!(sender is FrameworkElement element) || !(element.DataContext is ActionSequenceEditorViewModel sequence)) return;
+            if (string.IsNullOrEmpty(sequence.SelectedActionTypeKey) || sequence.OwnerNode == null) return;
+            var typeKey = sequence.SelectedActionTypeKey;
+            if (typeKey == ActionTypeKeys.ModifyTemperature && sequence.TemperatureOptions.Count == 0)
+            {
+                StatusText.Text = "Add a Temperature definition before authoring Modify Temperature.";
+                return;
+            }
+            if (typeKey == ActionTypeKeys.Cutscene && sequence.ResourceOptions.Count == 0)
+            {
+                StatusText.Text = "Add a cutscene Resource before authoring Play Cutscene.";
+                return;
+            }
+            var instanceId = sequence.IdentityPrefix + "-action-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var instance = sequence.CreateDefaultInstance(typeKey, instanceId);
+            var reloadSession = sequence.IsSessionDecisionOption;
+            if (typeKey == ActionTypeKeys.SessionGoto)
+            {
+                PushCommand(new AddSessionGotoCommand(OpenConnection, sequence.OwnerNode.Id,
+                    sequence.OptionId, ((SessionGotoInstanceDefinition)instance).Label), reloadSession: true);
+            }
+            else
+            {
+                PushCommand(new AddActionInstanceCommand(OpenConnection, sequence.SequenceId,
+                    sequence.OwnerScope, typeKey, instanceId, instance), reloadSession, !reloadSession);
+            }
+            StatusText.Text = "Added " + ActionTypeRegistry.ByTypeKey(typeKey).DisplayLabel + " action.";
         }
 
         private void OnRemoveActionInstance(object sender, RoutedEventArgs e)
         {
             if (!(sender is FrameworkElement element) || !(element.DataContext is ActionRowData row)) return;
-            if (row.Owner == null || row.Definition == null) return;
-            PushCommand(new RemoveActionInstanceCommand(OpenConnection, row.SequenceId, row.Definition, row.Ordinal), reloadPhase: true);
+            if (row.Owner == null || row.Definition == null || row.Sequence == null) return;
+            if (row.TypeKey == ActionTypeKeys.SessionGoto && row.Sequence.IsSessionDecisionOption)
+            {
+                var snapshot = WithConnectionResult(connection => AuthoringUndo.SnapshotSessionGoto(connection, row.InstanceId));
+                PushCommand(new RemoveSessionGotoCommand(OpenConnection, snapshot), reloadSession: true);
+            }
+            else
+            {
+                PushCommand(new RemoveActionInstanceCommand(OpenConnection, row.SequenceId, row.Definition, row.Ordinal),
+                    reloadSession: row.Sequence.IsSessionDecisionOption, reloadPhase: !row.Sequence.IsSessionDecisionOption);
+            }
             StatusText.Text = "Removed " + row.DisplayLabel + " action.";
         }
 
@@ -500,13 +491,33 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void MoveAction(object sender, int delta)
         {
             if (!(sender is FrameworkElement element) || !(element.DataContext is ActionRowData row)) return;
-            var owner = row.Owner;
-            if (owner == null) return;
-            var index = owner.ActionRows.IndexOf(row);
+            if (row.Sequence == null) return;
+            var index = row.Sequence.Rows.IndexOf(row);
             var otherIndex = index + delta;
-            if (index < 0 || otherIndex < 0 || otherIndex >= owner.ActionRows.Count) return;
-            var other = owner.ActionRows[otherIndex];
-            PushCommand(new MoveActionInstanceCommand(OpenConnection, row.SequenceId, row.InstanceId, other.InstanceId), reloadPhase: true);
+            if (index < 0 || otherIndex < 0 || otherIndex >= row.Sequence.Rows.Count) return;
+            var other = row.Sequence.Rows[otherIndex];
+            PushCommand(new MoveActionInstanceCommand(OpenConnection, row.SequenceId, row.InstanceId, other.InstanceId),
+                reloadSession: row.Sequence.IsSessionDecisionOption, reloadPhase: !row.Sequence.IsSessionDecisionOption);
+        }
+
+        private void OnDuplicateActionInstance(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is FrameworkElement element) || !(element.DataContext is ActionRowData row) || row.Sequence == null) return;
+            var sequence = row.Sequence;
+            if (row.TypeKey == ActionTypeKeys.SessionGoto && sequence.IsSessionDecisionOption)
+            {
+                PushCommand(new AddSessionGotoCommand(OpenConnection, sequence.OwnerNode.Id,
+                    sequence.OptionId, row.TextValue ?? ""), reloadSession: true);
+            }
+            else
+            {
+                var instanceId = sequence.IdentityPrefix + "-action-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+                var duplicate = ActionInstanceCloneUtility.Clone(row.Definition, instanceId);
+                PushCommand(new AddActionInstanceCommand(OpenConnection, row.SequenceId,
+                    sequence.OwnerScope, row.TypeKey, instanceId, duplicate, row.Ordinal + 1),
+                    reloadSession: sequence.IsSessionDecisionOption, reloadPhase: !sequence.IsSessionDecisionOption);
+            }
+            StatusText.Text = "Duplicated " + row.DisplayLabel + " action.";
         }
 
         private void OnAddDecisionOption(object sender, RoutedEventArgs e)
@@ -532,48 +543,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
             PushCommand(new RemoveDecisionOptionCommand(OpenConnection, option.Scope, snapshot),
                 reloadSession: true, reloadPhase: true);
             StatusText.Text = "Removed decision option.";
-        }
-
-        private void OnAddDecisionGoto(object sender, RoutedEventArgs e)
-        {
-            if (!(sender is FrameworkElement element) || !(element.DataContext is DecisionRowData option)) return;
-            if (option.Scope == "session")
-            {
-                if (_vm.SelectedSession == null) return;
-                PushCommand(new AddSessionGotoCommand(OpenConnection, option.NodeId, option.OptionId, "goto"),
-                    reloadSession: true);
-                StatusText.Text = "Added SessionGoto — a unique port appeared on the decision node.";
-            }
-            else
-            {
-                if (_vm.SelectedPhase == null)
-                {
-                    StatusText.Text = "Select a phase first.";
-                    return;
-                }
-                PushCommand(new AddPhaseOptionGotoCommand(OpenConnection, option.OptionId, null),
-                    reloadPhase: true);
-                StatusText.Text = "Added unassigned PhaseGoto to option sequence.";
-            }
-        }
-
-        private void OnRemoveDecisionGoto(object sender, RoutedEventArgs e)
-        {
-            if (!(sender is FrameworkElement element) || !(element.DataContext is GotoRowData row)) return;
-            if (string.IsNullOrEmpty(row.InstanceId)) return;
-            if (row.Scope == "session")
-            {
-                var snapshot = WithConnectionResult(connection =>
-                    AuthoringUndo.SnapshotSessionGoto(connection, row.InstanceId));
-                PushCommand(new RemoveSessionGotoCommand(OpenConnection, snapshot), reloadSession: true);
-            }
-            else
-            {
-                var snapshot = WithConnectionResult(connection =>
-                    AuthoringUndo.SnapshotPhaseGoto(connection, row.InstanceId));
-                PushCommand(new RemovePhaseGotoCommand(OpenConnection, snapshot), reloadPhase: true);
-            }
-            StatusText.Text = "Removed GOTO (and its unique port, if any).";
         }
 
         private static VariableSourceKind ParseSourceKind(string source)
@@ -837,15 +806,33 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             BindSessionList();
             BindPhaseList();
+            SetLibraryMode(true);
+        }
+
+        private void OnShowSessionLibrary(object sender, RoutedEventArgs e) => SetLibraryMode(true);
+
+        private void OnShowPhaseLibrary(object sender, RoutedEventArgs e) => SetLibraryMode(false);
+
+        private void SetLibraryMode(bool sessions)
+        {
+            if (sessions) _library.ShowSessions(); else _library.ShowPhases();
+            SessionLibraryPanel.Visibility = sessions ? Visibility.Visible : Visibility.Collapsed;
+            PhaseLibraryPanel.Visibility = sessions ? Visibility.Collapsed : Visibility.Visible;
+            if (sessions)
+            {
+                SessionModeText.Text = string.IsNullOrEmpty(_library.SessionUsageFilterPhaseId)
+                    ? "Sessions" : SessionModeText.Text;
+                BindSessionList();
+            }
+            else
+            {
+                BindPhaseList();
+            }
         }
 
         private void BindPhaseList()
         {
-            var filter = (PhaseFilter.Text ?? "").Trim();
-            var phases = _vm.Content.Phases;
-            var shown = string.IsNullOrEmpty(filter)
-                ? phases
-                : phases.Where(p => p.Title.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+            var shown = _library.FilterPhases(_vm.Content, PhaseFilter.Text);
             PhaseList.ItemsSource = shown;
             PhaseList.DisplayMemberPath = nameof(PhaseDefinition.Title);
             if (PhaseList.Items.Count > 0 && PhaseList.SelectedItem == null) PhaseList.SelectedIndex = 0;
@@ -858,16 +845,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void BindSessionList()
         {
-            var filter = (SessionFilter.Text ?? "").Trim();
-            var sessions = _vm.Content.Sessions;
-            var shown = string.IsNullOrEmpty(filter)
-                ? sessions
-                : sessions.Where(s => s.Title.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
-            if (!string.IsNullOrEmpty(_sessionUsageFilterPhaseId))
-            {
-                shown = shown.Where(s => s.Graph != null && s.Graph.Nodes.OfType<PhaseReferenceNodeDefinition>()
-                    .Any(reference => reference.PhaseId == _sessionUsageFilterPhaseId)).ToList();
-            }
+            var shown = _library.FilterSessions(_vm.Content, SessionFilter.Text);
             SessionList.ItemsSource = shown;
             SessionList.DisplayMemberPath = nameof(SessionDefinition.Title);
         }
@@ -879,7 +857,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void OnClearSessionUsageFilter(object sender, RoutedEventArgs e)
         {
-            _sessionUsageFilterPhaseId = null;
+            _library.ClearSessionUsageFilter();
             SessionModeText.Text = "Sessions";
             BindSessionList();
         }
@@ -988,23 +966,28 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (placements > 1)
             {
                 // Port topology lock: offer Make Unique, then apply the delete on the clone.
-                var exitName = row.Name;
                 PromptSharedPortEdit(sessions, placements, newPhaseId =>
-                    new DeleteExitOnCloneCommand(OpenConnection, newPhaseId, exitName));
+                {
+                    var clonePreview = ContentCloner.ClonePhase(_vm.SelectedPhase, newPhaseId);
+                    if (!clonePreview.ExitIdMap.TryGetValue(row.Id, out var cloneExitId))
+                        throw new InvalidOperationException("The selected PhaseExit is missing from the unique clone.");
+                    return new DeleteExitOnCloneCommand(OpenConnection, newPhaseId, cloneExitId);
+                });
                 return;
             }
 
-            var confirm = MessageBox.Show(this,
-                "Delete exit '" + row.Name + "'? If its sole projected output is wired, " +
-                "the edge and output are removed as one transactional edit.",
-                "Delete Exit", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (confirm != MessageBoxResult.Yes) return;
-
-            // Transactional: schema ON DELETE CASCADE removes projected sockets and
-            // their edges together. A GOTO Action that still references this exit
-            // blocks the delete (RESTRICT) — we never silently auto-delete an exit.
             var projectedEdges = WithConnectionResult(connection =>
                 AuthoringUndo.ExitProjectedEdges(connection, row.Id));
+            var gotoCount = WithConnectionResult(connection =>
+                AuthoringUndo.SnapshotPhaseGotosByExit(connection, row.Id).Count);
+            if (gotoCount > 0 || projectedEdges.Count > 0)
+            {
+                var dialog = new PhaseExitDeleteDialog(row.Name, gotoCount, projectedEdges.Count) { Owner = this };
+                if (dialog.ShowDialog() != true) return;
+            }
+
+            // The command captures the referenced GOTO actions and projected
+            // edges, then clears them atomically. Undo restores exact identities.
             var ordinal = _vm.SelectedPhase.Exits.FindIndex(x => x.Id == row.Id);
             var def = _vm.SelectedPhase.Exits.Find(x => x.Id == row.Id);
             PushCommand(new DeleteExitCommand(OpenConnection, _vm.SelectedPhase.Id, def, ordinal, projectedEdges));
@@ -1025,13 +1008,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             if (_vm.SessionGraph.SelectedNode?.Kind == "phase-reference")
             {
-                var choice = MessageBox.Show(this,
-                    "This Phase is used in " + sessions + " session(s) / " + placements + " placement(s).\n" +
-                    "Changing its ports could break existing Session graphs.\n\n" +
-                    "[Make Unique] detaches the selected placement so it can own this edit.\n" +
-                    "[Cancel] leaves the shared phase untouched.",
-                    "Shared Phase Port Lock", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-                if (choice == MessageBoxResult.OK)
+                var dialog = new SharedPhaseTopologyDialog(sessions, placements) { Owner = this };
+                if (dialog.ShowDialog() == true)
                 {
                     MakeUniqueCurrentPlacement(exitEditFactory);
                     StatusText.Text = "Placement made unique — the port edit was applied on the clone.";
@@ -1102,6 +1080,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 _vm.Layout.SessionRatio + _vm.Layout.PhaseRatio,
                 _vm.Layout.InspectorRatio,
             });
+            var centerRatio = _vm.Layout.SessionRatio + _vm.Layout.PhaseRatio;
+            if (centerRatio > 0)
+            {
+                PaneGrid.RowDefinitions[0].Height = new GridLength(_vm.Layout.SessionRatio / centerRatio, GridUnitType.Star);
+                PaneGrid.RowDefinitions[2].Height = new GridLength(_vm.Layout.PhaseRatio / centerRatio, GridUnitType.Star);
+            }
         }
 
         private void SetContentStarWeights(double[] weights)
@@ -1122,7 +1106,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             if (sender is GridSplitter splitter && splitter.ResizeDirection == GridResizeDirection.Rows)
             {
+                PersistCenterRowRatios();
                 SaveLayout();
+                ApplyLayout();
                 return;
             }
             // Convert the dragged pixel layout back to ratios, persist, and
@@ -1181,6 +1167,21 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 center * sessionShare,
                 center * (1.0 - sessionShare),
                 widths[2] / total);
+            PersistCenterRowRatios();
+        }
+
+        private void PersistCenterRowRatios()
+        {
+            var sessionHeight = PaneGrid.RowDefinitions[0].ActualHeight;
+            var phaseHeight = PaneGrid.RowDefinitions[2].ActualHeight;
+            var centerHeight = sessionHeight + phaseHeight;
+            var centerRatio = _vm.Layout.SessionRatio + _vm.Layout.PhaseRatio;
+            if (centerHeight <= 0 || centerRatio <= 0) return;
+            var sessionShare = sessionHeight / centerHeight;
+            _vm.Layout.SetRatios(_vm.Layout.LibraryRatio,
+                centerRatio * sessionShare,
+                centerRatio * (1.0 - sessionShare),
+                _vm.Layout.InspectorRatio);
         }
 
         // ---------- reference player preview (with graph parity) ----------
@@ -1213,6 +1214,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             };
             PushCommand(new CreateSessionCommand(OpenConnection, session.Id, session.Title, session.SessionTypeId));
             _vm.Content.Sessions.Add(session);
+            SetLibraryMode(true);
             BindSessionList();
             SessionList.SelectedItem = session;
             StatusText.Text = "Created session '" + session.Title + "' with its singular Start node.";
@@ -1516,6 +1518,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             };
             PushCommand(new CreatePhaseCommand(OpenConnection, phase.Id, phase.Title));
             _vm.Content.Phases.Add(phase);
+            SetLibraryMode(false);
             BindPhaseList();
             PhaseList.SelectedItem = phase;
             StatusText.Text = "Created phase '" + phase.Title + "' with its singular Entry node.";
@@ -1584,8 +1587,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void OnShowSessions(object sender, RoutedEventArgs e)
         {
             if (_vm.SelectedPhase == null) return;
-            _sessionUsageFilterPhaseId = _vm.SelectedPhase.Id;
+            _library.FilterToSessionsUsing(_vm.SelectedPhase);
             SessionModeText.Text = "Sessions using " + _vm.SelectedPhase.Title;
+            SetLibraryMode(true);
             BindSessionList();
             if (SessionList.Items.Count > 0) SessionList.SelectedIndex = 0;
             StatusText.Text = "Library filtered to sessions using '" + _vm.SelectedPhase.Title + "'.";

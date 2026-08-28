@@ -1,4 +1,7 @@
-# Graph Workbench — Manual Test Guide (Ticket 21)
+# Graph Workbench — Manual Test Guide (Finish Stack)
+
+> This guide supersedes the earlier milestone walkthrough. The current finish
+> report is [`../GraphWorkbenchFinish/FINAL-REPORT.md`](../GraphWorkbenchFinish/FINAL-REPORT.md).
 
 This is the human walkthrough for the WPF Graph Workbench
 (`DotNet/Game.ReferenceHost.Wpf`, run the exe or F5 from `Game.Workbench.sln`).
@@ -9,7 +12,7 @@ source of truth**. To avoid dirtying the committed DB during testing, run with
 
 ## Layout & dark mode
 
-- Four panes: **Library** (sessions + phases), **Session Graph**, **Phase
+- Four panes: **Library** (Sessions/Phases mode), **Session Graph**, **Phase
   Graph**, **Inspector** — all dark; splitters drag and the ratios persist.
 - Toolbar: Run Session (legacy player window), **Undo/Redo** (Ctrl+Z / Ctrl+Y),
   **Preview ▸** (live debugger strip), Reset Layout.
@@ -34,9 +37,11 @@ source of truth**. To avoid dirtying the committed DB during testing, run with
 2. **Exits strip** (above the phase canvas): rename any exit; add/delete while
    the phase has ≤1 placement. Renaming never breaks wiring.
 3. Inline editors inside nodes: **Check** (source/operator/literal),
-   **Action** → **+ exit action** (GOTO with an exit dropdown), **Decision** →
-   options with their own GOTO rows (session: label + unique socket; phase:
-   exit dropdown).
+   **Action** → **+ Action** (owner-scoped searchable Action Type picker), and
+   **Decision** → each option's normal ordered ActionSequence. Add a mixed
+   sequence such as Modify Temperature → Wait for Continue → Phase GOTO or
+   Session GOTO. Phase GOTO uses the PhaseExit dropdown and shows a red
+   Unassigned warning until assigned; Session GOTO keeps its unique socket.
 4. Double-click a phase in the Library to open it; double-click a
    PhaseReference on the Session canvas to jump to its phase.
 
@@ -47,9 +52,9 @@ source of truth**. To avoid dirtying the committed DB during testing, run with
 - **Duplicate Phase** deep-clones exits, graph, action instances, layout.
 - **Make Unique** detaches the selected placement to its own phase clone.
 - With a phase placed in 2+ sessions, adding/deleting an exit is blocked —
-  the popup offers **Make Unique** to apply the edit to the clone. **Undo
-  that whole operation with ONE Ctrl+Z** (placement returns to the shared
-  phase, clone is removed).
+  the popup offers literal **Make Unique** / **Cancel** buttons to apply the
+  edit to the clone. **Undo that whole operation with ONE Ctrl+Z** (placement
+  returns to the shared phase, clone is removed).
 
 ## Undo/redo (T18)
 
@@ -76,8 +81,9 @@ source of truth**. To avoid dirtying the committed DB during testing, run with
 
 ## Persistence
 
-- Restart the app: sessions, phases, graphs, layouts, viewport, exits, ports,
-  and undo history state (in-memory) all reload from the DB.
+- Restart the app: sessions, phases, graphs, layouts, viewport, exits, and
+  ports reload from the DB. Undo history is intentionally in-memory and is
+  not expected to survive a restart.
 - **Reset** (if the toolbar has it) restores default pane ratios.
 
 ## Known UX gaps (from the review gates)
@@ -86,5 +92,7 @@ source of truth**. To avoid dirtying the committed DB during testing, run with
   boxes exist; tabs are future work).
 - The legacy Run Session window has no progress/temperature debug readouts —
   the Preview strip is the debugging surface.
-- Action instances can be added, edited by type, reordered, and deleted inline;
-  PhaseGoto exposes an explicit Unassigned state with a red warning.
+- Action instances can be added, typed-edited, duplicated, reordered, and
+  deleted inline; PhaseGoto exposes an explicit Unassigned state with a red
+  warning. The Library switches between one full-width Sessions list and one
+  full-width Phases list; Show Sessions applies a temporary usage filter.
