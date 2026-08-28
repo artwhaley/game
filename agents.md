@@ -64,6 +64,11 @@ are never overridden by a packet.
 - Don't push to the remote unless asked.
 - `.meta` files are always committed; binary assets via LFS.
 - Check `.gitattributes` before committing a new binary type — adding an LFS pattern after the fact doesn't fix blobs already in history.
+- **Protect canonical content.** `Content/GameContent.db` is tracked authored
+  content. Follow [`Docs/CONTENT-DATABASE-VERSIONING.md`](Docs/CONTENT-DATABASE-VERSIONING.md):
+  close all writers, confirm no WAL/SHM companions, run integrity and foreign-key
+  checks, and commit each meaningful authoring batch. Checkpoint before and after
+  schema migrations. Never attempt to line-merge divergent SQLite binaries.
 
 ## Unity CLI
 

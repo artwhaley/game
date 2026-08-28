@@ -13,7 +13,9 @@ The orchestration prompt was followed in ticket order, `00` through `15`, on top
 - Final implementation SHA: `8892684`
 - Final report commit: documentation-only commit after the implementation commit
 
-The pre-existing dirty `Content/GameContent.db` was deliberately not staged or committed. During validation it was restored to its pre-task semantic/version state: core migrations through v3, zero WPF layout rows, `PRAGMA integrity_check` reported `ok`, and `PRAGMA foreign_key_check` returned no rows. Migration v4 and the new behavior were tested on temporary database copies. Because SQLite rewrote pages during the validation/restore cycle, byte-for-byte identity is not claimed; the user database remains outside the remediation commit.
+At the remediation handoff, the pre-existing dirty `Content/GameContent.db` was deliberately not staged or committed because it predated the ticket run. During validation it was restored to its pre-task semantic/version state: core migrations through v3, zero WPF layout rows, `PRAGMA integrity_check` reported `ok`, and `PRAGMA foreign_key_check` returned no rows. Migration v4 and the new behavior were tested on temporary database copies. Because SQLite rewrote pages during the validation/restore cycle, byte-for-byte identity is not claimed.
+
+After that handoff, the user explicitly authorized protecting the authored database through version control. Commit `a5627eb` records the exact pre-v4 content checkpoint. The repository migrator then upgraded the canonical file to v4; integrity, foreign keys, nullable PhaseGoto schema, content counts, and the full automated suite were revalidated before the migrated database checkpoint. The standing procedure is documented in `Docs/CONTENT-DATABASE-VERSIONING.md`.
 
 ## Delivered changes
 
@@ -88,7 +90,7 @@ No human acceptance gate was performed, waived, or represented as passed. The fo
 
 - Unity EditMode/PlayMode results remain unavailable until the project is run in an environment where Unity Test Runner emits result XML, or reviewed interactively in the Unity Editor.
 - The WPF project retains 12 pre-existing unused-event warnings; they do not block the build but can be cleaned up separately.
-- The canonical user database intentionally remains at its preserved schema/version state and unstaged. A normal WPF open will migrate a working copy in place; use a temporary copy for review.
+- The canonical database is now intentionally tracked at schema v4. Future authoring and migration batches must follow the documented closed-writer, integrity-check, and checkpoint workflow.
 - Interactive Ticket 15 acceptance is still required before calling the remediation human-verified.
 
 ## Preserve What Is Right

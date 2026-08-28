@@ -83,6 +83,10 @@ migrated, not taught.)
   sample content and migrated to the current schema version. Guarded by tests:
   it must always load and pass `integrity_check` / `foreign_key_check`, and
   contains **no per-user data** (see `Docs/GraphWorkbench/USER-PROFILE-DEFERRED.md`).
+  Authoring and migration checkpoints follow
+  [`Docs/CONTENT-DATABASE-VERSIONING.md`](Docs/CONTENT-DATABASE-VERSIONING.md):
+  close writers, verify no WAL/SHM files, validate, and commit each meaningful
+  content batch. Divergent SQLite binaries are replayed, never line-merged.
 - `GameContentDefinition` (portable `Game.Content`) is the **in-memory
   snapshot**, not the store: sessions reference reusable Phases via
   PhaseReference placements; cards own ordered Action Sequences; tags and
