@@ -5,9 +5,6 @@
         Width="420" Height="380"
         WindowStartupLocation="CenterOwner"
         Background="#FF1B1B1C" Foreground="#FFDDDDDD">
-    <Window.Resources>
-        <ResourceDictionary Source="/DarkControls.xaml"/>
-    </Window.Resources>
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="#FF2B2B2B" Padding="8,5"
                 BorderBrush="#FF3A3A3E" BorderThickness="0,0,0,1">

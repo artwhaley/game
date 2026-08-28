@@ -266,8 +266,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private string PromptForTitle(string caption, string label)
         {
-            var input = Microsoft.VisualBasic.Interaction.InputBox(label, caption, "");
-            return input?.Trim();
+            var dialog = new TextInputDialog(caption, label);
+            dialog.Owner = this;
+            return dialog.ShowDialog() == true ? dialog.InputText?.Trim() : null;
         }
 
         // ---------- Ticket 13: cards library + editor ----------
