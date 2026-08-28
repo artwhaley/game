@@ -164,6 +164,10 @@
                            Foreground="#FFDDDDDD"/>
                 <Button Content="Run Session" Margin="16,0,0,0" Padding="10,3" Style="{StaticResource DarkButton}"
                         Click="OnRunSession"/>
+                <Button Content="Undo (Ctrl+Z)" Margin="6,0,0,0" Padding="10,3" Style="{StaticResource DarkButton}"
+                        Command="{Binding UndoCommand, RelativeSource={RelativeSource AncestorType=Window}}" ToolTip="Undo the last authoring edit"/>
+                <Button Content="Redo (Ctrl+Y)" Margin="6,0,0,0" Padding="10,3" Style="{StaticResource DarkButton}"
+                        Command="{Binding RedoCommand, RelativeSource={RelativeSource AncestorType=Window}}" ToolTip="Redo the undone edit"/>
                 <Button Content="Reset Layout" Margin="6,0,0,0" Padding="10,3" Style="{StaticResource DarkButton}"
                         Click="OnResetLayout"/>
                 <TextBlock x:Name="StatusText" Text="Loading content…" VerticalAlignment="Center"

@@ -448,11 +448,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// <summary>A node was deleted from the editor (persist node + cascade).</summary>
         public event Action<GraphNodeViewModel> NodeDeleted;
 
-        /// <summary>An inline VariableCheck field changed (persist the comparison).</summary>
-        public event Action<GraphNodeViewModel> CheckChanged;
+        /// <summary>An inline VariableCheck field changed (persist the comparison); the string is the property name.</summary>
+        public event Action<GraphNodeViewModel, string> CheckChanged;
 
-        /// <summary>A GOTO row changed: exit selection (phase) or label (session). Persist the instance.</summary>
-        public event Action<GraphNodeViewModel, GotoRowData> GotoExitChanged;
+        /// <summary>A GOTO row changed: exit selection (phase) or label (session); the string is the property name.</summary>
+        public event Action<GraphNodeViewModel, GotoRowData, string> GotoExitChanged;
 
         /// <summary>The user asked to add a new GOTO instance (phase: exit ComboBox; session: label).</summary>
         public event Action<GraphNodeViewModel> GotoAddRequested;
@@ -512,11 +512,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 node.PropertyChanged += OnNodePropertyChanged;
                 if (node.Check != null)
                 {
-                    node.Check.PropertyChanged += (_, _) => CheckChanged?.Invoke(node);
+                    node.Check.PropertyChanged += (_, args) => CheckChanged?.Invoke(node, args.PropertyName);
                 }
                 foreach (var row in node.GotoRows)
                 {
-                    row.PropertyChanged += (_, _) => GotoExitChanged?.Invoke(node, row);
+                    row.PropertyChanged += (_, args) => GotoExitChanged?.Invoke(node, row, args.PropertyName);
                 }
                 if (node.DecisionScope != null)
                 {
@@ -538,7 +538,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         };
                         foreach (var row in option.GotoRows)
                         {
-                            row.PropertyChanged += (_, _) => GotoExitChanged?.Invoke(node, row);
+                            row.PropertyChanged += (_, args) => GotoExitChanged?.Invoke(node, row, args.PropertyName);
                         }
                     }
                 }

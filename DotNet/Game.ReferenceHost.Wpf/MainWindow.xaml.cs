@@ -57,10 +57,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
     public partial class MainWindow : Window
     {
         private readonly WorkbenchViewModel _vm;
+        private readonly AuthoringCommandStack _stack = new AuthoringCommandStack();
         private bool _loaded;
         private bool _syncingSessionMeta;
         private bool _syncingPhaseMeta;
         private bool _loadingPlacementPhase;
+        private bool _suppressDisconnectCommands;
 
         public MainWindow()
         {
@@ -69,6 +71,17 @@ namespace TruthCardGame.ReferenceHost.Wpf
             DataContext = _vm;
 
             NodeDoubleClickCommand = new DelegateCommand<GraphNodeViewModel>(OnNodeDoubleClicked);
+
+            // Ticket 18: semantic undo/redo. Every authoring edit is pushed as an
+            // IAuthoringCommand; Ctrl+Z / Ctrl+Y and the toolbar buttons drive it.
+            UndoCommand = new DelegateCommand<object>(_ => Undo(), _ => _stack.CanUndo);
+            RedoCommand = new DelegateCommand<object>(_ => Redo(), _ => _stack.CanRedo);
+            _stack.Changed += () =>
+            {
+                UndoCommand.RaiseCanExecuteChanged();
+                RedoCommand.RaiseCanExecuteChanged();
+            };
+            PreviewKeyDown += OnWindowPreviewKeyDown;
 
             // Inspector pane follows whichever editor has a selection.
             _vm.SessionGraph.SelectionChanged += (_, _) => UpdateInspector(_vm.SessionGraph.SelectedNode, fromSession: true);
@@ -80,49 +93,55 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// <summary>Double-click on a PhaseReference node opens that phase below.</summary>
         public ICommand NodeDoubleClickCommand { get; }
 
+        /// <summary>Ctrl+Z undo (Ticket 18).</summary>
+        public DelegateCommand<object> UndoCommand { get; }
+
+        /// <summary>Ctrl+Y redo (Ticket 18).</summary>
+        public DelegateCommand<object> RedoCommand { get; }
+
         // ---------- authoring persistence wiring ----------
 
         private void WireAuthoringEvents()
         {
-            _vm.SessionGraph.NodeMoved += node => WithConnection(connection =>
+            // ---- session editor ----
+
+            _vm.SessionGraph.NodeMoved += node =>
             {
                 if (_vm.SelectedSession == null) return;
-                AuthoringLayoutRepository.SaveSessionNodePosition(
-                    connection, _vm.SelectedSession.Id, node.Id, node.Location.X, node.Location.Y);
-            });
+                var original = WithConnectionResult(connection =>
+                    AuthoringLayoutRepository.GetSessionNodePosition(connection, _vm.SelectedSession.Id, node.Id));
+                PushOrMerge(new MoveNodeCommand(OpenConnection, "session", _vm.SelectedSession.Id, node.Id,
+                    new Point2(original?.X ?? node.Location.X, original?.Y ?? node.Location.Y),
+                    new Point2(node.Location.X, node.Location.Y)));
+            };
 
-            _vm.SessionGraph.ConnectionCreated += (source, target) => WithConnection(connection =>
+            _vm.SessionGraph.ConnectionCreated += (source, target) =>
             {
                 if (_vm.SelectedSession == null || source?.Owner == null || target?.Owner == null) return;
-
-                // One outgoing edge per output socket (schema UNIQUE). If the
-                // source was already wired in the editor, drop the old edge first.
-                if (source.IsConnected)
+                var replaced = WithConnectionResult(connection =>
                 {
-                    SessionGraphRepository.RemoveEdgesFromSource(connection, source.Id);
-                }
+                    var edges = AuthoringUndo.EdgesFromSource(connection, source.Id);
+                    return edges.Count > 0 ? edges[0].TargetNodeId : null;
+                });
+                PushCommand(new ConnectSessionCommand(OpenConnection, _vm.SelectedSession.Id,
+                    source.Id, target.Owner.Id, replaced));
+            };
 
-                var edge = new GraphEdgeDefinition
-                {
-                    Id = "se-" + Guid.NewGuid().ToString("N"),
-                    SourceOutputId = source.Id,
-                    TargetNodeId = target.Owner.Id,
-                };
-                SessionGraphRepository.AddEdge(connection, _vm.SelectedSession.Id, edge);
-            });
-
-            _vm.SessionGraph.ConnectionRemoved += connection => WithConnection(conn =>
+            _vm.SessionGraph.ConnectionRemoved += connection =>
             {
-                if (connection?.Source == null) return;
-                SessionGraphRepository.RemoveEdgesFromSource(conn, connection.Source.Id);
-            });
+                if (_suppressDisconnectCommands) return;
+                if (_vm.SelectedSession == null || connection?.Source?.Owner == null || connection?.Target?.Owner == null) return;
+                PushCommand(new DisconnectSessionCommand(OpenConnection, _vm.SelectedSession.Id,
+                    connection.Source.Id, connection.Target.Owner.Id));
+            };
 
-            _vm.SessionGraph.NodeDeleted += node => WithConnection(connection =>
+            _vm.SessionGraph.NodeDeleted += node =>
             {
                 if (_vm.SelectedSession == null) return;
-                SessionGraphRepository.RemoveNode(connection, _vm.SelectedSession.Id, node.Id);
-                AuthoringLayoutRepository.DeleteSessionNodePosition(connection, _vm.SelectedSession.Id, node.Id);
-            });
+                var snapshot = CaptureSessionNodeSnapshot(node);
+                if (snapshot == null) return;
+                PushCommand(snapshot, reloadSession: false);
+            };
 
             _vm.SessionGraph.ViewportChanged += () => WithConnection(connection =>
             {
@@ -131,55 +150,56 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     _vm.SessionGraph.ViewportZoom, _vm.SessionGraph.ViewportLocation.X, _vm.SessionGraph.ViewportLocation.Y);
             });
 
-            // ---- phase editor authoring (ticket 14) ----
+            // ---- phase editor ----
 
-            _vm.PhaseGraph.NodeMoved += node => WithConnection(connection =>
+            _vm.PhaseGraph.NodeMoved += node =>
             {
                 if (_vm.SelectedPhase == null) return;
-                AuthoringLayoutRepository.SavePhaseNodePosition(
-                    connection, _vm.SelectedPhase.Id, node.Id, node.Location.X, node.Location.Y);
-            });
+                var original = WithConnectionResult(connection =>
+                    AuthoringLayoutRepository.GetPhaseNodePosition(connection, _vm.SelectedPhase.Id, node.Id));
+                PushOrMerge(new MoveNodeCommand(OpenConnection, "phase", _vm.SelectedPhase.Id, node.Id,
+                    new Point2(original?.X ?? node.Location.X, original?.Y ?? node.Location.Y),
+                    new Point2(node.Location.X, node.Location.Y)));
+            };
 
-            _vm.PhaseGraph.ConnectionCreated += (source, target) => WithConnection(connection =>
+            _vm.PhaseGraph.ConnectionCreated += (source, target) =>
             {
                 if (_vm.SelectedPhase == null || source?.Owner == null || target?.Owner == null) return;
-
-                if (source.IsConnected)
+                var replaced = WithConnectionResult(connection =>
                 {
-                    PhaseGraphRepository.RemoveEdgesFromSource(connection, source.Id);
-                }
+                    var edges = AuthoringUndo.EdgesFromSource(connection, source.Id);
+                    return edges.Count > 0 ? edges[0].TargetNodeId : null;
+                });
+                PushCommand(new ConnectPhaseCommand(OpenConnection, _vm.SelectedPhase.Id,
+                    source.Id, target.Owner.Id, replaced));
+            };
 
-                var edge = new GraphEdgeDefinition
-                {
-                    Id = "pe-" + Guid.NewGuid().ToString("N"),
-                    SourceOutputId = source.Id,
-                    TargetNodeId = target.Owner.Id,
-                };
-                PhaseGraphRepository.AddEdge(connection, _vm.SelectedPhase.Id, edge);
-            });
-
-            _vm.PhaseGraph.ConnectionRemoved += connection => WithConnection(conn =>
+            _vm.PhaseGraph.ConnectionRemoved += connection =>
             {
-                if (connection?.Source == null) return;
-                PhaseGraphRepository.RemoveEdgesFromSource(conn, connection.Source.Id);
-            });
+                if (_suppressDisconnectCommands) return;
+                if (_vm.SelectedPhase == null || connection?.Source?.Owner == null || connection?.Target?.Owner == null) return;
+                PushCommand(new DisconnectPhaseCommand(OpenConnection, _vm.SelectedPhase.Id,
+                    connection.Source.Id, connection.Target.Owner.Id));
+            };
 
-            _vm.PhaseGraph.NodeDeleted += node => WithConnection(connection =>
+            _vm.PhaseGraph.NodeDeleted += node =>
             {
                 if (_vm.SelectedPhase == null) return;
-                PhaseGraphRepository.RemoveNode(connection, _vm.SelectedPhase.Id, node.Id);
-                AuthoringLayoutRepository.DeletePhaseNodePosition(connection, _vm.SelectedPhase.Id, node.Id);
-            });
+                var snapshot = CapturePhaseNodeSnapshot(node);
+                if (snapshot == null) return;
+                PushCommand(snapshot, reloadPhase: false);
+            };
 
-            _vm.PhaseGraph.CheckChanged += node => WithConnection(connection =>
+            _vm.PhaseGraph.CheckChanged += (node, field) =>
             {
                 if (_vm.SelectedPhase == null || node?.Check == null) return;
-                PhaseGraphRepository.UpdateVariableCheck(connection, node.Id,
-                    ParseSourceKind(node.Check.Source),
-                    node.Check.Source == "progress" ? "" : node.Check.Key,
-                    ParseOperator(node.Check.Operator),
-                    ParseFloat(node.Check.ValueText));
-            });
+                var current = WithConnectionResult(connection => AuthoringUndo.GetVariableCheck(connection, node.Id));
+                var check = node.Check;
+                var key = check.Source == "progress" ? "" : check.Key;
+                PushOrMerge(new UpdateCheckCommand(OpenConnection, node.Id, field,
+                    current.Source, current.Key, current.Op, current.Value,
+                    check.Source, key, check.Operator, ParseFloat(check.ValueText)));
+            };
 
             _vm.PhaseGraph.ViewportChanged += () => WithConnection(connection =>
             {
@@ -188,79 +208,237 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     _vm.PhaseGraph.ViewportZoom, _vm.PhaseGraph.ViewportLocation.X, _vm.PhaseGraph.ViewportLocation.Y);
             });
 
-            _vm.PhaseGraph.GotoExitChanged += (node, row) => WithConnection(connection =>
+            _vm.PhaseGraph.GotoExitChanged += (node, row, field) =>
             {
                 if (row == null || string.IsNullOrEmpty(row.InstanceId)) return;
                 if (row.Scope == "session")
                 {
-                    // SessionGoto: rename the instance label AND its projected port (live).
-                    SessionDecisionRepository.SetSessionGotoLabel(connection, row.InstanceId, row.Label ?? "");
+                    if (field != nameof(GotoRowData.Label)) return;
+                    var oldLabel = WithConnectionResult(connection =>
+                        AuthoringUndo.GetSessionGotoLabel(connection, row.InstanceId));
+                    PushOrMerge(new SetSessionGotoLabelCommand(OpenConnection, row.InstanceId, oldLabel, row.Label ?? ""));
                 }
                 else
                 {
-                    if (string.IsNullOrEmpty(row.ExitId)) return;
-                    PhaseGraphRepository.SetPhaseGotoExit(connection, row.InstanceId, row.ExitId);
+                    if (field != nameof(GotoRowData.ExitId) || string.IsNullOrEmpty(row.ExitId)) return;
+                    var oldExit = WithConnectionResult(connection =>
+                        AuthoringUndo.GetPhaseGotoExit(connection, row.InstanceId));
+                    PushCommand(new SetPhaseGotoExitCommand(OpenConnection, row.InstanceId, oldExit, row.ExitId));
                 }
-                // Re-point the in-memory definition so a later reload matches.
-                if (node != null && _vm.SelectedPhase != null)
-                {
-                    var def = _vm.SelectedPhase.Graph.Nodes.Find(n => n.Id == node.Id) as ActionNodeDefinition;
-                    foreach (var instance in def?.Sequence?.Instances ?? new List<ActionInstanceDefinition>())
-                    {
-                        if (instance is PhaseGotoInstanceDefinition gotoInstance && gotoInstance.Id == row.InstanceId)
-                        {
-                            gotoInstance.PhaseExitId = row.ExitId;
-                        }
-                    }
-                }
-            });
+            };
 
-            _vm.PhaseGraph.DecisionPromptChanged += node => WithConnection(connection =>
+            _vm.PhaseGraph.DecisionPromptChanged += node =>
             {
-                if (node?.DecisionScope == "session")
-                {
-                    SessionDecisionRepository.UpdatePrompt(connection, node.Id, node.DecisionPrompt ?? "");
-                }
-                else if (node?.DecisionScope == "phase")
-                {
-                    PhaseDecisionRepository.UpdatePrompt(connection, node.Id, node.DecisionPrompt ?? "");
-                }
-            });
+                if (node?.DecisionScope == null) return;
+                var oldPrompt = WithConnectionResult(connection =>
+                    AuthoringUndo.GetDecisionPrompt(connection, node.DecisionScope, node.Id));
+                PushOrMerge(new SetDecisionPromptCommand(OpenConnection, node.DecisionScope, node.Id,
+                    oldPrompt, node.DecisionPrompt ?? ""));
+            };
 
-            _vm.PhaseGraph.DecisionRowChanged += (node, option) => WithConnection(connection =>
+            _vm.PhaseGraph.DecisionRowChanged += (node, option) =>
             {
-                if (option?.Scope == "session")
-                {
-                    SessionDecisionRepository.RenameOption(connection, option.OptionId, option.Label ?? "");
-                }
-                else if (option?.Scope == "phase")
-                {
-                    PhaseDecisionRepository.RenameOption(connection, option.OptionId, option.Label ?? "");
-                }
-            });
+                if (option?.Scope == null || string.IsNullOrEmpty(option.OptionId)) return;
+                var oldLabel = WithConnectionResult(connection =>
+                    AuthoringUndo.GetOptionLabel(connection, option.Scope, option.OptionId));
+                PushOrMerge(new RenameOptionCommand(OpenConnection, option.Scope, option.OptionId,
+                    oldLabel, option.Label ?? ""));
+            };
 
-            _vm.SessionGraph.DecisionPromptChanged += node => WithConnection(connection =>
+            _vm.SessionGraph.DecisionPromptChanged += node =>
             {
-                if (node?.DecisionScope == "session")
-                {
-                    SessionDecisionRepository.UpdatePrompt(connection, node.Id, node.DecisionPrompt ?? "");
-                }
-            });
+                if (node?.DecisionScope != "session") return;
+                var oldPrompt = WithConnectionResult(connection =>
+                    AuthoringUndo.GetDecisionPrompt(connection, "session", node.Id));
+                PushOrMerge(new SetDecisionPromptCommand(OpenConnection, "session", node.Id,
+                    oldPrompt, node.DecisionPrompt ?? ""));
+            };
 
-            _vm.SessionGraph.DecisionRowChanged += (node, option) => WithConnection(connection =>
+            _vm.SessionGraph.DecisionRowChanged += (node, option) =>
             {
-                if (option?.Scope == "session")
-                {
-                    SessionDecisionRepository.RenameOption(connection, option.OptionId, option.Label ?? "");
-                }
-            });
+                if (option?.Scope != "session" || string.IsNullOrEmpty(option.OptionId)) return;
+                var oldLabel = WithConnectionResult(connection =>
+                    AuthoringUndo.GetOptionLabel(connection, "session", option.OptionId));
+                PushOrMerge(new RenameOptionCommand(OpenConnection, "session", option.OptionId,
+                    oldLabel, option.Label ?? ""));
+            };
 
-            _vm.SessionGraph.GotoExitChanged += (node, row) => WithConnection(connection =>
+            _vm.SessionGraph.GotoExitChanged += (node, row, field) =>
             {
                 if (row == null || string.IsNullOrEmpty(row.InstanceId) || row.Scope != "session") return;
-                SessionDecisionRepository.SetSessionGotoLabel(connection, row.InstanceId, row.Label ?? "");
-            });
+                if (field != nameof(GotoRowData.Label)) return;
+                var oldLabel = WithConnectionResult(connection =>
+                    AuthoringUndo.GetSessionGotoLabel(connection, row.InstanceId));
+                PushOrMerge(new SetSessionGotoLabelCommand(OpenConnection, row.InstanceId, oldLabel, row.Label ?? ""));
+            };
+        }
 
+        // ---------- undo/redo (ticket 18) ----------
+
+        /// <summary>Opens one initialized connection per command execution.</summary>
+        private SqliteConnection OpenConnection()
+        {
+            var connection = new SqliteConnection("Data Source=" + ReferencePlayerWindow.ResolveDatabasePath());
+            connection.Open();
+            ConnectionInitializer.Initialize(connection);
+            return connection;
+        }
+
+        private void PushCommand(IAuthoringCommand command, bool reloadSession = false, bool reloadPhase = false)
+        {
+            try
+            {
+                _stack.PushOrMerge(command);
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "Persistence error";
+                MessageBox.Show(this, "Database write failed:\n\n" + ex.Message,
+                    "Workbench", MessageBoxButton.OK, MessageBoxImage.Error);
+                ReloadAllFromDb();
+                return;
+            }
+            if (reloadSession) ReloadSessionEditor();
+            if (reloadPhase) ReloadPhaseEditor();
+        }
+
+        private void PushOrMerge(IAuthoringCommand command)
+        {
+            try
+            {
+                _stack.PushOrMerge(command);
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "Persistence error";
+                MessageBox.Show(this, "Database write failed:\n\n" + ex.Message,
+                    "Workbench", MessageBoxButton.OK, MessageBoxImage.Error);
+                ReloadAllFromDb();
+            }
+        }
+
+        private void Undo()
+        {
+            if (!_stack.CanUndo) return;
+            try
+            {
+                _stack.Undo();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Undo failed:\n\n" + ex.Message,
+                    "Undo", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            ReloadAllFromDb();
+        }
+
+        private void Redo()
+        {
+            if (!_stack.CanRedo) return;
+            try
+            {
+                _stack.Redo();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Redo failed:\n\n" + ex.Message,
+                    "Redo", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            ReloadAllFromDb();
+        }
+
+        private void OnWindowPreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.Z)
+            {
+                Undo();
+                e.Handled = true;
+            }
+            else if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.Y)
+            {
+                Redo();
+                e.Handled = true;
+            }
+        }
+
+        /// <summary>
+        /// After an undo/redo the database is the only trustworthy state: reload
+        /// the whole snapshot, re-select the previously visible session/phase,
+        /// and repopulate both canvases.
+        /// </summary>
+        private void ReloadAllFromDb()
+        {
+            var sessionId = _vm.SelectedSession?.Id;
+            var phaseId = _vm.SelectedPhase?.Id;
+            var wasPlacementContext = _vm.PhaseGraph.HasPlacementContext;
+
+            LoadContent();
+
+            if (sessionId != null)
+            {
+                var session = _vm.Content.Sessions.FirstOrDefault(s => s.Id == sessionId);
+                if (session != null)
+                {
+                    _vm.SelectSession(session);
+                    SyncSessionListSelection(session);
+                }
+            }
+            if (phaseId != null)
+            {
+                var phase = _vm.Content.Phases.FirstOrDefault(p => p.Id == phaseId);
+                if (phase != null)
+                {
+                    _vm.SelectPhase(phase);
+                    _vm.PhaseGraph.HasPlacementContext = wasPlacementContext;
+                    SyncPhaseListSelection(phaseId);
+                    UpdatePhaseHeader();
+                }
+            }
+            ReloadSessionEditor();
+            ReloadPhaseEditor();
+            UpdatePhaseHeader();
+        }
+
+        private void SyncSessionListSelection(SessionDefinition session)
+        {
+            SessionList.SelectionChanged -= OnSessionListChanged;
+            try
+            {
+                SessionList.SelectedItem = session;
+                SessionList.ScrollIntoView(session);
+            }
+            finally
+            {
+                SessionList.SelectionChanged += OnSessionListChanged;
+            }
+        }
+
+        private DeleteSessionNodeCommand CaptureSessionNodeSnapshot(GraphNodeViewModel node)
+        {
+            if (_vm.SelectedSession == null) return null;
+            var definition = _vm.SelectedSession.Graph?.Nodes.Find(n => n.Id == node.Id);
+            if (definition == null) return null;
+            var (edges, position) = WithConnectionResult(connection =>
+            {
+                var touching = AuthoringUndo.SessionEdgesTouchingNode(connection, _vm.SelectedSession.Id, node.Id);
+                var pos = AuthoringLayoutRepository.GetSessionNodePosition(connection, _vm.SelectedSession.Id, node.Id);
+                return (touching, pos.HasValue ? new Point2(pos.Value.X, pos.Value.Y) : (Point2?)null);
+            });
+            return new DeleteSessionNodeCommand(OpenConnection, _vm.SelectedSession.Id, definition, edges, position);
+        }
+
+        private DeletePhaseNodeCommand CapturePhaseNodeSnapshot(GraphNodeViewModel node)
+        {
+            if (_vm.SelectedPhase == null) return null;
+            var definition = _vm.SelectedPhase.Graph?.Nodes.Find(n => n.Id == node.Id) as PhaseGraphNodeDefinition;
+            if (definition == null) return null;
+            var (edges, position) = WithConnectionResult(connection =>
+            {
+                var touching = AuthoringUndo.PhaseEdgesTouchingNode(connection, _vm.SelectedPhase.Id, node.Id);
+                var pos = AuthoringLayoutRepository.GetPhaseNodePosition(connection, _vm.SelectedPhase.Id, node.Id);
+                return (touching, pos.HasValue ? new Point2(pos.Value.X, pos.Value.Y) : (Point2?)null);
+            });
+            return new DeletePhaseNodeCommand(OpenConnection, _vm.SelectedPhase.Id, definition, edges, position);
         }
 
         private void OnAddGoto(object sender, RoutedEventArgs e)
@@ -271,9 +449,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 StatusText.Text = "Add an exit to this phase first (exits strip above).";
                 return;
             }
-            WithConnection(connection =>
-                PhaseGraphRepository.AddPhaseGoto(connection, node.Id, _vm.SelectedPhase.Exits[0].Id));
-            ReloadPhaseEditor();
+            PushCommand(new AddPhaseGotoCommand(OpenConnection, node.Id, _vm.SelectedPhase.Exits[0].Id),
+                reloadPhase: true);
             StatusText.Text = "Added PhaseGoto instance (blocking).";
         }
 
@@ -281,8 +458,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             if (!(sender is FrameworkElement element) || !(element.DataContext is GotoRowData row)) return;
             if (string.IsNullOrEmpty(row.InstanceId)) return;
-            WithConnection(connection => PhaseGraphRepository.RemovePhaseGoto(connection, row.InstanceId));
-            ReloadPhaseEditor();
+            var snapshot = WithConnectionResult(connection => AuthoringUndo.SnapshotPhaseGoto(connection, row.InstanceId));
+            PushCommand(new RemovePhaseGotoCommand(OpenConnection, snapshot), reloadPhase: true);
             StatusText.Text = "Removed PhaseGoto instance.";
         }
 
@@ -292,32 +469,22 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (string.IsNullOrEmpty(node.DecisionScope)) return;
             var optionId = node.Id + "-opt-" + Guid.NewGuid().ToString("N").Substring(0, 6);
             var sequenceId = optionId + "-seq";
-            if (node.DecisionScope == "session")
-            {
-                WithConnection(connection => SessionDecisionRepository.AddOption(connection, node.Id, optionId, "Option", sequenceId));
-            }
-            else
-            {
-                WithConnection(connection => PhaseDecisionRepository.AddOption(connection, node.Id, optionId, "Option", sequenceId));
-            }
-            ReloadSessionEditor();
-            ReloadPhaseEditor();
+            PushCommand(new AddDecisionOptionCommand(OpenConnection, node.DecisionScope, node.Id,
+                optionId, "Option", sequenceId), reloadSession: true, reloadPhase: true);
             StatusText.Text = "Added decision option.";
         }
 
         private void OnRemoveDecisionOption(object sender, RoutedEventArgs e)
         {
             if (!(sender is FrameworkElement element) || !(element.DataContext is DecisionRowData option)) return;
-            if (option.Scope == "session")
-            {
-                WithConnection(connection => SessionDecisionRepository.RemoveOption(connection, option.NodeId, option.OptionId));
-            }
-            else
-            {
-                WithConnection(connection => PhaseDecisionRepository.RemoveOption(connection, option.NodeId, option.OptionId));
-            }
-            ReloadSessionEditor();
-            ReloadPhaseEditor();
+            if (string.IsNullOrEmpty(option.OptionId)) return;
+            object snapshot = option.Scope == "session"
+                ? (object)WithConnectionResult(connection =>
+                    AuthoringUndo.SnapshotSessionOption(connection, option.NodeId, option.OptionId))
+                : WithConnectionResult(connection =>
+                    AuthoringUndo.SnapshotPhaseOption(connection, option.NodeId, option.OptionId));
+            PushCommand(new RemoveDecisionOptionCommand(OpenConnection, option.Scope, snapshot),
+                reloadSession: true, reloadPhase: true);
             StatusText.Text = "Removed decision option.";
         }
 
@@ -327,9 +494,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (option.Scope == "session")
             {
                 if (_vm.SelectedSession == null) return;
-                WithConnection(connection => SessionDecisionRepository.AddSessionGoto(
-                    connection, option.NodeId, option.OptionId, "goto"));
-                ReloadSessionEditor();
+                PushCommand(new AddSessionGotoCommand(OpenConnection, option.NodeId, option.OptionId, "goto"),
+                    reloadSession: true);
                 StatusText.Text = "Added SessionGoto — a unique port appeared on the decision node.";
             }
             else
@@ -339,9 +505,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     StatusText.Text = "Add an exit to this phase first (exits strip above).";
                     return;
                 }
-                WithConnection(connection => PhaseGraphRepository.AddPhaseGotoToOption(
-                    connection, option.OptionId, _vm.SelectedPhase.Exits[0].Id));
-                ReloadPhaseEditor();
+                PushCommand(new AddPhaseOptionGotoCommand(OpenConnection, option.OptionId, _vm.SelectedPhase.Exits[0].Id),
+                    reloadPhase: true);
                 StatusText.Text = "Added PhaseGoto to option sequence.";
             }
         }
@@ -352,13 +517,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (string.IsNullOrEmpty(row.InstanceId)) return;
             if (row.Scope == "session")
             {
-                WithConnection(connection => SessionDecisionRepository.RemoveSessionGoto(connection, row.InstanceId));
-                ReloadSessionEditor();
+                var snapshot = WithConnectionResult(connection =>
+                    AuthoringUndo.SnapshotSessionGoto(connection, row.InstanceId));
+                PushCommand(new RemoveSessionGotoCommand(OpenConnection, snapshot), reloadSession: true);
             }
             else
             {
-                WithConnection(connection => PhaseGraphRepository.RemovePhaseGoto(connection, row.InstanceId));
-                ReloadPhaseEditor();
+                var snapshot = WithConnectionResult(connection =>
+                    AuthoringUndo.SnapshotPhaseGoto(connection, row.InstanceId));
+                PushCommand(new RemovePhaseGotoCommand(OpenConnection, snapshot), reloadPhase: true);
             }
             StatusText.Text = "Removed GOTO (and its unique port, if any).";
         }
@@ -504,9 +671,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void OnPhaseTitleChanged(object sender, TextChangedEventArgs e)
         {
             if (_syncingPhaseMeta || _vm.SelectedPhase == null) return;
-            WithConnection(connection => PhaseRepository.Rename(connection, _vm.SelectedPhase.Id, PhaseTitleBox.Text));
-            _vm.SelectedPhase.Title = PhaseTitleBox.Text;
-            PhaseHeader.Text = "Phase Graph — " + PhaseTitleBox.Text;
+            var oldTitle = _vm.SelectedPhase.Title;
+            var newTitle = PhaseTitleBox.Text;
+            PushOrMerge(new RenamePhaseCommand(OpenConnection, _vm.SelectedPhase.Id, oldTitle, newTitle));
+            _vm.SelectedPhase.Title = newTitle;
+            PhaseHeader.Text = "Phase Graph — " + newTitle;
             BindPhaseList();
         }
 
@@ -560,10 +729,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void OnSessionTitleChanged(object sender, TextChangedEventArgs e)
         {
             if (_syncingSessionMeta || _vm.SelectedSession == null) return;
-            var title = SessionTitleBox.Text;
-            WithConnection(connection => SessionRepository.Rename(connection, _vm.SelectedSession.Id, title));
-            _vm.SelectedSession.Title = title;
-            SessionHeader.Text = "Session Graph — " + title;
+            var oldTitle = _vm.SelectedSession.Title;
+            var newTitle = SessionTitleBox.Text;
+            PushOrMerge(new RenameSessionCommand(OpenConnection, _vm.SelectedSession.Id, oldTitle, newTitle));
+            _vm.SelectedSession.Title = newTitle;
+            SessionHeader.Text = "Session Graph — " + newTitle;
             BindSessionList();
         }
 
@@ -572,7 +742,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (_syncingSessionMeta || _vm.SelectedSession == null) return;
             if (SessionTypeBox.SelectedItem is SessionTypeDefinition type)
             {
-                WithConnection(connection => SessionRepository.SetSessionType(connection, _vm.SelectedSession.Id, type.Id));
+                var oldType = _vm.SelectedSession.SessionTypeId;
+                PushCommand(new SetSessionTypeCommand(OpenConnection, _vm.SelectedSession.Id, oldType, type.Id));
                 _vm.SelectedSession.SessionTypeId = type.Id;
                 StatusText.Text = "Session type: " + type.Title;
             }
@@ -660,6 +831,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             if (SessionList.SelectedItem is SessionDefinition session)
             {
+                // Undo history is per-document: switching clears it (Ticket 18).
+                _stack.Clear();
                 _vm.SelectSession(session);
                 SessionHeader.Text = "Session Graph — " + session.Title;
                 ReloadSessionEditor();
@@ -670,6 +843,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             if (PhaseList.SelectedItem is PhaseDefinition phase)
             {
+                _stack.Clear();
                 _vm.SelectPhase(phase);
                 _vm.PhaseGraph.HasPlacementContext = false;
                 PhaseHeader.Text = "Phase Graph — " + phase.Title;
@@ -707,8 +881,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 row.PropertyChanged += (_, args) =>
                 {
                     if (args.PropertyName != nameof(ExitRowViewModel.Name)) return;
-                    WithConnection(connection => PhaseExitRepository.Rename(connection, row.Id, row.Name));
                     var def = _vm.SelectedPhase.Exits.Find(x => x.Id == row.Id);
+                    var oldName = def?.Name ?? row.Name;
+                    PushCommand(new RenameExitCommand(OpenConnection, row.Id, oldName, row.Name));
                     if (def != null) def.Name = row.Name;
                     // Live projection: rename updates the port label without breaking
                     // wiring (identity is the exit id); refresh both canvases.
@@ -729,29 +904,19 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (placements > 1)
             {
                 // Port topology lock: offer Make Unique, then apply the add on the clone.
-                if (PromptSharedPortEdit(sessions, placements, (connection, newPhaseId) =>
+                PromptSharedPortEdit(sessions, placements, newPhaseId =>
                 {
-                    var exits = PhaseExitRepository.List(connection, newPhaseId);
-                    var ordinal = exits.Count;
                     var exitId = "px-" + Guid.NewGuid().ToString("N").Substring(0, 12);
-                    PhaseExitRepository.Create(connection, newPhaseId,
-                        new PhaseExitDefinition { Id = exitId, Name = "Exit " + (ordinal + 1) }, ordinal);
-                    PhaseExitRepository.SyncProjectedSockets(connection, newPhaseId, exitId, ordinal);
-                })) return;
+                    return new CreateExitCommand(OpenConnection, newPhaseId,
+                        new PhaseExitDefinition { Id = exitId, Name = "Exit " + (_vm.SelectedPhase.Exits.Count + 1) }, -1);
+                });
                 return;
             }
 
             var exitId = "px-" + _vm.SelectedPhase.Id + "-" + Guid.NewGuid().ToString("N").Substring(0, 8);
             var ordinal = _vm.SelectedPhase.Exits.Count;
-            WithConnection(connection =>
-            {
-                PhaseExitRepository.Create(connection, _vm.SelectedPhase.Id,
-                    new PhaseExitDefinition { Id = exitId, Name = "Exit " + (ordinal + 1) }, ordinal);
-                // Live projection: the new exit appears on every placement's
-                // PhaseReference node immediately (idempotent per placement).
-                PhaseExitRepository.SyncProjectedSockets(connection, _vm.SelectedPhase.Id, exitId, ordinal);
-            });
             var def = new PhaseExitDefinition { Id = exitId, Name = "Exit " + (ordinal + 1) };
+            PushCommand(new CreateExitCommand(OpenConnection, _vm.SelectedPhase.Id, def, ordinal));
             _vm.SelectedPhase.Exits.Add(def);
             UpdatePhaseHeader();
             ReloadSessionEditor();
@@ -770,12 +935,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 // Port topology lock: offer Make Unique, then apply the delete on the clone.
                 var exitName = row.Name;
-                if (PromptSharedPortEdit(sessions, placements, (connection, newPhaseId) =>
-                {
-                    var exits = PhaseExitRepository.List(connection, newPhaseId);
-                    var match = exits.Find(x => x.Name == exitName);
-                    if (match != null) PhaseExitRepository.Delete(connection, match.Id);
-                })) return;
+                PromptSharedPortEdit(sessions, placements, newPhaseId =>
+                    new DeleteExitOnCloneCommand(OpenConnection, newPhaseId, exitName));
                 return;
             }
 
@@ -788,18 +949,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
             // Transactional: schema ON DELETE CASCADE removes projected sockets and
             // their edges together. A GOTO Action that still references this exit
             // blocks the delete (RESTRICT) — we never silently auto-delete an exit.
-            try
-            {
-                WithConnection(connection => PhaseExitRepository.Delete(connection, row.Id));
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(this, "Cannot delete exit: " + ex.Message +
-                    "\n\nA PhaseGoto Action may still reference it — re-point or remove it first.",
-                    "Cannot Delete Exit", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
+            var projectedEdges = WithConnectionResult(connection =>
+                AuthoringUndo.ExitProjectedEdges(connection, row.Id));
+            var ordinal = _vm.SelectedPhase.Exits.FindIndex(x => x.Id == row.Id);
+            var def = _vm.SelectedPhase.Exits.Find(x => x.Id == row.Id);
+            PushCommand(new DeleteExitCommand(OpenConnection, _vm.SelectedPhase.Id, def, ordinal, projectedEdges));
             _vm.SelectedPhase.Exits.RemoveAll(x => x.Id == row.Id);
             UpdatePhaseHeader();
             ReloadSessionEditor();
@@ -810,10 +964,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// <summary>
         /// Shared-port topology lock popup (Ticket 17): changing a shared phase's
         /// ports could break existing session graphs. Offers Make Unique (which
-        /// detaches the selected placement and applies the requested edit) or Cancel.
-        /// Returns true when the request was fully handled (either way).
+        /// detaches the selected placement and applies the requested edit as ONE
+        /// undoable command) or Cancel.
         /// </summary>
-        private bool PromptSharedPortEdit(int sessions, int placements, Action<SqliteConnection, string> applyExitEdit)
+        private void PromptSharedPortEdit(int sessions, int placements, Func<string, IAuthoringCommand> exitEditFactory)
         {
             if (_vm.SessionGraph.SelectedNode?.Kind == "phase-reference")
             {
@@ -825,16 +979,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     "Shared Phase Port Lock", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
                 if (choice == MessageBoxResult.OK)
                 {
-                    // Make Unique receives a closure that reads the NEW phase id and
-                    // applies the requested edit to the clone (post-remap).
-                    MakeUniqueCurrentPlacement((connection, newPhaseId) =>
-                    {
-                        var exits = PhaseExitRepository.List(connection, newPhaseId);
-                        applyExitEdit(connection, newPhaseId);
-                    });
+                    MakeUniqueCurrentPlacement(exitEditFactory);
                     StatusText.Text = "Placement made unique — the port edit was applied on the clone.";
                 }
-                return true;
+                return;
             }
 
             MessageBox.Show(this,
@@ -842,7 +990,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 "Select a PhaseReference placement in the Session canvas, then Make Unique " +
                 "to detach it before editing ports.",
                 "Shared Phase Port Lock", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return true;
         }
 
         /// <summary>
@@ -1029,18 +1176,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var source = _vm.SelectedSession;
             var newId = "session-" + Guid.NewGuid().ToString("N").Substring(0, 12);
             var clone = ContentCloner.CloneSession(source, newId, source.Title + " (copy)");
-            WithConnection(connection =>
+            var layout = WithConnectionResult(connection =>
             {
-                ReuseWriter.WriteClonedSession(connection, clone.Session);
-                var layout = AuthoringLayoutRepository.LoadSessionNodePositions(connection, source.Id);
-                foreach (var pair in layout)
+                var remapped = new List<(string NodeId, double X, double Y)>();
+                var saved = AuthoringLayoutRepository.LoadSessionNodePositions(connection, source.Id);
+                foreach (var pair in saved)
                 {
                     if (clone.NodeIdMap.TryGetValue(pair.Key, out var newNodeId))
                     {
-                        AuthoringLayoutRepository.SaveSessionNodePosition(connection, newId, newNodeId, pair.Value.X, pair.Value.Y);
+                        remapped.Add((newNodeId, pair.Value.X, pair.Value.Y));
                     }
                 }
+                return remapped;
             });
+            PushCommand(new CopySessionCommand(OpenConnection, clone.Session, layout));
 
             _vm.Content.Sessions.Add(clone.Session);
             BindSessionList();
@@ -1153,7 +1302,18 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (node == null) return;
             if (_vm.SessionGraph.Nodes.Contains(node))
             {
-                _vm.SessionGraph.DeleteNode(node);
+                // The editor raises ConnectionRemoved per touching edge; those are
+                // part of the single DeleteNodeCommand, so suppress standalone
+                // disconnect pushes while the delete event cascade runs.
+                _suppressDisconnectCommands = true;
+                try
+                {
+                    _vm.SessionGraph.DeleteNode(node);
+                }
+                finally
+                {
+                    _suppressDisconnectCommands = false;
+                }
                 StatusText.Text = "Deleted node " + node.Id + ".";
             }
             else if (_vm.PhaseGraph.Nodes.Contains(node))
@@ -1163,7 +1323,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     StatusText.Text = "The Entry node cannot be deleted (singular).";
                     return;
                 }
-                _vm.PhaseGraph.DeleteNode(node);
+                _suppressDisconnectCommands = true;
+                try
+                {
+                    _vm.PhaseGraph.DeleteNode(node);
+                }
+                finally
+                {
+                    _suppressDisconnectCommands = false;
+                }
                 StatusText.Text = "Deleted node " + node.Id + ".";
             }
         }
@@ -1311,20 +1479,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var source = _vm.SelectedPhase;
             var newId = "phase-" + Guid.NewGuid().ToString("N").Substring(0, 12);
             var clone = ContentCloner.ClonePhase(source, newId);
-            WithConnection(connection => ReuseWriter.WriteClonedPhase(connection, clone.Phase));
-
-            // Copy layout with remapped node ids.
-            WithConnection(connection =>
+            var layout = WithConnectionResult(connection =>
             {
-                var layout = AuthoringLayoutRepository.LoadPhaseNodePositions(connection, source.Id);
-                foreach (var pair in layout)
+                var remapped = new List<(string NodeId, double X, double Y)>();
+                var saved = AuthoringLayoutRepository.LoadPhaseNodePositions(connection, source.Id);
+                foreach (var pair in saved)
                 {
                     if (clone.NodeIdMap.TryGetValue(pair.Key, out var newNodeId))
                     {
-                        AuthoringLayoutRepository.SavePhaseNodePosition(connection, newId, newNodeId, pair.Value.X, pair.Value.Y);
+                        remapped.Add((newNodeId, pair.Value.X, pair.Value.Y));
                     }
                 }
+                return remapped;
             });
+            PushCommand(new DuplicatePhaseCommand(OpenConnection, clone.Phase, layout));
 
             _vm.Content.Phases.Add(clone.Phase);
             BindPhaseList();
@@ -1353,10 +1521,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         /// <summary>
         /// Detaches the placement currently selected in the Session graph from its
-        /// shared Phase. Optionally applies a pending blocked exit edit (add/delete)
-        /// after the detach — the same authoring operation, one transaction.
+        /// shared Phase as one undoable MakeUniqueCommand. Optionally composes it
+        /// with a pending blocked exit edit (add/delete on the clone) so the whole
+        /// operation undoes as a single step (Ticket 18).
         /// </summary>
-        private void MakeUniqueCurrentPlacement(Action<SqliteConnection, string> applyExitEdit)
+        private void MakeUniqueCurrentPlacement(Func<string, IAuthoringCommand> applyExitEdit)
         {
             var placement = _vm.SessionGraph.SelectedNode;
             if (placement == null || placement.Kind != "phase-reference" || string.IsNullOrEmpty(placement.RefId))
@@ -1369,17 +1538,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
             var newId = "phase-" + Guid.NewGuid().ToString("N").Substring(0, 12);
             var clone = ContentCloner.ClonePhase(sharedPhase, newId);
+            var portMap = WithConnectionResult(connection =>
+                AuthoringUndo.PlacementExitMap(connection, placement.Id));
 
-            var editApplied = false;
-            WithConnection(connection =>
-            {
-                MakeUniqueRepository.MakeUnique(connection, sharedPhase, placement.Id, newId);
-                if (applyExitEdit != null)
-                {
-                    applyExitEdit(connection, newId);
-                    editApplied = true;
-                }
-            });
+            var makeUnique = new MakeUniqueCommand(OpenConnection, sharedPhase, placement.Id, newId, portMap);
+            var command = applyExitEdit != null
+                ? (IAuthoringCommand)new CompositeCommand("Make unique + edit ports", makeUnique, applyExitEdit(newId))
+                : makeUnique;
+            var editApplied = applyExitEdit != null;
+            PushCommand(command);
 
             // Update the in-memory placement + content, then reload both canvases.
             placement.RefId = newId;

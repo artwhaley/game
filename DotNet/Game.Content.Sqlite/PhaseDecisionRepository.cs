@@ -37,10 +37,15 @@ namespace TruthCardGame.Content.Sqlite
                 ("label", (object)label ?? ""), ("seq", sequenceId));
         }
 
+        /// <summary>
+        /// Deletes an option and everything it owns via its action_sequence's
+        /// ON DELETE CASCADE chain (option row, action instances).
+        /// </summary>
         public static void RemoveOption(DbConnection connection, string nodeId, string optionId)
         {
             Sql.Execute(connection, null,
-                "DELETE FROM phase_decision_option WHERE id = @option AND node_id = @node;",
+                "DELETE FROM action_sequence WHERE id = (SELECT action_sequence_id FROM phase_decision_option " +
+                "WHERE id = @option AND node_id = @node);",
                 ("option", optionId), ("node", nodeId));
         }
 

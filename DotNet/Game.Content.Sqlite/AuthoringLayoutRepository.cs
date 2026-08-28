@@ -55,6 +55,28 @@ namespace TruthCardGame.Content.Sqlite
             return result;
         }
 
+        /// <summary>Single node position or null when not yet placed (undo capture).</summary>
+        public static (double X, double Y)? GetSessionNodePosition(DbConnection connection, string sessionId, string nodeId)
+        {
+            return GetNodePosition(connection, "wpf_session_node_layout", "session_id", sessionId, nodeId);
+        }
+
+        /// <summary>Single node position or null when not yet placed (undo capture).</summary>
+        public static (double X, double Y)? GetPhaseNodePosition(DbConnection connection, string phaseId, string nodeId)
+        {
+            return GetNodePosition(connection, "wpf_phase_node_layout", "phase_id", phaseId, nodeId);
+        }
+
+        private static (double X, double Y)? GetNodePosition(DbConnection connection, string table, string parentColumn, string parentId, string nodeId)
+        {
+            (double X, double Y)? result = null;
+            Sql.QueryAll(connection,
+                $"SELECT x, y FROM {table} WHERE {parentColumn} = @parent AND node_id = @node;",
+                reader => result = (reader.GetDouble(0), reader.GetDouble(1)),
+                ("parent", parentId), ("node", nodeId));
+            return result;
+        }
+
         public static void DeleteSessionNodePosition(DbConnection connection, string sessionId, string nodeId)
         {
             Sql.Execute(connection, null,
