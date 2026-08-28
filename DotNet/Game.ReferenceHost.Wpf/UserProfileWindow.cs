@@ -26,10 +26,17 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private GameContentDefinition _content;
         private bool _suppressEvents;
 
+        // Matches the hardcoded foreground every other window uses (#FFDDDDDD).
+        // Never look this up via FindResource — a wrong key there is an
+        // unhandled-exception process kill on the UI thread.
+        private static readonly System.Windows.Media.SolidColorBrush RowTextBrush =
+            new System.Windows.Media.SolidColorBrush(
+                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#FFDDDDDD"));
+
         public UserProfileWindow()
         {
             InitializeComponent();
-            Loaded += (_, _) => Reload();
+            Loaded += (_, _) => ReloadSafely();
         }
 
         private static SqliteConnection OpenProfileConnection()
@@ -40,6 +47,24 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var connection = new SqliteConnection("Data Source=" + path);
             connection.Open();
             return connection;
+        }
+
+        /// <summary>
+        /// Full reload wrapped so ANY failure (content load, profile DB, UI
+        /// build) surfaces as a message instead of an unhandled UI-thread
+        /// exception that kills the whole application.
+        /// </summary>
+        private void ReloadSafely()
+        {
+            try
+            {
+                Reload();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Failed to load the profile:\n\n" + ex.Message,
+                    "Profile", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void Reload()
@@ -82,7 +107,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     var kinkId = kink.Id;
                     var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2) };
 
-                    var title = new TextBlock { Text = kink.Title, Width = 150, VerticalAlignment = VerticalAlignment.Center, Foreground = FindResource("ListTextBrush") as System.Windows.Media.Brush };
+                    var title = new TextBlock { Text = kink.Title, Width = 150, VerticalAlignment = VerticalAlignment.Center, Foreground = RowTextBrush };
                     var combo = new ComboBox { Width = 132 };
                     combo.Items.Add("(Unconfigured)");
                     combo.Items.Add("Love");
@@ -94,14 +119,22 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     {
                         if (_suppressEvents) return;
                         KinkPreference? chosen = combo.SelectedIndex <= 0 ? (KinkPreference?)null : (KinkPreference)(combo.SelectedIndex - 1);
-                        using (var connection = OpenProfileConnection())
+                        try
                         {
-                            ProfileStore.EnsureSchema(connection);
-                            ProfileStore.SetKinkPreference(connection, kinkId, chosen);
+                            using (var connection = OpenProfileConnection())
+                            {
+                                ProfileStore.EnsureSchema(connection);
+                                ProfileStore.SetKinkPreference(connection, kinkId, chosen);
+                            }
+                            StatusText.Text = chosen == null
+                                ? $"{kink.Title} → Unconfigured"
+                                : $"{kink.Title} → {chosen}";
                         }
-                        StatusText.Text = chosen == null
-                            ? $"{kink.Title} → Unconfigured"
-                            : $"{kink.Title} → {chosen}";
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show(this, "Failed to save the kink preference:\n\n" + ex.Message,
+                                "Profile", MessageBoxButton.OK, MessageBoxImage.Error);
+                        }
                     };
 
                     row.Children.Add(title);
@@ -130,7 +163,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     {
                         Text = group.Key,
                         FontWeight = FontWeights.Bold,
-                        Foreground = FindResource("ListTextBrush") as System.Windows.Media.Brush,
+                        Foreground = RowTextBrush,
                         Margin = new Thickness(2, 6, 2, 2),
                     });
                     foreach (var equipment in group.OrderBy(e => e.SortOrder).ThenBy(e => e.Title))
@@ -181,25 +214,41 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void SaveEquipment(string equipmentId, string title, bool owned)
         {
             if (_suppressEvents) return;
-            using (var connection = OpenProfileConnection())
+            try
             {
-                ProfileStore.EnsureSchema(connection);
-                ProfileStore.SetEquipmentOwned(connection, equipmentId, owned);
+                using (var connection = OpenProfileConnection())
+                {
+                    ProfileStore.EnsureSchema(connection);
+                    ProfileStore.SetEquipmentOwned(connection, equipmentId, owned);
+                }
+                StatusText.Text = $"{title} {(owned ? "owned" : "not owned")}";
             }
-            StatusText.Text = $"{title} {(owned ? "owned" : "not owned")}";
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Failed to save equipment ownership:\n\n" + ex.Message,
+                    "Profile", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void SaveCapability(string capabilityId, string title, bool available)
         {
             if (_suppressEvents) return;
-            using (var connection = OpenProfileConnection())
+            try
             {
-                ProfileStore.EnsureSchema(connection);
-                ProfileStore.SetCapabilityAvailable(connection, capabilityId, available);
+                using (var connection = OpenProfileConnection())
+                {
+                    ProfileStore.EnsureSchema(connection);
+                    ProfileStore.SetCapabilityAvailable(connection, capabilityId, available);
+                }
+                StatusText.Text = $"{title} {(available ? "available" : "unavailable")}";
             }
-            StatusText.Text = $"{title} {(available ? "available" : "unavailable")}";
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Failed to save capability availability:\n\n" + ex.Message,
+                    "Profile", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
-        private void OnRefresh(object sender, RoutedEventArgs e) => Reload();
+        private void OnRefresh(object sender, RoutedEventArgs e) => ReloadSafely();
     }
 }

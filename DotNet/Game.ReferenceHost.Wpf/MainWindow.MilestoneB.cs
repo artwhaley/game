@@ -176,8 +176,80 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
             var id = StableIds.New();
             var kindKey = CatalogKindOf(kind);
-            PushOrMergeWithReload(new CreateCatalogEntryCommand(OpenConnection, kindKey, id, title),
-                () => { BindCatalogEntries(); BindSessionTypeBox(); });
+            PushOrMergeWithReload(new CreateCatalogEntryCommand(OpenConnection, kindKey, id, title), () =>
+            {
+                // Mirror the DB row into the in-memory snapshot (the same
+                // pattern as OnNewSession/OnNewPhase) so the rebind below
+                // actually shows the new row — BindCatalogEntries reads from
+                // _vm.Content, not the database.
+                AddCatalogEntryToContent(kindKey, id, title);
+                BindCatalogEntries();
+                BindSessionTypeBox();
+                SelectCatalogEntry(id);
+                StatusText.Text = $"Created '{title}'.";
+            });
+        }
+
+        /// <summary>Inserts the freshly created definition into the snapshot the lists bind from.</summary>
+        private void AddCatalogEntryToContent(string kindKey, string id, string title)
+        {
+            switch (kindKey)
+            {
+                case CatalogKinds.SessionType:
+                    _vm.Content.SessionTypes.Add(new SessionTypeDefinition { Id = id, Title = title });
+                    break;
+                case CatalogKinds.CardTag:
+                    _vm.Content.CardTagDefinitions.Add(new CardTagDefinition { Id = id, Title = title });
+                    break;
+                case CatalogKinds.Kink:
+                    _vm.Content.KinkDefinitions.Add(new KinkDefinition { Id = id, Title = title });
+                    break;
+                case CatalogKinds.Equipment:
+                    _vm.Content.EquipmentDefinitions.Add(new EquipmentDefinition { Id = id, Title = title });
+                    break;
+                case CatalogKinds.SmartToyCapability:
+                    _vm.Content.SmartToyCapabilityDefinitions.Add(new SmartToyCapabilityDefinition { Id = id, Title = title });
+                    break;
+            }
+        }
+
+        private void RemoveCatalogEntryFromContent(string kindKey, string id)
+        {
+            switch (kindKey)
+            {
+                case CatalogKinds.SessionType:
+                    _vm.Content.SessionTypes.RemoveAll(t => t.Id == id);
+                    break;
+                case CatalogKinds.CardTag:
+                    _vm.Content.CardTagDefinitions.RemoveAll(t => t.Id == id);
+                    break;
+                case CatalogKinds.Kink:
+                    _vm.Content.KinkDefinitions.RemoveAll(t => t.Id == id);
+                    break;
+                case CatalogKinds.Equipment:
+                    _vm.Content.EquipmentDefinitions.RemoveAll(t => t.Id == id);
+                    break;
+                case CatalogKinds.SmartToyCapability:
+                    _vm.Content.SmartToyCapabilityDefinitions.RemoveAll(t => t.Id == id);
+                    break;
+            }
+        }
+
+        /// <summary>Selects the created row so it's immediately visible in the list.</summary>
+        private void SelectCatalogEntry(string id)
+        {
+            for (var i = 0; i < CatalogEntryList.Items.Count; i++)
+            {
+                if (CatalogEntryList.Items[i] is SessionTypeDefinition t && t.Id == id ||
+                    CatalogEntryList.Items[i] is CardTagDefinition tag && tag.Id == id ||
+                    CatalogEntryList.Items[i] is KinkDefinition kink && kink.Id == id ||
+                    CatalogEntryList.Items[i] is EquipmentDefinition equipment && equipment.Id == id ||
+                    CatalogEntryList.Items[i] is SmartToyCapabilityDefinition capability && capability.Id == id)
+                {
+                    CatalogEntryList.SelectedIndex = i;
+                    return;
+                }
+            }
         }
 
         private static string CatalogKindOf(string uiKind)
@@ -242,8 +314,14 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (MessageBox.Show(this, $"Delete '{title}'?", "Catalog",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
 
-            PushOrMergeWithReload(new DeleteCatalogEntryCommand(OpenConnection, CatalogKindOf(kind), id, title),
-                () => { BindCatalogEntries(); BindSessionTypeBox(); });
+            var kindKey = CatalogKindOf(kind);
+            PushOrMergeWithReload(new DeleteCatalogEntryCommand(OpenConnection, kindKey, id, title), () =>
+            {
+                RemoveCatalogEntryFromContent(kindKey, id);
+                BindCatalogEntries();
+                BindSessionTypeBox();
+                StatusText.Text = $"Deleted '{title}'.";
+            });
         }
 
         /// <summary>Pushes a command then runs a UI refresh (catalog CRUD reloads only its list).</summary>
