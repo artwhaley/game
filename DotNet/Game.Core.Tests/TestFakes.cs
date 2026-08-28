@@ -10,6 +10,8 @@ namespace TruthCardGame.Core.Tests
     /// Returns queued values in order, interpreting each as an offset from
     /// minInclusive (so 0 always selects the range minimum). Throws when
     /// exhausted or when an offset falls outside the requested range.
+    /// Floats default to the range minimum (weighted draws take the first
+    /// eligible card when no float is scripted).
     /// </summary>
     public sealed class FixedRandomSource : IRandomSource
     {
@@ -36,7 +38,7 @@ namespace TruthCardGame.Core.Tests
 
         public float NextFloat(float minInclusive, float maxExclusive)
         {
-            throw new InvalidOperationException("FixedRandomSource does not provide floats.");
+            return minInclusive;
         }
     }
 

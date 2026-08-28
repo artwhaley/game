@@ -28,7 +28,10 @@ namespace TruthCardGame.Core.Tests
             _content = SampleContent.Create();
             // These tests exercise low-level graph traversal. Keep the sample
             // card fixtures unpaced here; explicit WaitForContinue behavior has
-            // dedicated coverage in RunUntilYieldRemediationTests.
+            // dedicated coverage in RunUntilYieldRemediationTests. The End card
+            // ends the whole session when executed, which would cut traversal
+            // tests short — remove it for these low-level runs.
+            _content.Cards.RemoveAll(card => card.Id == SampleContent.CardTheEnd);
             foreach (var card in _content.Cards)
             {
                 card.Sequence.Instances.RemoveAll(instance => instance is WaitForContinueInstanceDefinition);
@@ -249,7 +252,7 @@ namespace TruthCardGame.Core.Tests
             var result = await Advance(vm, run);
 
             Assert.AreEqual(PhaseAdvanceOutcome.Error, result.Outcome);
-            StringAssert.Contains("no eligible card", result.ErrorMessage);
+            StringAssert.Contains("No eligible Card", result.ErrorMessage);
         }
 
         [Test]

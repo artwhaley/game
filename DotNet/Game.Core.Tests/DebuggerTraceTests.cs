@@ -194,6 +194,25 @@ namespace TruthCardGame.Core.Tests
             return results;
         }
 
+        /// <summary>
+        /// Scripted weighted-draw RNG: returns queued float tickets in order
+        /// (the CardSelector's NextFloat input). Ticket 0 always lands in the
+        /// first eligible candidate's weight bucket; exhausted returns the
+        /// minimum (first candidate).
+        /// </summary>
+        private sealed class TicketRandom : IRandomSource
+        {
+            private readonly Queue<float> _tickets;
+            public TicketRandom(params float[] tickets) => _tickets = new Queue<float>(tickets);
+
+            public int NextInt(int minInclusive, int maxExclusive) => minInclusive;
+
+            public float NextFloat(float minInclusive, float maxExclusive)
+            {
+                return _tickets.Count == 0 ? minInclusive : _tickets.Dequeue();
+            }
+        }
+
         // =====================================================================
         // Scenario A — Normal session: the host trace drives canvas highlights.
         // =====================================================================
@@ -311,10 +330,13 @@ namespace TruthCardGame.Core.Tests
             _content.Sessions.Add(session);
             _content.Phases.Add(main);
             _content.Phases.Add(recovery);
-            // First draw takes the drain card (offset 0); the resumed main run
-            // then draws calms (offset 1) until progress reaches 100.
+            // Weighted selection draws via NextFloat tickets: 0.0 always lands
+            // in the first eligible card's bucket; a ticket past its weight
+            // (drain and calm both weigh 1.0 with zero kinks) picks calm.
+            // Draw 1: drain (happiness -45 -> fail check fires on next pass);
+            // after recovery's RETURN, draws 2+: calm until progress >= 100.
             var engine = new GameSessionEngine(_content, "s-recovery", _services, null,
-                new PhaseRunRngFactory(() => new FixedRandomSource(0, 1, 1, 1, 1, 1, 1, 1, 1, 1)));
+                new PhaseRunRngFactory(() => new TicketRandom(0f, 1.5f, 1.5f, 1.5f, 1.5f, 1.5f, 1.5f, 1.5f, 1.5f, 1.5f, 1.5f, 1.5f)));
 
             var vm = engine.SessionVm;
             var phaseEntered = new List<string>();
