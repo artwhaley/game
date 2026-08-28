@@ -36,6 +36,9 @@
     <ProjectReference Include="..\Game.Content\Game.Content.csproj" />
     <ProjectReference Include="..\Game.Content.Samples\Game.Content.Samples.csproj" />
     <ProjectReference Include="..\Game.Core\Game.Core.csproj" />
+    <ProjectReference Include="..\Game.Core.Tests\Game.Core.Tests.csproj" />
+    <ProjectReference Include="..\Game.Profile\Game.Profile.csproj" />
+    <ProjectReference Include="..\Game.Profile.Sqlite\Game.Profile.Sqlite.csproj" />
   </ItemGroup>
 
 </Project>

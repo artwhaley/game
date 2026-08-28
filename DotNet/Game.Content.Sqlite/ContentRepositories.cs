@@ -108,6 +108,9 @@ namespace TruthCardGame.Content.Sqlite
                         ("id", card.Id), ("title", (object)card.Title ?? DBNull.Value),
                         ("body", (object)card.BodyText ?? DBNull.Value), ("seq", card.Sequence.Id));
                     ReplaceRelations(connection, transaction, card.Id, card.CardTagIds);
+                    ReplaceRelationTable(connection, transaction, "card_kink", "card_id", "kink_id", card.Id, card.KinkIds);
+                    ReplaceRelationTable(connection, transaction, "card_required_equipment", "card_id", "equipment_id", card.Id, card.RequiredEquipmentIds);
+                    ReplaceRelationTable(connection, transaction, "card_required_smart_toy_capability", "card_id", "capability_id", card.Id, card.RequiredCapabilityIds);
                     transaction.Commit();
                 }
                 catch
