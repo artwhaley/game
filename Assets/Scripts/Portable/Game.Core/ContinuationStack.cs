@@ -73,5 +73,16 @@ namespace TruthCardGame.Core
         {
             _frames.Clear();
         }
+
+        /// <summary>Debugger view (Ticket 19): (phase id, graph locus id) per frame, outermost first.</summary>
+        public IReadOnlyList<(string PhaseId, string NodeId)> DebugSummary()
+        {
+            var result = new List<(string, string)>();
+            foreach (var frame in _frames)
+            {
+                result.Add((frame.PhaseRun?.PhaseId, frame.GraphLocus?.Id));
+            }
+            return result;
+        }
     }
 }

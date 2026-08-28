@@ -44,6 +44,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
     {
         private Point _location;
         private bool _isSelected;
+        private bool _debugActive;
         private string _decisionPrompt = "";
 
         public string Id { get; set; } = "";
@@ -120,6 +121,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public ObservableCollection<DecisionRowData> DecisionRows { get; } = new ObservableCollection<DecisionRowData>();
 
         public bool CanAddOption { get; set; }
+
+        /// <summary>Live-debug highlight (Ticket 19): true while the Core VM is at this node.</summary>
+        public bool DebugActive
+        {
+            get => _debugActive;
+            set
+            {
+                if (_debugActive != value)
+                {
+                    _debugActive = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DebugActive)));
+                }
+            }
+        }
 
         public event PropertyChangedEventHandler PropertyChanged;
     }
@@ -353,8 +368,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
     }
 
     /// <summary>One directed edge between a source output and a target node's input.</summary>
-    public sealed class ConnectionViewModel
+    public sealed class ConnectionViewModel : INotifyPropertyChanged
     {
+        private bool _debugActive;
+
         public ConnectionViewModel(ConnectorViewModel source, ConnectorViewModel target)
         {
             Source = source;
@@ -365,6 +382,22 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         public ConnectorViewModel Source { get; }
         public ConnectorViewModel Target { get; }
+
+        /// <summary>Live-debug highlight (Ticket 19): the transfer edge into the current node.</summary>
+        public bool DebugActive
+        {
+            get => _debugActive;
+            set
+            {
+                if (_debugActive != value)
+                {
+                    _debugActive = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DebugActive)));
+                }
+            }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
     }
 
     /// <summary>In-flight connector drag; Nodify drives StartedCommand/CompletedCommand.</summary>

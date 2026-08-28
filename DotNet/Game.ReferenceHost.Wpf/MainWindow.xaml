@@ -21,6 +21,9 @@
                                   Command="{Binding DataContext.NodeDoubleClickCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                   CommandParameter="{Binding}"/>
                 </Grid.InputBindings>
+                <!-- Live-debug highlight ring (ticket 19): the Core VM's current node. -->
+                <Border BorderBrush="#FFFFB347" BorderThickness="3" CornerRadius="9" Margin="-7"
+                        Visibility="{Binding DebugActive, Converter={StaticResource BoolToVisible}}" IsHitTestVisible="False"/>
                 <nodify:Node Header="{Binding Title}"
                              Input="{Binding Inputs}"
                              Output="{Binding Outputs}">
@@ -168,11 +171,68 @@
                         Command="{Binding UndoCommand, RelativeSource={RelativeSource AncestorType=Window}}" ToolTip="Undo the last authoring edit"/>
                 <Button Content="Redo (Ctrl+Y)" Margin="6,0,0,0" Padding="10,3" Style="{StaticResource DarkButton}"
                         Command="{Binding RedoCommand, RelativeSource={RelativeSource AncestorType=Window}}" ToolTip="Redo the undone edit"/>
+                <Button x:Name="PreviewToggleButton" Content="Preview ▸" Margin="6,0,0,0" Padding="10,3"
+                        Style="{StaticResource DarkButton}" Click="OnTogglePreview"
+                        ToolTip="Toggle the live Core preview / graph debugger"/>
                 <Button Content="Reset Layout" Margin="6,0,0,0" Padding="10,3" Style="{StaticResource DarkButton}"
                         Click="OnResetLayout"/>
                 <TextBlock x:Name="StatusText" Text="Loading content…" VerticalAlignment="Center"
                            Margin="16,0,0,0" Foreground="#FF9CCC65"/>
             </StackPanel>
+        </Border>
+
+        <!-- Live Core preview / graph debugger (ticket 19). Collapsed until the
+             toolbar toggle opens it; runs the REAL Core VM against a fresh
+             SQLite snapshot with node/edge highlighting on both canvases. -->
+        <Border x:Name="PreviewStrip" DockPanel.Dock="Bottom" Background="#FF1E1E20"
+                BorderBrush="#FF3A3A3E" BorderThickness="0,1,0,0" Visibility="Collapsed">
+            <Grid Margin="8,6">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <StackPanel Grid.Row="0" Orientation="Horizontal">
+                    <TextBlock Text="Preview" FontWeight="Bold" VerticalAlignment="Center" Foreground="#FFDDDDDD"/>
+                    <TextBlock x:Name="PreviewSessionLabel" Text="(no session)" Margin="10,0,0,0" VerticalAlignment="Center"
+                               Foreground="#FFB0B0B0"/>
+                    <Button Content="Start ▶" Click="OnPreviewStart" Padding="8,2" Margin="14,0,0,0" Style="{StaticResource DarkButton}"/>
+                    <Button Content="Draw Next" x:Name="PreviewDrawButton" Click="OnPreviewAdvance" Padding="8,2" Margin="4,0,0,0"
+                            Style="{StaticResource DarkButton}" IsEnabled="False"/>
+                    <Button Content="Restart ↺" Click="OnPreviewRestart" Padding="8,2" Margin="4,0,0,0" Style="{StaticResource DarkButton}"/>
+                    <Button Content="Stop ■" Click="OnPreviewStop" Padding="8,2" Margin="4,0,0,0" Style="{StaticResource DarkButton}"/>
+                    <TextBlock x:Name="PreviewStatusText" Text="" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="#FF9CCC65"/>
+                </StackPanel>
+                <TextBlock Grid.Row="1" x:Name="PreviewTemperaturesText" Text="" Margin="2,4,0,0" FontFamily="Consolas" FontSize="11"
+                           Foreground="#FFDDDDDD" TextWrapping="Wrap"/>
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="2,2,0,0">
+                    <TextBlock Text="Phase:" FontWeight="Bold" Foreground="#FFB0B0B0"/>
+                    <TextBlock x:Name="PreviewPhaseText" Text="—" Margin="4,0,0,0" Foreground="#FFDDDDDD"/>
+                    <TextBlock Text="  Node:" FontWeight="Bold" Margin="14,0,0,0" Foreground="#FFB0B0B0"/>
+                    <TextBlock x:Name="PreviewNodeText" Text="—" Margin="4,0,0,0" FontFamily="Consolas" Foreground="#FFDDDDDD"/>
+                    <TextBlock Text="  Progress:" FontWeight="Bold" Margin="14,0,0,0" Foreground="#FFB0B0B0"/>
+                    <TextBlock x:Name="PreviewProgressText" Text="—" Margin="4,0,0,0" Foreground="#FFDDDDDD"/>
+                </StackPanel>
+                <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="2,2,0,0">
+                    <TextBlock Text="Card:" FontWeight="Bold" Foreground="#FFB0B0B0"/>
+                    <TextBlock x:Name="PreviewCardText" Text="—" Margin="4,0,0,0" Foreground="#FFDDDDDD"/>
+                    <TextBlock Text="  Continuation:" FontWeight="Bold" Margin="14,0,0,0" Foreground="#FFB0B0B0"/>
+                    <TextBlock x:Name="PreviewStackText" Text="depth 0" Margin="4,0,0,0" FontFamily="Consolas" Foreground="#FFDDDDDD"/>
+                    <TextBlock Text="  PhaseRun:" FontWeight="Bold" Margin="14,0,0,0" Foreground="#FFB0B0B0"/>
+                    <TextBlock x:Name="PreviewPhaseRunText" Text="—" Margin="4,0,0,0" FontFamily="Consolas" Foreground="#FFDDDDDD"/>
+                </StackPanel>
+                <TextBlock Grid.Row="4" x:Name="PreviewErrorText" Text="" Margin="2,2,0,0" Foreground="#FFFF6B6B" TextWrapping="Wrap"/>
+                <StackPanel Grid.Row="5" x:Name="PreviewInteractionArea" Margin="0,6,0,0"/>
+                <ListBox Grid.Row="6" x:Name="PreviewLogList" Height="64" Margin="0,6,0,0"
+                         Background="#FF141416" Foreground="#FFC8C8C8" BorderBrush="#FF3A3A3E" FontFamily="Consolas" FontSize="10"/>
+                <TextBlock Grid.Row="7" Text="Preview always runs a fresh SQLite snapshot — edits during a run do not affect it."
+                           Margin="0,3,0,0" FontSize="9" Foreground="#FF808080"/>
+            </Grid>
         </Border>
 
         <!-- Four panes with three GridSplitters. Ratios are applied in code-behind
@@ -280,8 +340,20 @@
                     <nodify:NodifyEditor.ConnectionTemplate>
                         <DataTemplate>
                             <nodify:LineConnection Source="{Binding Source.Anchor}"
-                                                   Target="{Binding Target.Anchor}"
-                                                   Stroke="#FF7EB6E8" StrokeThickness="2"/>
+                                                   Target="{Binding Target.Anchor}">
+                                <nodify:LineConnection.Style>
+                                    <Style TargetType="nodify:LineConnection">
+                                        <Setter Property="Stroke" Value="#FF7EB6E8"/>
+                                        <Setter Property="StrokeThickness" Value="2"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding DebugActive}" Value="True">
+                                                <Setter Property="Stroke" Value="#FFFFB347"/>
+                                                <Setter Property="StrokeThickness" Value="4"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </nodify:LineConnection.Style>
+                            </nodify:LineConnection>
                         </DataTemplate>
                     </nodify:NodifyEditor.ConnectionTemplate>
                     <nodify:NodifyEditor.PendingConnectionTemplate>
@@ -377,8 +449,20 @@
                     <nodify:NodifyEditor.ConnectionTemplate>
                         <DataTemplate>
                             <nodify:LineConnection Source="{Binding Source.Anchor}"
-                                                   Target="{Binding Target.Anchor}"
-                                                   Stroke="#FF7EB6E8" StrokeThickness="2"/>
+                                                   Target="{Binding Target.Anchor}">
+                                <nodify:LineConnection.Style>
+                                    <Style TargetType="nodify:LineConnection">
+                                        <Setter Property="Stroke" Value="#FF7EB6E8"/>
+                                        <Setter Property="StrokeThickness" Value="2"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding DebugActive}" Value="True">
+                                                <Setter Property="Stroke" Value="#FFFFB347"/>
+                                                <Setter Property="StrokeThickness" Value="4"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </nodify:LineConnection.Style>
+                            </nodify:LineConnection>
                         </DataTemplate>
                     </nodify:NodifyEditor.ConnectionTemplate>
                     <nodify:NodifyEditor.PendingConnectionTemplate>

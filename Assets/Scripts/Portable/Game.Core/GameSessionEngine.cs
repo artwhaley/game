@@ -39,6 +39,18 @@ namespace TruthCardGame.Core
         }
 
         public GameSessionEngine(GameContentDefinition content, string sessionId, CoreServices services, SessionSpawnOptions spawn)
+            : this(content, sessionId, services, spawn, null)
+        {
+        }
+
+        /// <summary>
+        /// Full constructor: injectable card-RNG factory (deterministic engine
+        /// tests) and EAGER session VM creation, so the Ticket 19 debugger can
+        /// subscribe to SessionVm events before the first advance. An invalid
+        /// graph fails here, at session start, not on the first draw.
+        /// </summary>
+        public GameSessionEngine(GameContentDefinition content, string sessionId, CoreServices services,
+            SessionSpawnOptions spawn, PhaseRunRngFactory rngFactory)
         {
             if (content == null) throw new ArgumentNullException(nameof(content));
             if (string.IsNullOrEmpty(sessionId)) throw new ArgumentNullException(nameof(sessionId));
@@ -48,9 +60,10 @@ namespace TruthCardGame.Core
             _catalog = new ContentCatalog(content);
             _session = _catalog.SessionById(sessionId);
             _tracker = new BackgroundActionTracker(_services.Log);
-            _rngFactory = new PhaseRunRngFactory();
+            _rngFactory = rngFactory ?? new PhaseRunRngFactory();
             Player = new Player("Player");
             Temperatures = new TemperatureState(_catalog, spawn ?? SessionSpawnOptions.Default);
+            EnsureVm();
         }
 
         public ContentCatalog Catalog => _catalog;
@@ -68,6 +81,13 @@ namespace TruthCardGame.Core
 
         public bool IsComplete { get; private set; }
         public bool IsBusy => _busy;
+
+        /// <summary>
+        /// The inner session VM (Ticket 19 debugger). Null until the first
+        /// AdvanceOneCardAsync call creates it; the VM raises the fine-grained
+        /// node/check events the Workbench highlights against its canvases.
+        /// </summary>
+        public SessionGraphVm SessionVm => _vm;
 
         /// <summary>Active background ("continuous") work; hosts may drain on shutdown.</summary>
         public Task DrainBackgroundAsync() => _tracker.DrainAsync();

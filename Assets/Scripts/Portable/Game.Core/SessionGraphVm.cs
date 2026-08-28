@@ -124,6 +124,12 @@ namespace TruthCardGame.Core
         /// <summary>Phase-local progress of the active run (0 before the first phase enters).</summary>
         public float CurrentProgress => _activeRun?.Progress.Value ?? 0f;
 
+        /// <summary>Debugger view (Ticket 19): the active phase run's placement node id.</summary>
+        public string CurrentPlacementNodeId => _activeRun?.PlacementNodeId;
+
+        /// <summary>Debugger view (Ticket 19): readable continuation frames, outermost first.</summary>
+        public IReadOnlyList<(string PhaseId, string NodeId)> ContinuationSummary() => _stack.DebugSummary();
+
         /// <summary>
         /// Advances the whole session one user-paced step: runs at most one card
         /// (through whatever phase/transfer/return chain that involves), then
