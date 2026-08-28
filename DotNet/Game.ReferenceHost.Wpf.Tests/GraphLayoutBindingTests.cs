@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using NUnit.Framework;
 using Nodify;
 using TruthCardGame.Content;
@@ -128,6 +129,31 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             row.TextValue = "exit-a";
             Assert.That(row.IsDanger, Is.False);
             Assert.That(((PhaseGotoInstanceDefinition)row.Definition).PhaseExitId, Is.EqualTo("exit-a"));
+        }
+
+        [Test]
+        public void LibraryModeTabsStayOutsideBothLibraryDrawers()
+        {
+            EnsureApplication();
+            var window = new MainWindow();
+            try
+            {
+                var tabs = (FrameworkElement)window.FindName("LibraryModeTabs");
+                var sessionPanel = (FrameworkElement)window.FindName("SessionLibraryPanel");
+                var phasePanel = (FrameworkElement)window.FindName("PhaseLibraryPanel");
+                var sessionsTab = (FrameworkElement)window.FindName("SessionLibraryTabButton");
+                var phasesTab = (FrameworkElement)window.FindName("PhaseLibraryTabButton");
+
+                Assert.That(Grid.GetRow(tabs), Is.EqualTo(0));
+                Assert.That(Grid.GetRow(sessionPanel), Is.EqualTo(1));
+                Assert.That(Grid.GetRow(phasePanel), Is.EqualTo(1));
+                Assert.That(VisualTreeHelper.GetParent(sessionsTab), Is.SameAs(tabs));
+                Assert.That(VisualTreeHelper.GetParent(phasesTab), Is.SameAs(tabs));
+            }
+            finally
+            {
+                window.Close();
+            }
         }
     }
 }

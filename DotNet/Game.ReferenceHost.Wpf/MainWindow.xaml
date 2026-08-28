@@ -313,21 +313,28 @@
                     <TextBlock Text="Library" FontWeight="Bold" Foreground="#FFDDDDDD"/>
                 </Border>
                 <Grid Margin="6,4,6,4" Background="#FF212226">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <DockPanel x:Name="SessionLibraryPanel" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,3,0">
-                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="2,0,2,4">
-                            <Button Content="Sessions" Click="OnShowSessionLibrary" Padding="5,1" Margin="0,0,3,0"
-                                    Style="{StaticResource DarkButton}"/>
-                            <Button Content="Phases" Click="OnShowPhaseLibrary" Padding="5,1" Margin="0,0,6,0"
-                                    Style="{StaticResource DarkButton}"/>
-                            <TextBlock x:Name="SessionModeText" Text="Sessions" FontWeight="Bold"
-                                       Foreground="#FFBBBBBB"/>
-                            <Button Content="×" Click="OnClearSessionUsageFilter" Padding="3,0" Margin="4,0,0,0"
-                                    Style="{StaticResource DarkButton}" ToolTip="Clear Uses Phase filter"/>
-                        </StackPanel>
+                    <!-- Keep the mode picker outside both drawers so switching
+                         to Phases never hides the control needed to switch back. -->
+                    <StackPanel x:Name="LibraryModeTabs" Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+                                Orientation="Horizontal" Margin="2,0,2,4">
+                        <Button x:Name="SessionLibraryTabButton" Content="Sessions" Click="OnShowSessionLibrary"
+                                Padding="5,1" Margin="0,0,3,0" Style="{StaticResource DarkButton}"/>
+                        <Button x:Name="PhaseLibraryTabButton" Content="Phases" Click="OnShowPhaseLibrary"
+                                Padding="5,1" Margin="0,0,6,0" Style="{StaticResource DarkButton}"/>
+                        <TextBlock x:Name="SessionModeText" Text="Sessions" FontWeight="Bold"
+                                   Foreground="#FFBBBBBB"/>
+                        <Button Content="×" Click="OnClearSessionUsageFilter" Padding="3,0" Margin="4,0,0,0"
+                                Style="{StaticResource DarkButton}" ToolTip="Clear Uses Phase filter"/>
+                    </StackPanel>
+                    <DockPanel x:Name="SessionLibraryPanel" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,3,0">
                         <StackPanel DockPanel.Dock="Bottom" Margin="0,4,0,0">
                             <StackPanel Orientation="Horizontal">
                                 <Button Content="New" Click="OnNewSession" Padding="6,1" Margin="0,0,3,0"
@@ -344,7 +351,7 @@
                                  ItemContainerStyle="{StaticResource DarkListBoxItem}"
                                  SelectionChanged="OnSessionListChanged"/>
                     </DockPanel>
-                    <DockPanel x:Name="PhaseLibraryPanel" Grid.Column="0" Grid.ColumnSpan="2" Margin="3,0,0,0" Visibility="Collapsed">
+                    <DockPanel x:Name="PhaseLibraryPanel" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="3,0,0,0" Visibility="Collapsed">
                         <TextBlock DockPanel.Dock="Top" Text="Phases" FontWeight="Bold" Margin="2,0,2,4"
                                    Foreground="#FFBBBBBB"/>
                         <StackPanel DockPanel.Dock="Bottom" Margin="0,4,0,0">
