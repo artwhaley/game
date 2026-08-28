@@ -48,12 +48,23 @@ what's open, and where it should go next.*
 > `ContentCatalog`; Unity runs a temporary ScriptableObject→snapshot bridge
 > (`UnityContentGraphBuilder`) and will later read the same SQLite schema,
 > owning `unity_*` extension tables (proven safe by the integrity audit and
-> the HostExtensionSafety tests). The current database is schema v4. The
+> the HostExtensionSafety tests). The current database is schema v5. The
 > v1-era PhaseSlot/PhaseSlotCandidate
 > model below is superseded by the graph model — v1 data is migrated, not
 > taught. The JSON spike (`Game.Content.Json`) was removed; there is no JSON
 > canonical store. The extraction-era addendum above and §3–§9 below are
 > retained as historical background, not current behavior.
+>
+> **Addendum (Milestone B 0.4, 2026-08):** content selection is real. Schema
+> v5 adds authored catalogs (Session Types, Card Tags, Kinks, Equipment,
+> Smart Toy capabilities), Card body text + relations, include-only Phase
+> card queries (ALL/ANY), and per-Session Happiness/Kink weighting; the
+> deck concept and shared tag table are gone. `Game.Core` selects cards
+> through an ordered eligibility (consent/equipment/capability hard
+> exclusions) + weighting + weighted-RNG pipeline driven by the persistent
+> `UserProfile.db` (separate per-user database — see
+> [`Docs/MilestoneB/`](Docs/MilestoneB/)). Exclusion-by-tag is deferred to a
+> future status-effect system.
 
 Companion docs: [`agents.md`](agents.md) (operating rules),
 [`README.md`](README.md) (current status + dev log),
@@ -64,22 +75,30 @@ Companion docs: [`agents.md`](agents.md) (operating rules),
 
 ## Current architecture (2026 remediation)
 
-- SQLite schema v4 is the canonical content store. The portable
+- SQLite schema v5 is the canonical content store. The portable
   `Game.Content` snapshot contains typed Session/Phase graphs, reusable Phase
   references, owned ordered Action Instances, and stable PhaseExit IDs.
 - `Game.Core` runs `RunUntilYieldAsync` / `ContinueAsync` through graph nodes
   and ordinary Cards. `WaitForContinue` is explicit content; CardFinished is
   not an implicit pause or progress mutation. GOTO/RETURN preserves the
-  remaining Card actions and PhaseRun-local state.
-- The WPF Workbench is the core-content authoring host: Library, stacked
-  Session/Phase graph canvases, Inspector, durable node/viewport layout, typed
-  Action Instance editing, PhaseExit projection/force-delete, Make Unique, and
-  semantic undo/redo across both graph panes.
+  remaining Card actions and PhaseRun-local state (including the Card RNG —
+  called phases get fresh runs). Card selection is the
+  eligibility/weighting/weighted-draw pipeline against the active
+  `UserProfile`.
+- The WPF Workbench is the core-content authoring host: Library (Sessions /
+  Phases / Cards / Catalogs), stacked Session/Phase graph canvases (lower
+  center toggles to the Card editor), Inspector, durable node/viewport
+  layout, typed Action Instance editing, PhaseExit projection/force-delete,
+  Make Unique, semantic undo/redo across both graph panes, selection
+  diagnostics, a persistent Profile window, and the Play-by-Type consumer
+  flow.
 - Unity remains a thin ScriptableObject host/adapter. Its current bridge emits
   the same portable graph shape; it does not own runtime rules or min/max-card
-  progression.
+  progression. The new `Game.Profile` portable source has an asmdef and
+  compiles alongside; the full Unity Action bridge/Timeline mapping remains
+  deferred.
 - Verification and remaining human gates are maintained in
-  [`Docs/GraphWorkbenchFinish/FINAL-REPORT.md`](Docs/GraphWorkbenchFinish/FINAL-REPORT.md).
+  [`Docs/MilestoneB/FINAL-REPORT.md`](Docs/MilestoneB/FINAL-REPORT.md).
 
 ---
 

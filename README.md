@@ -5,31 +5,88 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
 ## Status
 
 - **SQLite is the canonical source of content truth** at `Content/GameContent.db`
-  (schema v4), owned by the provider-neutral `Game.Content.Sqlite` project.
+  (schema v5), owned by the provider-neutral `Game.Content.Sqlite` project.
   Sessions compose **reusable Phases through a Session/Phase graph model**
   (nodes + edges + Action Instances) — the PhaseSlot/slot-candidate era is
-  gone except as v1→v2 migration history. The **Nodify WPF Graph Workbench**
-  (`DotNet/Game.ReferenceHost.Wpf`) is the authoring host: Library + Session
-  Graph + Phase Graph + Inspector, drag/drop placement, live port projection,
-  exit/GOTO authoring, decision options, Copy/Duplicate/Make-Unique, semantic
-  undo/redo, and an embedded **live Core preview / graph debugger**.
-  See [Graph Workbench milestone](#graph-workbench-milestone-03) below and
-  [`Docs/GraphWorkbench/`](Docs/GraphWorkbench/) (authoritative current design).
-- Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core`,
-  .NET Standard 2.1) that both Unity and the WPF hosts run — one engine,
-  multiple hosts. `GameContentDefinition` is the in-memory snapshot;
-  `Game.Core` owns resolution and runtime. See
+  gone except as migration history. The **Nodify WPF Graph Workbench**
+  (`DotNet/Game.ReferenceHost.Wpf`) is the authoring host: Library (Sessions /
+  Phases / Cards / Catalogs), Session Graph, Phase Graph **or Card Editor**,
+  Inspector, drag/drop placement, live port projection, exit/GOTO authoring,
+  decision options, Copy/Duplicate/Make-Unique, semantic undo/redo, an
+  embedded **live Core preview / graph debugger**, a persistent **user/test
+  profile**, **selection diagnostics**, and a consumer-style **Play by Type**
+  flow. See [Milestone B](#milestone-b-cards-profile-selection-04) below.
+- **Milestone B (content selection) is implemented**: authored catalogs
+  (Session Types, Card Tags, Kinks, Equipment, Smart Toy capabilities), Cards
+  with body text + relations + owned ActionSequences, include-only phase card
+  queries (ALL/ANY), per-Session Happiness/Kink weighting, a deterministic
+  eligibility→weighting→weighted-draw pipeline, and a separate
+  `UserProfile.db` (per-user app data, never merged with content). The deck
+  concept, shared tag table, and legacy v1 action tables were **dropped
+  deliberately** at schema v5 (see
+  [`Docs/MilestoneB/02-schema-audit.md`](Docs/MilestoneB/02-schema-audit.md)).
+- Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core` +
+  `Game.Profile`, .NET Standard 2.1) that both Unity and the WPF hosts run —
+  one engine, multiple hosts. `GameContentDefinition` is the in-memory
+  snapshot; `Game.Core` owns resolution and runtime. See
   [Extraction milestone](#extraction-milestone-01) below.
 - Editor builders generate scenes + starter content — no manual wiring.
-- Unity 6000.5.9f1 is pinned. The current finish-pass verification is recorded
-  in [`Docs/GraphWorkbenchFinish/FINAL-REPORT.md`](Docs/GraphWorkbenchFinish/FINAL-REPORT.md);
+- Unity 6000.5.9f1 is pinned. Unity is compile-compatible with the portable
+  model changes (asmdefs cover the new `Game.Profile` source); the full Unity
+  Action binding/Timeline bridge remains deferred and was **not** run as a
+  gate this milestone. The current verification record is
+  [`Docs/MilestoneB/FINAL-REPORT.md`](Docs/MilestoneB/FINAL-REPORT.md);
   do not infer Unity or human acceptance from older milestone reports.
-- Latest automated .NET gates: **105 Core tests passed**, **112 SQLite tests
-  passed, 1 skipped**, and **4 WPF Workbench regression tests passed**.
-  The SQLite skip preserves the canonical DB's known unconnected projected
-  PhaseExit. The WPF host has a clean build; launch and interactive acceptance
-  remain separate gates and are reported explicitly in the finish report.
+- Latest automated .NET gates: **135 Core tests passed**, **123 SQLite tests
+  passed, 1 skipped** (canonical-DB known skip), **11 profile tests passed**,
+  and **10 WPF tests passed**. The WPF host builds and launches.
 - Development rules: [`agents.md`](agents.md) · Unity CLI notes: [`unity-cli.md`](unity-cli.md)
+
+## Milestone B — Cards, Profile, Selection (0.4)
+
+The execution packet in
+`new tickets/Game_Milestone_B_Cards_Profile_Selection_Execution_Packet/`
+implemented the first real content-selection layer on top of the Graph
+Workbench. Contracts and per-ticket records:
+[`Docs/MilestoneB/`](Docs/MilestoneB/).
+
+- **Schema v5** — authored catalogs (`card_tag_definition`, `kink_definition`,
+  `equipment_definition`, `smart_toy_capability_definition`, completed
+  `session_type` with sort order + all-required capability join), Card
+  relations (`card_kink`, `card_required_equipment`,
+  `card_required_smart_toy_capability`), Card body text, include-only phase
+  card queries (`phase_card_all_tag` / `phase_card_any_tag`), and per-Session
+  card weighting (`session_card_weighting`, nonnegative, default 1.0). The
+  shared `tag` table, deck tables, PhaseSlot remnants, and legacy v1 action
+  tables were dropped after in-transaction copies (audit decision).
+- **Selection pipeline** (`Game.Core`) — ordered: phase tag query →
+  consent/kink configuration (DontConsent and Unconfigured both hard-exclude)
+  → equipment → capabilities → weighting → weighted RNG draw using the
+  PhaseRun card RNG. Typed machine-readable rejection reasons feed the WPF
+  diagnostics; no-eligible is a loud typed failure, never a silent skip.
+  Happiness (0–100, spawn default 50) drives Love/Like/Torture scores per the
+  frozen formula. GOTO suspends/restores the caller PhaseRun RNG; called
+  phases draw from fresh RNGs (seed-replay proven).
+- **User profile** (`Game.Profile` + `Game.Profile.Sqlite`) — separate
+  `UserProfile.db` under `%LocalAppData%/TruthCardGame`, own migration
+  ledger, no cross-database FKs; unknown content ids tolerated; replacing
+  `GameContent.db` never touches it. Kink preference rows: Love / Like /
+  Torture / DontConsent; missing row = Unconfigured.
+- **WPF** — Library gains Cards and Catalogs modes (referenced-deletion
+  blocking with usage counts) and a Profile window; selecting a Card opens
+  the Card editor in the lower center pane (title, body, searchable relation
+  pickers, the reusable ActionSequence editor — new Cards default to
+  WaitForContinue + IncrementProgress +10); SessionStart gains the six
+  weighting fields; PhaseEntry gains ALL/ANY query editors, eligible-card
+  preview, and a diagnostics window with a Happiness slider;
+  **Play by Type** runs the consumer flow (type eligibility → uniform random
+  session → profile-driven selection).
+- **Deferred by design**: anti-repeat/recent-card penalties, decks without
+  replacement, rarity/manual multipliers, boolean eligibility expressions,
+  kink intensity scales, Unity Timeline/Action binding, Buttplug/DG-Lab/
+  TCode, hardware discovery, content packs, cloud/multi profiles, persistent
+  Happiness, rich-media card presentation. Exclusion-by-tag is deferred to a
+  future status-effect system.
 
 ## Graph Workbench milestone (0.3)
 
@@ -47,7 +104,8 @@ not-run gates are separated in
   top-level configured actions; session_node_output carries phase-exit
   projections and session-goto ports. **Schema v3** adds the `wpf_*` authoring
   layout tables (node positions, viewport state); **schema v4** adds nullable PhaseGoto
-  exit assignment.
+  exit assignment; **schema v5** adds the Milestone B catalogs, card relations,
+  phase card queries, and session weighting (see above).
 - **Portable model** (`Game.Content`) — `SessionGraphDefinition` /
   `PhaseGraphDefinition` with typed node definitions and Action Instances;
   `Game.Core` runs the Session/Phase graph VMs (GOTO/RETURN continuation stack,
@@ -82,13 +140,17 @@ architecture; the graph model in milestone 0.3 superseded it — v1 data is
 migrated, not taught.)
 
 - `DotNet/Game.Content.Sqlite` — provider-neutral (any `DbConnection`):
-  schema v1→v4 migrations, snapshot loader, empty-DB initializer, granular
+  schema v1→v5 migrations, snapshot loader, empty-DB initializer, granular
   authoring repositories (Session / Phase / graph nodes and edges / exits /
-  decision options / action instances), and the seed tool.
+  decision options / action instances / cards + relations / catalogs /
+  weighting), and the seed tool.
 - `Content/GameContent.db` — the committed canonical DB, seeded from the Unity
   sample content and migrated to the current schema version. Guarded by tests:
   it must always load and pass `integrity_check` / `foreign_key_check`, and
-  contains **no per-user data** (see `Docs/GraphWorkbench/USER-PROFILE-DEFERRED.md`).
+  contains **no per-user state** (authored Kink/Equipment/Capability
+  *catalogs* are content; the user's preferences/ownership live only in the
+  separate `UserProfile.db` — see the UserProfileBoundary tests and
+  [`Docs/MilestoneB/01-contract.md`](Docs/MilestoneB/01-contract.md)).
   Authoring and migration checkpoints follow
   [`Docs/CONTENT-DATABASE-VERSIONING.md`](Docs/CONTENT-DATABASE-VERSIONING.md):
   close writers, verify no WAL/SHM files, validate, and commit each meaningful
@@ -193,13 +255,25 @@ Adding an action now touches the portable engine — there is no Unity-side
 
 ### New card
 
-Assets → Create → TruthCardGame → Card; give it tags + actions; add it to the deck asset.
+Workbench → Library → Cards → New (defaults to WaitForContinue +
+IncrementProgress +10), then edit title/body, pick tags/kinks/equipment/
+capabilities, and author its ActionSequence in the Card editor. In Unity
+(pre-Milestone B bridge content), Assets → Create → TruthCardGame → Card
+creates the ScriptableObject shell converted at session start.
 
 ## Tests
 
-- Portable suite: `dotnet test Game.Workbench.sln` — 204 tests: 102 covering every engine rule (graph VMs, continuation stack, decisions, spawn seam, debugger traces), 102 covering SQLite schema constraints, v1→v2 migration, snapshot round-trip, authoring repositories + undo snapshots, canonical-DB integrity, user-profile boundary, end-to-end DB→snapshot→Core playback, and host-extension safety.
-- Unity EditMode (`Assets/Tests/EditMode`) — ScriptableObject→definition conversion fidelity via `UnityContentGraphBuilder` (24 tests).
-- Unity PlayMode smoke (`Assets/Tests/PlayMode`) — Core running through real Unity adapters inside live play mode (2 tests).
+- Portable suite: `dotnet test Game.Workbench.sln` — 279 tests: 135 Core
+  (graph VMs, continuation stack, decisions, spawn seam, debugger traces,
+  eligibility/weighting/selection pipeline, session-type eligibility),
+  123 SQLite (schema constraints, v1→v5 migration, snapshot round-trip,
+  authoring repositories + undo snapshots, canonical-DB integrity,
+  user-profile boundary, end-to-end DB→snapshot→Core playback,
+  host-extension safety, Milestone B integration gates), 11 profile
+  (separate UserProfile.db persistence/independence), 10 WPF (layout
+  bindings, reason mapping, play-by-type flow, card editor host).
+- Unity EditMode (`Assets/Tests/EditMode`) — ScriptableObject→definition conversion fidelity via `UnityContentGraphBuilder` (24 tests). Not run this milestone (informational only).
+- Unity PlayMode smoke (`Assets/Tests/PlayMode`) — Core running through real Unity adapters inside live play mode (2 tests). Not run this milestone (informational only).
 - **com.unity.test-framework** and **com.unity.ugui** are pinned in `Packages/manifest.json` (the fresh-import default manifest lacks uGUI, which broke all UI scripts until added — don't remove it).
 
 ## Requirements & how to open
