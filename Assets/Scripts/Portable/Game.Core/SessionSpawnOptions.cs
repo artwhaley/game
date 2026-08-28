@@ -27,6 +27,16 @@ namespace TruthCardGame.Core
             return this;
         }
 
+        /// <summary>
+        /// Convenience for the Happiness temperature (contract: session spawn
+        /// defaults to 50; hosts may override for test/diagnostic purposes.
+        /// Session definitions cannot author a start value).
+        /// </summary>
+        public SessionSpawnOptions OverrideHappiness(float value)
+        {
+            return OverrideTemperature(PhaseGraphVm.HappinessTemperatureId, value);
+        }
+
         public bool TryGetTemperatureOverride(string temperatureId, out float value)
         {
             return TemperatureOverrides.TryGetValue(temperatureId ?? "", out value);

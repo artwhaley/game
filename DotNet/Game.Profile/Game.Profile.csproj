@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <RootNamespace>TruthCardGame.Profile</RootNamespace>
+    <AssemblyName>Game.Profile</AssemblyName>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Assets\Scripts\Portable\Game.Profile\**\*.cs" />
+    <ProjectReference Include="..\Game.Core\Game.Core.csproj" />
+  </ItemGroup>
+
+</Project>
