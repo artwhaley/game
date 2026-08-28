@@ -20,22 +20,36 @@ what's open, and where it should go next.*
 > are not a standing law that visual Unity work must always be reconstructed
 > from C#.
 
-> **Addendum (SQLite content pipeline 0.2, 2026-08):** SQLite is now the
-> canonical source of content truth. The relational model
-> (Session/Phase/Card/Action/Tag/Resource + PhaseSlot/PhaseSlotCandidate)
-> lives at `Content/GameContent.db`, owned by the provider-neutral
+> **Addendum (Graph Workbench 0.3, 2026-08):** the graph-model content
+> architecture and the WPF authoring tool shipped via the ticket stack in
+> `new tickets/Game_GraphVM_WPF_Authoring_Stack/` (T00–T21, all implemented,
+> committed, and tested — review gates logged in
+> [`Docs/GraphWorkbench/FINAL-REPORT.md`](Docs/GraphWorkbench/FINAL-REPORT.md)).
+> Sessions compose **reusable Phases through a two-level graph model**
+> (session nodes Start/PhaseReference/Decision/End; phase nodes
+> Entry/CardExecutor/VariableCheck/Action/Decision/Return; typed Action
+> Instances replace top-level configured actions). SQLite schema v2 added the
+> graph tables; v3 adds the `wpf_*` authoring layout tables. The Nodify WPF
+> **Graph Workbench** (Library + Session Graph + Phase Graph + Inspector) is
+> the primary core-content authoring host with continuous persistence,
+> live port projection, exits/GOTO authoring, Copy/Duplicate/Make-Unique,
+> semantic undo/redo, and an embedded live Core preview/debugger.
+> Authoritative design: [`Docs/GraphWorkbench/`](Docs/GraphWorkbench/).
+>
+> **Addendum (SQLite content pipeline 0.2, 2026-08):** SQLite is the
+> canonical source of content truth. The relational model lives at
+> `Content/GameContent.db`, owned by the provider-neutral
 > `DotNet/Game.Content.Sqlite` project (migrations, snapshot loader,
 > authoring repositories, seed tool). `GameContentDefinition` is the
 > in-memory snapshot; `Game.Core` resolves and runs it through
-> `ContentCatalog`; the WPF reference player loads the canonical DB and is
-> the future primary core-content author; Unity runs a temporary
-> ScriptableObject→snapshot bridge (`UnityContentGraphBuilder`) and will
-> later read the same SQLite schema, owning `unity_*` extension tables
-> (proven safe by the integrity audit). The JSON spike (`Game.Content.Json`)
-> was removed; there is no JSON schema v3. Current truth:
-> [`Docs/SqliteContentGraph/`](Docs/SqliteContentGraph/) (00-checkpoint,
-> 01-schema-v1, 02-integrity-audit) plus README "Status". The extraction-era
-> addendum above and §3–§9 below are retained as history.
+> `ContentCatalog`; Unity runs a temporary ScriptableObject→snapshot bridge
+> (`UnityContentGraphBuilder`) and will later read the same SQLite schema,
+> owning `unity_*` extension tables (proven safe by the integrity audit and
+> the HostExtensionSafety tests). The v1-era PhaseSlot/PhaseSlotCandidate
+> model below is superseded by the graph model — v1 data is migrated, not
+> taught. The JSON spike (`Game.Content.Json`) was removed; there is no JSON
+> schema v3. The extraction-era addendum above and §3–§9 below are retained
+> as history.
 
 Companion docs: [`agents.md`](agents.md) (operating rules),
 [`README.md`](README.md) (current status + dev log),

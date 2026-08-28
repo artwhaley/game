@@ -4,48 +4,93 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
 
 ## Status
 
-- **SQLite is the canonical source of content truth** — relational
-  Session/Phase/Card/Action/Tag/Resource model with PhaseSlots +
-  PhaseSlotCandidates at `Content/GameContent.db`, owned by the
-  provider-neutral `Game.Content.Sqlite` project. See the
-  [SQLite content pipeline milestone](#sqlite-content-pipeline-milestone-02) below.
+- **SQLite is the canonical source of content truth** at `Content/GameContent.db`
+  (schema v3), owned by the provider-neutral `Game.Content.Sqlite` project.
+  Sessions compose **reusable Phases through a Session/Phase graph model**
+  (nodes + edges + Action Instances) — the PhaseSlot/slot-candidate era is
+  gone except as v1→v2 migration history. The **Nodify WPF Graph Workbench**
+  (`DotNet/Game.ReferenceHost.Wpf`) is the authoring host: Library + Session
+  Graph + Phase Graph + Inspector, drag/drop placement, live port projection,
+  exit/GOTO authoring, decision options, Copy/Duplicate/Make-Unique, semantic
+  undo/redo, and an embedded **live Core preview / graph debugger**.
+  See [Graph Workbench milestone](#graph-workbench-milestone-03) below and
+  [`Docs/GraphWorkbench/`](Docs/GraphWorkbench/) (authoritative current design).
 - Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core`,
-  .NET Standard 2.1) that both Unity and a desktop WPF reference player host —
-  one engine, two hosts. `GameContentDefinition` is the in-memory snapshot;
+  .NET Standard 2.1) that both Unity and the WPF hosts run — one engine,
+  multiple hosts. `GameContentDefinition` is the in-memory snapshot;
   `Game.Core` owns resolution and runtime. See
   [Extraction milestone](#extraction-milestone-01) below.
 - Editor builders generate all scenes + starter content — no manual wiring.
 - Unity 6000.5.9f1 pinned; verified: compiles clean, EditMode 24/24, PlayMode
-  smoke 2/2 headless on this checkout; portable suite 140/140 via
-  `dotnet test` (94 engine + 46 SQLite). The WPF reference player loads the
-  canonical SQLite DB. Human Play-mode passes of both hosts completed against
-  [`Docs/CoreExtraction/MANUAL-TEST-GUIDE.md`](Docs/CoreExtraction/MANUAL-TEST-GUIDE.md).
+  smoke 2/2 headless on this checkout; portable suite **204/204** via
+  `dotnet test Game.Workbench.sln` (102 engine + 102 SQLite). The WPF Workbench
+  and reference player load the canonical SQLite DB. Human passes completed
+  against [`Docs/CoreExtraction/MANUAL-TEST-GUIDE.md`](Docs/CoreExtraction/MANUAL-TEST-GUIDE.md)
+  and [`Docs/GraphWorkbench/WORKBENCH-MANUAL-TEST-GUIDE.md`](Docs/GraphWorkbench/WORKBENCH-MANUAL-TEST-GUIDE.md).
 - Development rules: [`agents.md`](agents.md) · Unity CLI notes: [`unity-cli.md`](unity-cli.md)
+
+## Graph Workbench milestone (0.3)
+
+The ticket stack in `new tickets/Game_GraphVM_WPF_Authoring_Stack/` delivered
+the graph-model content architecture and the WPF authoring tool. Every ticket
+(00–21) is implemented, committed, and tested; the human review gates are
+logged in [`Docs/GraphWorkbench/FINAL-REPORT.md`](Docs/GraphWorkbench/FINAL-REPORT.md).
+
+- **Schema v2** — two-level graph model: `session_graph_node` (Start /
+  PhaseReference / SessionDecision / End), `phase_graph_node` (Entry /
+  CardExecutor / VariableCheck / Action / PhaseDecision / Return), edges,
+  ordered `action_sequence` + `action_instance` (typed, blocking) replacing
+  top-level configured actions; session_node_output carries phase-exit
+  projections and session-goto ports. **Schema v3** adds the `wpf_*` authoring
+  layout tables (node positions, viewport state).
+- **Portable model** (`Game.Content`) — `SessionGraphDefinition` /
+  `PhaseGraphDefinition` with typed node definitions and Action Instances;
+  `Game.Core` runs the Session/Phase graph VMs (GOTO/RETURN continuation stack,
+  decisions, variable checks, card executors) through the real engine.
+- **WPF Workbench** (`DotNet/Game.ReferenceHost.Wpf`) — four-pane Nodify
+  editor: Library (sessions/phases CRUD + filter), Session Graph, Phase Graph,
+  Inspector. Authoring persists immediately to SQLite (continuous
+  persistence — the DB is always the source of truth): node/edge create,
+  drag-drop Phase placement with live exit-socket projection, inline
+  VariableCheck/GOTO/decision editors, exits strip, Copy Session /
+  Duplicate Phase / Make Unique with the shared-port lock, and semantic
+  undo/redo (Ctrl+Z / Ctrl+Y) over every edit.
+- **Live preview/debugger** — a collapsible strip runs the real Core engine
+  against a fresh SQLite snapshot with amber node rings, transfer-edge and
+  check-branch highlighting, and readable temperatures/progress/stack/PhaseRun
+  readouts.
+- Docs: [`Docs/GraphWorkbench/`](Docs/GraphWorkbench/) (baseline, architecture
+  decisions, execution semantics, schema v2 design, WPF authoring spec,
+  implementation map, action types, manual test guide, final report).
 
 ## SQLite content pipeline milestone (0.2)
 
 SQLite replaced JSON as the canonical authored content store. The JSON
 spike (`Game.Content.Json`) was removed; no JSON schema v3 will be created.
+(The PhaseSlot/PhaseSlotCandidate model described below is the v1-era
+architecture; the graph model in milestone 0.3 superseded it — v1 data is
+migrated, not taught.)
 
 - `DotNet/Game.Content.Sqlite` — provider-neutral (any `DbConnection`):
-  schema v1 migrations, snapshot loader, empty-DB initializer, granular
-  authoring repositories (Session / PhaseSlot / Phase), and the seed tool.
+  schema v1→v3 migrations, snapshot loader, empty-DB initializer, granular
+  authoring repositories (Session / Phase / graph nodes and edges / exits /
+  decision options / action instances), and the seed tool.
 - `Content/GameContent.db` — the committed canonical DB, seeded from the Unity
-  sample content (2 sessions, 6 phases, 7 cards, 5 actions, 1 resource).
-  Guarded by tests: it must always load and pass `integrity_check` /
-  `foreign_key_check`.
+  sample content and migrated to the current schema version. Guarded by tests:
+  it must always load and pass `integrity_check` / `foreign_key_check`, and
+  contains **no per-user data** (see `Docs/GraphWorkbench/USER-PROFILE-DEFERRED.md`).
 - `GameContentDefinition` (portable `Game.Content`) is the **in-memory
-  snapshot**, not the store: sessions own ordered PhaseSlots, each slot holds
-  one PhaseSlotCandidate referencing an independent Phase; cards reference
-  independent actions by ID; tags and resources are independent entities.
+  snapshot**, not the store: sessions reference reusable Phases via
+  PhaseReference placements; cards own ordered Action Sequences; tags and
+  resources are independent entities.
 - `Game.Core` resolves the snapshot through `ContentCatalog` — no DB types
   in the engine.
-- **WPF** is the future primary core-content authoring host and already loads
-  the canonical DB.
+- **WPF** is the primary core-content authoring host (Graph Workbench).
 - **Unity** currently uses a temporary ScriptableObject→snapshot bridge
   (`UnityContentGraphBuilder`); it later reads the same SQLite schema and owns
   `unity_*` extension data in it (host tables are preserved by all core
-  operations — see `Docs/SqliteContentGraph/02-integrity-audit.md`).
+  operations — see `Docs/SqliteContentGraph/02-integrity-audit.md` and the
+  HostExtensionSafety tests).
 - Docs: [`Docs/SqliteContentGraph/`](Docs/SqliteContentGraph/) (checkpoint,
   schema v1, integrity audit).
 
@@ -132,7 +177,7 @@ Assets → Create → TruthCardGame → Card; give it tags + actions; add it to 
 
 ## Tests
 
-- Portable suite: `dotnet test Game.Workbench.sln` — 140 tests: 94 covering every engine rule, 46 covering SQLite schema constraints, migrations, snapshot round-trip, authoring repositories, canonical-DB integrity, and host-extension safety.
+- Portable suite: `dotnet test Game.Workbench.sln` — 204 tests: 102 covering every engine rule (graph VMs, continuation stack, decisions, spawn seam, debugger traces), 102 covering SQLite schema constraints, v1→v2 migration, snapshot round-trip, authoring repositories + undo snapshots, canonical-DB integrity, user-profile boundary, end-to-end DB→snapshot→Core playback, and host-extension safety.
 - Unity EditMode (`Assets/Tests/EditMode`) — ScriptableObject→definition conversion fidelity via `UnityContentGraphBuilder` (24 tests).
 - Unity PlayMode smoke (`Assets/Tests/PlayMode`) — Core running through real Unity adapters inside live play mode (2 tests).
 - **com.unity.test-framework** and **com.unity.ugui** are pinned in `Packages/manifest.json` (the fresh-import default manifest lacks uGUI, which broke all UI scripts until added — don't remove it).

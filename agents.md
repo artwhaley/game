@@ -7,8 +7,9 @@ Git repo initialized; remote is `https://github.com/artwhaley/game.git`. Unity C
 
 **Current architecture truth:** read [`README.md`](README.md) first (status),
 then [`Docs/GraphWorkbench/`](Docs/GraphWorkbench/) — the authoritative current
-design: two-level Session/Phase graph VM, Action Instances, SQLite schema v2,
-and the Nodify WPF Workbench. Read it before writing code.
+design: two-level Session/Phase graph VM, Action Instances, SQLite schema v3
+(v2 graph tables + v3 `wpf_*` authoring layout), and the Nodify WPF Workbench.
+Read it before writing code.
 Supporting context: [`Docs/SqliteContentGraph/`](Docs/SqliteContentGraph/)
 (SQLite is the canonical content store at `Content/GameContent.db`; its
 NEXT-WPF-HIGH-LEVEL-AUTHORING.md is **superseded** by GraphWorkbench docs), and
