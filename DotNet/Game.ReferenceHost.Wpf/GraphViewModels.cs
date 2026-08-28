@@ -625,6 +625,25 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public void Connect(ConnectorViewModel source, ConnectorViewModel target)
         {
             if (source == null || target == null) return;
+            if (source.Owner != null && source.Owner.Inputs.Contains(source))
+            {
+                // Nodify can start a pending connection from an input socket,
+                // but the DB only stores edges as OUTPUT -> NODE (an input id
+                // does not exist as a port row and would fail the edge FK).
+                // Flip the direction when the drag ended on another node's
+                // output; drop the connect otherwise.
+                if (target.Owner != null && target.Owner.Outputs.Contains(target)
+                    && !ReferenceEquals(source.Owner, target.Owner))
+                {
+                    var tmp = source;
+                    source = target;
+                    target = tmp;
+                }
+                else
+                {
+                    return;
+                }
+            }
             Connections.Add(new ConnectionViewModel(source, target));
             ConnectionCreated?.Invoke(source, target);
         }
