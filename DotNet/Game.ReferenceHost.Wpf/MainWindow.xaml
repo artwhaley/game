@@ -12,6 +12,15 @@
         <vm:NullToCollapsedConverter x:Key="NullToCollapsed" />
         <vm:BoolToVisibleConverter x:Key="BoolToVisible" />
 
+        <!-- Nodify owns the draggable ItemContainer, so keep its graph-space
+             location and selection state synchronized with the view model. -->
+        <Style x:Key="GraphItemContainerStyle" TargetType="{x:Type nodify:ItemContainer}">
+            <Setter Property="Location"
+                    Value="{Binding Location, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <Setter Property="IsSelected"
+                    Value="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+        </Style>
+
         <!-- Shared node template used by both graph editors. Input/output
              connector templates give every node its connection points. -->
         <DataTemplate x:Key="NodeTemplate">
@@ -417,6 +426,7 @@
                                      PendingConnection="{Binding SessionGraph.PendingConnection}"
                                      DisconnectConnectorCommand="{Binding SessionGraph.DisconnectConnectorCommand}"
                                      ItemTemplate="{StaticResource NodeTemplate}"
+                                     ItemContainerStyle="{StaticResource GraphItemContainerStyle}"
                                      ViewportLocation="{Binding SessionGraph.ViewportLocation, Mode=TwoWay}"
                                      ViewportZoom="{Binding SessionGraph.ViewportZoom, Mode=TwoWay}"
                                      AllowDrop="True" DragOver="OnSessionDragOver" Drop="OnSessionDrop"
@@ -528,6 +538,7 @@
                                      PendingConnection="{Binding PhaseGraph.PendingConnection}"
                                      DisconnectConnectorCommand="{Binding PhaseGraph.DisconnectConnectorCommand}"
                                      ItemTemplate="{StaticResource NodeTemplate}"
+                                     ItemContainerStyle="{StaticResource GraphItemContainerStyle}"
                                      ViewportLocation="{Binding PhaseGraph.ViewportLocation, Mode=TwoWay}"
                                      ViewportZoom="{Binding PhaseGraph.ViewportZoom, Mode=TwoWay}"
                                      PreviewKeyDown="OnEditorKeyDown"
