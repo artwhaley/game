@@ -222,6 +222,8 @@
                            Foreground="#FFDDDDDD"/>
                 <Button Content="Run Session" Margin="16,0,0,0" Padding="10,3" Style="{StaticResource DarkButton}"
                         Click="OnRunSession"/>
+                <Button Content="Play by Type" Margin="6,0,0,0" Padding="10,3" Style="{StaticResource DarkButton}"
+                        Click="OnPlayByType" ToolTip="Consumer-style start: pick a session type, then play a random eligible session"/>
                 <Button Content="Undo (Ctrl+Z)" Margin="6,0,0,0" Padding="10,3" Style="{StaticResource DarkButton}"
                         Command="{Binding UndoCommand, RelativeSource={RelativeSource AncestorType=Window}}" ToolTip="Undo the last authoring edit"/>
                 <Button Content="Redo (Ctrl+Y)" Margin="6,0,0,0" Padding="10,3" Style="{StaticResource DarkButton}"
@@ -328,7 +330,14 @@
                         <Button x:Name="SessionLibraryTabButton" Content="Sessions" Click="OnShowSessionLibrary"
                                 Padding="5,1" Margin="0,0,3,0" Style="{StaticResource DarkButton}"/>
                         <Button x:Name="PhaseLibraryTabButton" Content="Phases" Click="OnShowPhaseLibrary"
+                                Padding="5,1" Margin="0,0,3,0" Style="{StaticResource DarkButton}"/>
+                        <Button x:Name="CardsLibraryTabButton" Content="Cards" Click="OnShowCardsLibrary"
+                                Padding="5,1" Margin="0,0,3,0" Style="{StaticResource DarkButton}"/>
+                        <Button x:Name="CatalogsLibraryTabButton" Content="Catalogs" Click="OnShowCatalogsLibrary"
                                 Padding="5,1" Margin="0,0,6,0" Style="{StaticResource DarkButton}"/>
+                        <Button x:Name="ProfileTabButton" Content="Profile" Click="OnShowProfile"
+                                Padding="5,1" Margin="0,0,6,0" Style="{StaticResource DarkButton}"
+                                ToolTip="Open the persistent user/test profile"/>
                         <TextBlock x:Name="SessionModeText" Text="Sessions" FontWeight="Bold"
                                    Foreground="#FFBBBBBB"/>
                         <Button Content="×" Click="OnClearSessionUsageFilter" Padding="3,0" Margin="4,0,0,0"
@@ -370,6 +379,48 @@
                                  ItemContainerStyle="{StaticResource DarkListBoxItem}"
                                  SelectionChanged="OnPhaseListChanged"
                                  PreviewMouseMove="OnPhaseListMouseMove"/>
+                    </DockPanel>
+                    <DockPanel x:Name="CardsLibraryPanel" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="3,0,0,0" Visibility="Collapsed">
+                        <TextBlock DockPanel.Dock="Top" Text="Cards" FontWeight="Bold" Margin="2,0,2,4"
+                                   Foreground="#FFBBBBBB"/>
+                        <StackPanel DockPanel.Dock="Bottom" Margin="0,4,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="New" Click="OnNewCard" Padding="6,1" Margin="0,0,3,0"
+                                        Style="{StaticResource DarkButton}" ToolTip="Create a new card (defaults: WaitForContinue + Progress +10)"/>
+                                <Button Content="Delete" Click="OnDeleteCard" Padding="6,1" Margin="0,0,3,0"
+                                        Style="{StaticResource DarkButton}" ToolTip="Delete the selected card (only card-owned data)"/>
+                                <Button Content="Duplicate" Click="OnDuplicateCard" Padding="6,1"
+                                        Style="{StaticResource DarkButton}" ToolTip="Deep-clone the selected card (new ids; Resources stay shared)"/>
+                            </StackPanel>
+                            <TextBox x:Name="CardFilter" Style="{StaticResource DarkTextBox}" Margin="0,4,0,0"
+                                     Padding="3,1" TextChanged="OnCardFilterChanged" ToolTip="Filter cards by title"/>
+                        </StackPanel>
+                        <ListBox x:Name="CardList" Style="{StaticResource DarkListBox}"
+                                 ItemContainerStyle="{StaticResource DarkListBoxItem}"
+                                 SelectionChanged="OnCardListChanged"/>
+                    </DockPanel>
+                    <DockPanel x:Name="CatalogsLibraryPanel" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="3,0,0,0" Visibility="Collapsed">
+                        <TextBlock DockPanel.Dock="Top" Text="Catalogs" FontWeight="Bold" Margin="2,0,2,4"
+                                   Foreground="#FFBBBBBB"/>
+                        <StackPanel DockPanel.Dock="Bottom" Margin="0,4,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="New" Click="OnNewCatalogEntry" Padding="6,1" Margin="0,0,3,0"
+                                        Style="{StaticResource DarkButton}" ToolTip="Create a definition of the selected kind"/>
+                                <Button Content="Delete" Click="OnDeleteCatalogEntry" Padding="6,1" Margin="0,0,3,0"
+                                        Style="{StaticResource DarkButton}" ToolTip="Delete the selected definition (blocked while referenced)"/>
+                            </StackPanel>
+                            <TextBlock x:Name="CatalogUsageText" Text="" FontSize="10" Foreground="#FF9CCC65"
+                                       TextWrapping="Wrap" Margin="0,4,0,0"/>
+                        </StackPanel>
+                        <DockPanel>
+                            <ListBox x:Name="CatalogKindList" DockPanel.Dock="Left" Width="104"
+                                     Style="{StaticResource DarkListBox}"
+                                     ItemContainerStyle="{StaticResource DarkListBoxItem}"
+                                     SelectionChanged="OnCatalogKindChanged"/>
+                            <ListBox x:Name="CatalogEntryList" Style="{StaticResource DarkListBox}"
+                                     ItemContainerStyle="{StaticResource DarkListBoxItem}"
+                                     SelectionChanged="OnCatalogEntryChanged"/>
+                        </DockPanel>
                     </DockPanel>
                 </Grid>
             </DockPanel>
@@ -447,9 +498,10 @@
                           Background="#FF505050" ResizeBehavior="PreviousAndNext"
                           DragCompleted="OnSplitterDragCompleted"/>
 
-            <!-- Pane 3: Phase Graph -->
-            <DockPanel Grid.Column="2" Grid.Row="2" Margin="2,2,2,4" Background="#FF212226">
-                <Border DockPanel.Dock="Left" Width="150" Background="#FF2B2B2B" Padding="6,4"
+            <!-- Pane 3: Phase Graph OR Card Editor (lower center; selecting a
+                 Card switches to the editor, selecting a Phase returns to the graph) -->
+            <DockPanel x:Name="LowerCenterPane" Grid.Column="2" Grid.Row="2" Margin="2,2,2,4" Background="#FF212226">
+                <Border x:Name="PhaseGraphHeader" DockPanel.Dock="Left" Width="150" Background="#FF2B2B2B" Padding="6,4"
                         BorderBrush="#FF3A3A3E" BorderThickness="0,0,0,1">
                     <StackPanel>
                         <StackPanel Orientation="Horizontal">
@@ -549,6 +601,89 @@
                         </DataTemplate>
                     </nodify:NodifyEditor.PendingConnectionTemplate>
                 </nodify:NodifyEditor>
+
+                <!-- Card Editor (Milestone B): the alternate lower-center
+                     content. Selecting a Card in the library switches here;
+                     selecting a Phase returns to the graph above. -->
+                <Grid x:Name="CardEditorPanel" Visibility="Collapsed" Margin="4,4,4,4">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,0,0,4">
+                        <TextBlock x:Name="CardEditorHeader" Text="Card Editor" FontWeight="Bold"
+                                   Foreground="#FFDDDDDD" VerticalAlignment="Center"/>
+                        <TextBox x:Name="CardTitleBox" Style="{StaticResource DarkTextBox}" Padding="3,1" Width="200"
+                                 Margin="10,0,0,0" TextChanged="OnCardTitleChanged" ToolTip="Card title"/>
+                        <Button Content="Show Phase Graph" Click="OnCardEditorClose" Padding="6,1" Margin="10,0,0,0"
+                                Style="{StaticResource DarkButton}" ToolTip="Return to the Phase Graph view"/>
+                    </StackPanel>
+                    <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,6,4">
+                        <TextBlock Text="Body" FontSize="10" Foreground="#FFB0B0B0" Margin="0,0,0,1"/>
+                        <TextBox x:Name="CardBodyBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
+                                 Height="90" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+                                 TextChanged="OnCardBodyChanged" ToolTip="Card body text shown when played"/>
+                    </StackPanel>
+                    <GridSplitter Grid.Row="1" Grid.Column="1" Width="4" HorizontalAlignment="Stretch"
+                                  Background="#FF505050" ResizeBehavior="PreviousAndNext"
+                                  DragCompleted="OnSplitterDragCompleted"/>
+                    <Grid Grid.Row="1" Grid.Column="2" Margin="6,0,0,4">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2" Text="Relations" FontSize="10" Foreground="#FFB0B0B0" Margin="0,0,0,2"/>
+                        <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,3,0">
+                            <TextBlock Text="Card Tags" FontSize="10" Foreground="#FF9CCC65"/>
+                            <ListBox x:Name="CardTagPicker" Style="{StaticResource DarkListBox}" MinHeight="52"
+                                     SelectionMode="Multiple" SelectionChanged="OnCardRelationsChanged"/>
+                        </StackPanel>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Margin="3,0,0,0">
+                            <TextBlock Text="Kinks" FontSize="10" Foreground="#FF9CCC65"/>
+                            <ListBox x:Name="CardKinkPicker" Style="{StaticResource DarkListBox}" MinHeight="52"
+                                     SelectionMode="Multiple" SelectionChanged="OnCardRelationsChanged"/>
+                        </StackPanel>
+                    </Grid>
+                    <!-- Equipment / capabilities + ActionSequence (full width below). -->
+                    <Grid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="2*"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Row="0" Grid.Column="0" Grid.RowSpan="2" Margin="0,2,3,0">
+                            <TextBlock Text="Required Equipment" FontSize="10" Foreground="#FF9CCC65"/>
+                            <ListBox x:Name="CardEquipmentPicker" Style="{StaticResource DarkListBox}" MinHeight="52"
+                                     SelectionMode="Multiple" SelectionChanged="OnCardRelationsChanged"/>
+                        </StackPanel>
+                        <StackPanel Grid.Row="0" Grid.Column="1" Grid.RowSpan="2" Margin="3,2,3,0">
+                            <TextBlock Text="Required Smart Toys" FontSize="10" Foreground="#FF9CCC65"/>
+                            <ListBox x:Name="CardCapabilityPicker" Style="{StaticResource DarkListBox}" MinHeight="52"
+                                     SelectionMode="Multiple" SelectionChanged="OnCardRelationsChanged"/>
+                        </StackPanel>
+                        <StackPanel Grid.Row="0" Grid.Column="2" Grid.RowSpan="2" Margin="6,2,0,0">
+                            <TextBlock Text="Card Actions" FontSize="10" Foreground="#FF9CCC65"/>
+                            <Border Background="#FF26262A" BorderBrush="#FF3A3A3E" BorderThickness="1"
+                                    CornerRadius="2" Margin="0,2,0,0" Padding="3">
+                                <ContentControl x:Name="CardActionSequenceHost"/>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
             </DockPanel>
 
             <!-- Pane 4: Inspector -->
@@ -580,12 +715,48 @@
                         <TextBlock Text="Title" FontSize="10" Foreground="#FFB0B0B0" Margin="0,0,0,1"/>
                         <TextBox x:Name="PhaseTitleBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
                                  TextChanged="OnPhaseTitleChanged"/>
-                        <TextBlock Text="Must include tags (comma separated)" FontSize="10" Foreground="#FFB0B0B0" Margin="0,6,0,1"/>
+                        <TextBlock Text="Must have ALL card tags (comma separated)" FontSize="10" Foreground="#FFB0B0B0" Margin="0,6,0,1"/>
                         <TextBox x:Name="PhaseIncludeTagsBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
-                                 TextChanged="OnPhaseTagsChanged"/>
-                        <TextBlock Text="Must exclude tags (comma separated)" FontSize="10" Foreground="#FFB0B0B0" Margin="0,6,0,1"/>
+                                 TextChanged="OnPhaseTagsChanged" ToolTip="Card must carry every listed tag"/>
+                        <TextBlock Text="Must have ANY card tags (comma separated)" FontSize="10" Foreground="#FFB0B0B0" Margin="0,6,0,1"/>
                         <TextBox x:Name="PhaseExcludeTagsBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
-                                 TextChanged="OnPhaseTagsChanged"/>
+                                 TextChanged="OnPhaseTagsChanged" ToolTip="Card must carry at least one listed tag (empty = no restriction)"/>
+                        <Button Content="Preview Eligible Cards" Click="OnPreviewEligibleCards" Padding="6,1" Margin="0,6,0,0"
+                                HorizontalAlignment="Left" Style="{StaticResource DarkButton}"
+                                ToolTip="Show which cards the current query selects (diagnostics)"/>
+                        <Button Content="Selection Diagnostics…" Click="OnShowSelectionDiagnostics" Padding="6,1" Margin="0,4,0,0"
+                                HorizontalAlignment="Left" Style="{StaticResource DarkButton}"
+                                ToolTip="Full eligibility/weight diagnostics for this phase"/>
+                    </StackPanel>
+
+                    <!-- Session weighting (Milestone B): shown when a Start node is selected. -->
+                    <StackPanel x:Name="SessionWeightingPanel" Visibility="Collapsed" Margin="0,10,0,0">
+                        <TextBlock Text="Card Preference Weighting" FontWeight="SemiBold" Margin="0,0,0,4" Foreground="#FFDDDDDD"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBox x:Name="LoveBaseBox" Grid.Row="0" Grid.Column="0" Style="{StaticResource DarkTextBox}" Padding="3,1" Margin="0,0,2,2"
+                                     TextChanged="OnSessionWeightingChanged" ToolTip="Love base"/>
+                            <TextBox x:Name="LoveGainBox" Grid.Row="0" Grid.Column="1" Style="{StaticResource DarkTextBox}" Padding="3,1" Margin="2,0,0,2"
+                                     TextChanged="OnSessionWeightingChanged" ToolTip="Love happiness gain"/>
+                            <TextBox x:Name="LikeBaseBox" Grid.Row="1" Grid.Column="0" Style="{StaticResource DarkTextBox}" Padding="3,1" Margin="0,0,2,2"
+                                     TextChanged="OnSessionWeightingChanged" ToolTip="Like base"/>
+                            <TextBox x:Name="LikeGainBox" Grid.Row="1" Grid.Column="1" Style="{StaticResource DarkTextBox}" Padding="3,1" Margin="2,0,0,2"
+                                     TextChanged="OnSessionWeightingChanged" ToolTip="Like happiness gain"/>
+                            <TextBox x:Name="TortureBaseBox" Grid.Row="2" Grid.Column="0" Style="{StaticResource DarkTextBox}" Padding="3,1" Margin="0,0,2,0"
+                                     TextChanged="OnSessionWeightingChanged" ToolTip="Torture base"/>
+                            <TextBox x:Name="TortureUnhappinessBox" Grid.Row="2" Grid.Column="1" Style="{StaticResource DarkTextBox}" Padding="3,1" Margin="2,0,0,0"
+                                     TextChanged="OnSessionWeightingChanged" ToolTip="Torture unhappiness gain"/>
+                        </Grid>
+                        <TextBlock Text="Row 1: Love base/gain · Row 2: Like · Row 3: Torture (base / gain). All nonnegative, default 1."
+                                   FontSize="9" Foreground="#FF808080" TextWrapping="Wrap" Margin="0,3,0,0"/>
                     </StackPanel>
 
                     <TextBlock Text="Hint" FontWeight="SemiBold" Margin="0,16,0,4" Foreground="#FFDDDDDD"/>

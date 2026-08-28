@@ -30,6 +30,17 @@ namespace TruthCardGame.Content.Sqlite
         }
 
         /// <summary>
+        /// Reads exactly one stored ActionSequence by id (instance cloning for
+        /// card duplication). Does not migrate the schema.
+        /// </summary>
+        public static ActionSequenceDefinition LoadSequence(DbConnection connection, string sequenceId)
+        {
+            if (connection == null) throw new ArgumentNullException(nameof(connection));
+            if (string.IsNullOrEmpty(sequenceId)) throw new ArgumentException("Sequence id required.", nameof(sequenceId));
+            return new SequenceCache(connection).Load(sequenceId);
+        }
+
+        /// <summary>
         /// Loads a snapshot without mutating the database. Use this for a
         /// read-only canonical or exported DB; normal authoring connections
         /// should use <see cref="Load(DbConnection)"/> so migrations run.

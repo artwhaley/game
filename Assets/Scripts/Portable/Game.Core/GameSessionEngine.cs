@@ -19,6 +19,7 @@ namespace TruthCardGame.Core
         private readonly CoreServices _services;
         private readonly BackgroundActionTracker _tracker;
         private readonly PhaseRunRngFactory _rngFactory;
+        private readonly CardSelectionProfile _selectionProfile;
         private readonly int _executionBudget;
 
         private SessionGraphVm _vm;
@@ -34,6 +35,9 @@ namespace TruthCardGame.Core
         public event Action<string> PhaseEntered;
         public event Action SessionCompleted;
 
+        /// <summary>Forwarded from the session VM (selection diagnostics seam).</summary>
+        public event Action<CardSelector.SelectionResult> CardSelectionEvaluated;
+
         public GameSessionEngine(GameContentDefinition content, string sessionId, CoreServices services)
             : this(content, sessionId, services, SessionSpawnOptions.Default)
         {
@@ -44,15 +48,10 @@ namespace TruthCardGame.Core
         {
         }
 
-        /// <summary>
-        /// Full constructor: injectable card-RNG factory (deterministic engine
-        /// tests) and EAGER session VM creation, so the Ticket 19 debugger can
-        /// subscribe to SessionVm events before the first advance. An invalid
-        /// graph fails here, at session start, not on the first draw.
-        /// </summary>
         public GameSessionEngine(GameContentDefinition content, string sessionId, CoreServices services,
             SessionSpawnOptions spawn, PhaseRunRngFactory rngFactory,
-            int executionBudget = PhaseGraphVm.DefaultExecutionBudget)
+            int executionBudget = PhaseGraphVm.DefaultExecutionBudget,
+            CardSelectionProfile selectionProfile = null)
         {
             if (content == null) throw new ArgumentNullException(nameof(content));
             if (string.IsNullOrEmpty(sessionId)) throw new ArgumentNullException(nameof(sessionId));
@@ -64,6 +63,7 @@ namespace TruthCardGame.Core
             _tracker = new BackgroundActionTracker(_services.Log);
             SpawnOptions = spawn ?? SessionSpawnOptions.Default;
             _rngFactory = rngFactory ?? new PhaseRunRngFactory();
+            _selectionProfile = selectionProfile ?? new CardSelectionProfile();
             if (executionBudget <= 0) throw new ArgumentOutOfRangeException(nameof(executionBudget));
             _executionBudget = executionBudget;
             Player = new Player("Player");
@@ -170,11 +170,12 @@ namespace TruthCardGame.Core
         private SessionGraphVm EnsureVm()
         {
             if (_vm != null) return _vm;
-            _vm = new SessionGraphVm(_content, _session.Id, _services, _tracker, _rngFactory, _executionBudget);
+            _vm = new SessionGraphVm(_content, _session.Id, _services, _tracker, _rngFactory, _executionBudget, _selectionProfile);
             _vm.CardStarted += card => CardStarted?.Invoke(card);
             _vm.CardFinished += card => CardFinished?.Invoke(card);
             _vm.PhaseEntered += title => PhaseEntered?.Invoke(title);
             _vm.SessionCompleted += () => SessionCompleted?.Invoke();
+            _vm.CardSelectionEvaluated += result => CardSelectionEvaluated?.Invoke(result);
             return _vm;
         }
     }

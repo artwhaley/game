@@ -78,6 +78,46 @@ namespace TruthCardGame.ReferenceHost.Wpf
         }
 
         /// <summary>
+        /// Milestone B: the persistent UserProfile drives Card selection. A
+        /// missing/broken profile DB degrades to an empty profile (all kinks
+        /// Unconfigured) rather than blocking play — the profile window is
+        /// where the user configures it.
+        /// </summary>
+        private static CardSelectionProfile LoadSelectionProfile()
+        {
+            try
+            {
+                var path = UserProfilePaths.ProfileDatabasePath();
+                if (!File.Exists(path)) return new CardSelectionProfile();
+                using (var connection = new SqliteConnection("Data Source=" + path))
+                {
+                    connection.Open();
+                    TruthCardGame.Profile.Sqlite.ProfileStore.EnsureSchema(connection);
+                    return TruthCardGame.Profile.Sqlite.ProfileStore.Load(connection).ToSelectionProfile();
+                }
+            }
+            catch (Exception)
+            {
+                return new CardSelectionProfile();
+            }
+        }
+
+        /// <summary>
+        /// Ticket 16: consumer-style start — select and run a specific session
+        /// (used by the Workbench's Play-by-Type flow after uniform selection).
+        /// </summary>
+        public void RunSession(string sessionId)
+        {
+            var session = _content?.Sessions.FirstOrDefault(s => s.Id == sessionId);
+            if (session == null)
+            {
+                throw new InvalidOperationException("Session not found: " + sessionId);
+            }
+            SessionCombo.SelectedItem = session;
+            OnStartSession(this, new RoutedEventArgs());
+        }
+
+        /// <summary>
         /// Canonical DB location: an explicit --db &lt;path&gt; command-line
         /// argument, else the repo-relative dev path Content/GameContent.db.
         /// Never a hardcoded machine path.
@@ -117,7 +157,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     prompts: new UiPromptService(this),
                     cutscene: new UiCutsceneService(this));
 
-                _engine = new GameSessionEngine(_content, selected.Id, services, SpawnOptionsForRun());
+                _engine = new GameSessionEngine(_content, selected.Id, services, SpawnOptionsForRun(),
+                    rngFactory: null, selectionProfile: LoadSelectionProfile());
 
                 SubscribeEngine();
 

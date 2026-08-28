@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Game.ReferenceHost.Wpf\Game.ReferenceHost.Wpf.csproj" />
+    <ProjectReference Include="..\Game.Core.Tests\Game.Core.Tests.csproj" />
   </ItemGroup>
 
 </Project>

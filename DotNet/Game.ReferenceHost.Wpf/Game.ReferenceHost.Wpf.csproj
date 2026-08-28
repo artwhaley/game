@@ -20,6 +20,8 @@
     <ProjectReference Include="..\Game.Core\Game.Core.csproj" />
     <ProjectReference Include="..\Game.Content\Game.Content.csproj" />
     <ProjectReference Include="..\Game.Content.Sqlite\Game.Content.Sqlite.csproj" />
+    <ProjectReference Include="..\Game.Profile\Game.Profile.csproj" />
+    <ProjectReference Include="..\Game.Profile.Sqlite\Game.Profile.Sqlite.csproj" />
   </ItemGroup>
 
 </Project>

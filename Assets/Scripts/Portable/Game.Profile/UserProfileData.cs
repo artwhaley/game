@@ -28,5 +28,11 @@ namespace TruthCardGame.Profile
             foreach (var id in AvailableCapabilityIds) snapshot.AvailableCapabilityIds.Add(id);
             return snapshot;
         }
+
+        /// <summary>Direct Core selection profile (same data as ToSnapshot).</summary>
+        public CardSelectionProfile ToSelectionProfile()
+        {
+            return CardSelectionProfile.FromProfile(ToSnapshot());
+        }
     }
 }

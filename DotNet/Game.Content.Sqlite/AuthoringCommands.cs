@@ -1412,4 +1412,410 @@ namespace TruthCardGame.Content.Sqlite
             PhaseRepository.Delete(connection, _newPhaseId);
         }
     }
+
+    // =====================================================================
+    // Milestone B authoring commands (Tickets 11/13/14).
+    // =====================================================================
+
+    /// <summary>Creates a catalog definition (SessionType/CardTag/Kink/Equipment/Capability).</summary>
+    public sealed class CreateCatalogEntryCommand : AuthoringCommandBase
+    {
+        private readonly string _kind;
+        private readonly string _id;
+        private readonly string _title;
+
+        public CreateCatalogEntryCommand(Func<DbConnection> conn, string kind, string id, string title) : base(conn)
+        {
+            _kind = kind; _id = id; _title = title;
+        }
+
+        public override string Name => "Create " + _kind;
+
+        protected override void ExecuteCore(DbConnection connection)
+        {
+            switch (_kind)
+            {
+                case CatalogKinds.SessionType:
+                    CatalogRepositories.CreateSessionType(connection, new SessionTypeDefinition { Id = _id, Title = _title });
+                    break;
+                case CatalogKinds.CardTag:
+                    CatalogRepositories.CreateCardTag(connection, new CardTagDefinition { Id = _id, Title = _title });
+                    break;
+                case CatalogKinds.Kink:
+                    CatalogRepositories.CreateKink(connection, new KinkDefinition { Id = _id, Title = _title });
+                    break;
+                case CatalogKinds.Equipment:
+                    CatalogRepositories.CreateEquipment(connection, new EquipmentDefinition { Id = _id, Title = _title });
+                    break;
+                case CatalogKinds.SmartToyCapability:
+                    CatalogRepositories.CreateSmartToyCapability(connection, new SmartToyCapabilityDefinition { Id = _id, Title = _title });
+                    break;
+                default:
+                    throw new InvalidOperationException("Unknown catalog kind '" + _kind + "'.");
+            }
+        }
+
+        protected override void UndoCore(DbConnection connection)
+        {
+            switch (_kind)
+            {
+                case CatalogKinds.SessionType: Sql.Execute(connection, null, "DELETE FROM session_type WHERE id = @id;", ("id", _id)); break;
+                case CatalogKinds.CardTag: Sql.Execute(connection, null, "DELETE FROM card_tag_definition WHERE id = @id;", ("id", _id)); break;
+                case CatalogKinds.Kink: Sql.Execute(connection, null, "DELETE FROM kink_definition WHERE id = @id;", ("id", _id)); break;
+                case CatalogKinds.Equipment: Sql.Execute(connection, null, "DELETE FROM equipment_definition WHERE id = @id;", ("id", _id)); break;
+                case CatalogKinds.SmartToyCapability: Sql.Execute(connection, null, "DELETE FROM smart_toy_capability_definition WHERE id = @id;", ("id", _id)); break;
+            }
+        }
+    }
+
+    /// <summary>Deletes an unreferenced catalog definition (usage blocking happens in the UI before push).</summary>
+    public sealed class DeleteCatalogEntryCommand : AuthoringCommandBase
+    {
+        private readonly string _kind;
+        private readonly string _id;
+        private readonly string _title;
+
+        public DeleteCatalogEntryCommand(Func<DbConnection> conn, string kind, string id, string title) : base(conn)
+        {
+            _kind = kind; _id = id; _title = title;
+        }
+
+        public override string Name => "Delete " + _kind;
+
+        protected override void ExecuteCore(DbConnection connection)
+        {
+            switch (_kind)
+            {
+                case CatalogKinds.SessionType: Sql.Execute(connection, null, "DELETE FROM session_type WHERE id = @id;", ("id", _id)); break;
+                case CatalogKinds.CardTag: Sql.Execute(connection, null, "DELETE FROM card_tag_definition WHERE id = @id;", ("id", _id)); break;
+                case CatalogKinds.Kink: Sql.Execute(connection, null, "DELETE FROM kink_definition WHERE id = @id;", ("id", _id)); break;
+                case CatalogKinds.Equipment: Sql.Execute(connection, null, "DELETE FROM equipment_definition WHERE id = @id;", ("id", _id)); break;
+                case CatalogKinds.SmartToyCapability: Sql.Execute(connection, null, "DELETE FROM smart_toy_capability_definition WHERE id = @id;", ("id", _id)); break;
+            }
+        }
+
+        protected override void UndoCore(DbConnection connection)
+        {
+            // Re-creates the row; the definition was unreferenced when deleted,
+            // and undo restores exactly the same stable id/title.
+            switch (_kind)
+            {
+                case CatalogKinds.SessionType:
+                    CatalogRepositories.CreateSessionType(connection, new SessionTypeDefinition { Id = _id, Title = _title });
+                    break;
+                case CatalogKinds.CardTag:
+                    CatalogRepositories.CreateCardTag(connection, new CardTagDefinition { Id = _id, Title = _title });
+                    break;
+                case CatalogKinds.Kink:
+                    CatalogRepositories.CreateKink(connection, new KinkDefinition { Id = _id, Title = _title });
+                    break;
+                case CatalogKinds.Equipment:
+                    CatalogRepositories.CreateEquipment(connection, new EquipmentDefinition { Id = _id, Title = _title });
+                    break;
+                case CatalogKinds.SmartToyCapability:
+                    CatalogRepositories.CreateSmartToyCapability(connection, new SmartToyCapabilityDefinition { Id = _id, Title = _title });
+                    break;
+            }
+        }
+    }
+
+    /// <summary>Renames a catalog definition.</summary>
+    public sealed class RenameCatalogEntryCommand : AuthoringCommandBase
+    {
+        private readonly string _kind;
+        private readonly string _id;
+        private readonly string _oldTitle;
+        private string _newTitle;
+
+        public RenameCatalogEntryCommand(Func<DbConnection> conn, string kind, string id, string oldTitle, string newTitle) : base(conn)
+        {
+            _kind = kind; _id = id; _oldTitle = oldTitle; _newTitle = newTitle;
+        }
+
+        public override string Name => "Rename " + _kind;
+        public override string MergeKey => "catalogrename:" + _kind + ":" + _id;
+
+        public override bool Merge(IAuthoringCommand incoming)
+        {
+            if (incoming is RenameCatalogEntryCommand rename) { _newTitle = rename._newTitle; return true; }
+            return false;
+        }
+
+        protected override void ExecuteCore(DbConnection connection) => Rename(connection, _newTitle);
+
+        protected override void UndoCore(DbConnection connection) => Rename(connection, _oldTitle);
+
+        private void Rename(DbConnection connection, string title)
+        {
+            switch (_kind)
+            {
+                case CatalogKinds.SessionType: CatalogRepositories.RenameSessionType(connection, _id, title); break;
+                case CatalogKinds.CardTag: CatalogRepositories.RenameCardTag(connection, _id, title); break;
+                case CatalogKinds.Kink: Sql.Execute(connection, null, "UPDATE kink_definition SET title = @t WHERE id = @id;", ("t", (object)title ?? DBNull.Value), ("id", _id)); break;
+                case CatalogKinds.Equipment: Sql.Execute(connection, null, "UPDATE equipment_definition SET title = @t WHERE id = @id;", ("t", (object)title ?? DBNull.Value), ("id", _id)); break;
+                case CatalogKinds.SmartToyCapability: Sql.Execute(connection, null, "UPDATE smart_toy_capability_definition SET title = @t WHERE id = @id;", ("t", (object)title ?? DBNull.Value), ("id", _id)); break;
+            }
+        }
+    }
+
+    /// <summary>Creates a Card with the default owned sequence (WaitForContinue + IncrementProgress +10).</summary>
+    public sealed class CreateCardCommand : AuthoringCommandBase
+    {
+        private readonly string _id;
+        private readonly string _title;
+
+        public CreateCardCommand(Func<DbConnection> conn, string id, string title) : base(conn)
+        {
+            _id = id; _title = title;
+        }
+
+        public override string Name => "Create card";
+
+        protected override void ExecuteCore(DbConnection connection)
+        {
+            CardRepository.Create(connection, new CardDefinition { Id = _id, Title = _title });
+        }
+
+        protected override void UndoCore(DbConnection connection)
+        {
+            CardRepository.Delete(connection, _id);
+        }
+    }
+
+    /// <summary>Deletes a card and its owned sequence; undo recreates the captured definition.</summary>
+    public sealed class DeleteCardCommand : AuthoringCommandBase
+    {
+        private readonly CardDefinition _snapshot;
+
+        public DeleteCardCommand(Func<DbConnection> conn, string cardId) : base(conn)
+        {
+            // Capture the full definition at construction (undo restores it verbatim).
+            _snapshot = null;
+            using (var connection = conn())
+            {
+                string title = null, body = null, sequenceId = null;
+                Sql.QueryAll(connection, "SELECT title, body_text, action_sequence_id FROM card WHERE id = @id;",
+                    reader =>
+                    {
+                        title = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                        body = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                        sequenceId = reader.IsDBNull(2) ? null : reader.GetString(2);
+                    },
+                    ("id", cardId));
+                if (sequenceId == null) throw new InvalidOperationException($"Card '{cardId}' not found.");
+
+                _snapshot = new CardDefinition { Id = cardId, Title = title, BodyText = body };
+                _snapshot.CardTagIds.AddRange(IdsOf(connection, "SELECT tag_id FROM card_tag WHERE card_id = @id;", cardId));
+                _snapshot.KinkIds.AddRange(IdsOf(connection, "SELECT kink_id FROM card_kink WHERE card_id = @id;", cardId));
+                _snapshot.RequiredEquipmentIds.AddRange(IdsOf(connection, "SELECT equipment_id FROM card_required_equipment WHERE card_id = @id;", cardId));
+                _snapshot.RequiredCapabilityIds.AddRange(IdsOf(connection, "SELECT capability_id FROM card_required_smart_toy_capability WHERE card_id = @id;", cardId));
+                _snapshot.Sequence = GameContentSnapshotLoader.LoadSequence(connection, sequenceId);
+            }
+        }
+
+        private static List<string> IdsOf(DbConnection connection, string sql, string cardId)
+        {
+            var ids = new List<string>();
+            Sql.QueryAll(connection, sql, reader => ids.Add(reader.GetString(0)), ("id", cardId));
+            return ids;
+        }
+
+        public override string Name => "Delete card";
+
+        protected override void ExecuteCore(DbConnection connection)
+        {
+            CardRepository.Delete(connection, _snapshot.Id);
+        }
+
+        protected override void UndoCore(DbConnection connection)
+        {
+            CardRepository.Create(connection, _snapshot);
+        }
+    }
+
+    /// <summary>Duplicates a card (relations + instances to new ids; Resources stay shared).</summary>
+    public sealed class DuplicateCardCommand : AuthoringCommandBase
+    {
+        private readonly string _sourceCardId;
+        private readonly string _newCardId;
+        private readonly string _title;
+
+        public DuplicateCardCommand(Func<DbConnection> conn, string sourceCardId, string newCardId, string title) : base(conn)
+        {
+            _sourceCardId = sourceCardId; _newCardId = newCardId; _title = title;
+        }
+
+        public override string Name => "Duplicate card";
+
+        protected override void ExecuteCore(DbConnection connection)
+        {
+            CardRepository.Duplicate(connection, _sourceCardId, _newCardId, _title);
+        }
+
+        protected override void UndoCore(DbConnection connection)
+        {
+            CardRepository.Delete(connection, _newCardId);
+        }
+    }
+
+    /// <summary>Renames a card (coalesced).</summary>
+    public sealed class RenameCardCommand : AuthoringCommandBase
+    {
+        private readonly string _cardId;
+        private readonly string _oldTitle;
+        private string _newTitle;
+
+        public RenameCardCommand(Func<DbConnection> conn, string cardId, string oldTitle, string newTitle) : base(conn)
+        {
+            _cardId = cardId; _oldTitle = oldTitle; _newTitle = newTitle;
+        }
+
+        public override string Name => "Rename card";
+        public override string MergeKey => "cardtitle:" + _cardId;
+
+        public override bool Merge(IAuthoringCommand incoming)
+        {
+            if (incoming is RenameCardCommand rename) { _newTitle = rename._newTitle; return true; }
+            return false;
+        }
+
+        protected override void ExecuteCore(DbConnection connection) => CardRepository.Rename(connection, _cardId, _newTitle);
+        protected override void UndoCore(DbConnection connection) => CardRepository.Rename(connection, _cardId, _oldTitle);
+    }
+
+    /// <summary>Sets the card body text (coalesced).</summary>
+    public sealed class SetCardBodyCommand : AuthoringCommandBase
+    {
+        private readonly string _cardId;
+        private readonly string _oldBody;
+        private string _newBody;
+
+        public SetCardBodyCommand(Func<DbConnection> conn, string cardId, string oldBody, string newBody) : base(conn)
+        {
+            _cardId = cardId; _oldBody = oldBody; _newBody = newBody;
+        }
+
+        public override string Name => "Edit card body";
+        public override string MergeKey => "cardbody:" + _cardId;
+
+        public override bool Merge(IAuthoringCommand incoming)
+        {
+            if (incoming is SetCardBodyCommand body) { _newBody = body._newBody; return true; }
+            return false;
+        }
+
+        protected override void ExecuteCore(DbConnection connection) => CardRepository.SetBody(connection, _cardId, _newBody);
+        protected override void UndoCore(DbConnection connection) => CardRepository.SetBody(connection, _cardId, _oldBody);
+    }
+
+    /// <summary>Replaces the card's four relation lists atomically; undo restores the captured originals.</summary>
+    public sealed class SetCardRelationsCommand : AuthoringCommandBase
+    {
+        private readonly CardDefinition _card;
+        private readonly List<string> _oldTags;
+        private readonly List<string> _oldKinks;
+        private readonly List<string> _oldEquipment;
+        private readonly List<string> _oldCapabilities;
+        private List<string> _newTags;
+        private List<string> _newKinks;
+        private List<string> _newEquipment;
+        private List<string> _newCapabilities;
+
+        public SetCardRelationsCommand(Func<DbConnection> conn, CardDefinition card,
+            IReadOnlyList<string> oldTags, IReadOnlyList<string> oldKinks,
+            IReadOnlyList<string> oldEquipment, IReadOnlyList<string> oldCapabilities,
+            IReadOnlyList<string> newTags, IReadOnlyList<string> newKinks,
+            IReadOnlyList<string> newEquipment, IReadOnlyList<string> newCapabilities) : base(conn)
+        {
+            _card = card;
+            _oldTags = new List<string>(oldTags ?? new List<string>());
+            _oldKinks = new List<string>(oldKinks ?? new List<string>());
+            _oldEquipment = new List<string>(oldEquipment ?? new List<string>());
+            _oldCapabilities = new List<string>(oldCapabilities ?? new List<string>());
+            _newTags = new List<string>(newTags ?? new List<string>());
+            _newKinks = new List<string>(newKinks ?? new List<string>());
+            _newEquipment = new List<string>(newEquipment ?? new List<string>());
+            _newCapabilities = new List<string>(newCapabilities ?? new List<string>());
+        }
+
+        public override string Name => "Edit card relations";
+        public override string MergeKey => "cardrelations:" + _card.Id;
+
+        public override bool Merge(IAuthoringCommand incoming)
+        {
+            if (!(incoming is SetCardRelationsCommand relations)) return false;
+            _newTags = new List<string>(relations._newTags);
+            _newKinks = new List<string>(relations._newKinks);
+            _newEquipment = new List<string>(relations._newEquipment);
+            _newCapabilities = new List<string>(relations._newCapabilities);
+            return true;
+        }
+
+        protected override void ExecuteCore(DbConnection connection) => Apply(connection, _newTags, _newKinks, _newEquipment, _newCapabilities);
+        protected override void UndoCore(DbConnection connection) => Apply(connection, _oldTags, _oldKinks, _oldEquipment, _oldCapabilities);
+
+        private void Apply(DbConnection connection, List<string> tags, List<string> kinks, List<string> equipment, List<string> capabilities)
+        {
+            var snapshot = new CardDefinition
+            {
+                Id = _card.Id,
+                Title = _card.Title,
+                BodyText = _card.BodyText,
+                CardTagIds = tags,
+                KinkIds = kinks,
+                RequiredEquipmentIds = equipment,
+                RequiredCapabilityIds = capabilities,
+            };
+            CardRepository.ReplaceRelations(connection, snapshot);
+        }
+    }
+
+    /// <summary>Replaces the session's card weighting (coalesced).</summary>
+    public sealed class SetSessionWeightingCommand : AuthoringCommandBase
+    {
+        private readonly string _sessionId;
+        private readonly SessionCardWeightingDefinition _oldWeighting;
+        private SessionCardWeightingDefinition _newWeighting;
+
+        public SetSessionWeightingCommand(Func<DbConnection> conn, string sessionId,
+            SessionCardWeightingDefinition oldWeighting, SessionCardWeightingDefinition newWeighting) : base(conn)
+        {
+            _sessionId = sessionId; _oldWeighting = Clone(oldWeighting); _newWeighting = Clone(newWeighting);
+        }
+
+        public override string Name => "Edit card weighting";
+        public override string MergeKey => "sessionweighting:" + _sessionId;
+
+        public override bool Merge(IAuthoringCommand incoming)
+        {
+            if (incoming is SetSessionWeightingCommand weighting) { _newWeighting = Clone(weighting._newWeighting); return true; }
+            return false;
+        }
+
+        private static SessionCardWeightingDefinition Clone(SessionCardWeightingDefinition source)
+        {
+            return new SessionCardWeightingDefinition
+            {
+                LoveBase = source.LoveBase,
+                LoveHappinessGain = source.LoveHappinessGain,
+                LikeBase = source.LikeBase,
+                LikeHappinessGain = source.LikeHappinessGain,
+                TortureBase = source.TortureBase,
+                TortureUnhappinessGain = source.TortureUnhappinessGain,
+            };
+        }
+
+        protected override void ExecuteCore(DbConnection connection) => SessionRepository.ReplaceCardWeighting(connection, _sessionId, _newWeighting);
+        protected override void UndoCore(DbConnection connection) => SessionRepository.ReplaceCardWeighting(connection, _sessionId, _oldWeighting);
+    }
+
+    /// <summary>Stable catalog-kind keys shared by the catalog commands.</summary>
+    public static class CatalogKinds
+    {
+        public const string SessionType = "session-type";
+        public const string CardTag = "card-tag";
+        public const string Kink = "kink";
+        public const string Equipment = "equipment";
+        public const string SmartToyCapability = "smart-toy-capability";
+    }
 }

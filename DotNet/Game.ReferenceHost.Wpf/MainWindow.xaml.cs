@@ -621,6 +621,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 InspId.Text = "";
                 InspKind.Text = "";
                 SessionMetaPanel.Visibility = Visibility.Collapsed;
+                SessionWeightingPanel.Visibility = Visibility.Collapsed;
                 PhaseMetaPanel.Visibility = Visibility.Collapsed;
                 return;
             }
@@ -630,11 +631,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 : "id: " + node.Id + "\nref: " + node.RefId;
             InspKind.Text = node.Kind + (string.IsNullOrEmpty(node.Subtitle) ? "" : "\n" + node.Subtitle);
 
-            // Selecting the Start node exposes the Session metadata (title + type).
+            // Selecting the Start node exposes the Session metadata (title + type + weighting).
             SessionMetaPanel.Visibility = node.Kind == "start" ? Visibility.Visible : Visibility.Collapsed;
+            SessionWeightingPanel.Visibility = node.Kind == "start" ? Visibility.Visible : Visibility.Collapsed;
             if (node.Kind == "start")
             {
                 SyncSessionMetaPanel();
+                SyncSessionWeightingPanel();
             }
 
             // Selecting the Entry node exposes the Phase metadata (title + tags).
@@ -838,6 +841,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             BindSessionList();
             BindPhaseList();
+            BindCardList();
+            BindCatalogs();
+            BindSessionTypeBox();
             SetLibraryMode(true);
         }
 
@@ -850,6 +856,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (sessions) _library.ShowSessions(); else _library.ShowPhases();
             SessionLibraryPanel.Visibility = sessions ? Visibility.Visible : Visibility.Collapsed;
             PhaseLibraryPanel.Visibility = sessions ? Visibility.Collapsed : Visibility.Visible;
+            HideMilestoneBLibraryPanels();
             if (sessions)
             {
                 SessionModeText.Text = string.IsNullOrEmpty(_library.SessionUsageFilterPhaseId)
@@ -911,6 +918,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 _vm.SelectPhase(phase);
                 _vm.PhaseGraph.HasPlacementContext = false;
                 PhaseHeader.Text = "Phase Graph — " + phase.Title;
+                // Selecting a Phase returns the lower center pane to the Phase Graph
+                // when the Card editor was showing (Milestone B lower-center modes).
+                HideCardEditor();
                 ReloadPhaseEditor();
                 UpdatePhaseHeader();
             }
