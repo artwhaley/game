@@ -57,10 +57,14 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 services);
 
             var cards = 0;
+            engine.CardStarted += _ => cards++;
+            var waitingForContinue = false;
             while (!engine.IsComplete)
             {
-                var result = await engine.AdvanceOneCardAsync(CancellationToken.None);
-                if (result.Kind == AdvanceResultKind.CardCompleted) cards++;
+                var result = waitingForContinue
+                    ? await engine.ContinueAsync(CancellationToken.None)
+                    : await engine.RunUntilYieldAsync(CancellationToken.None);
+                waitingForContinue = result.Kind == AdvanceResultKind.WaitForContinue;
             }
 
             Assert.Greater(cards, 0, "expected at least one card draw");

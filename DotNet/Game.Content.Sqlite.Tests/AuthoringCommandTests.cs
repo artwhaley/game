@@ -5,6 +5,7 @@ using System.IO;
 using Microsoft.Data.Sqlite;
 using NUnit.Framework;
 using TruthCardGame.Content;
+using TruthCardGame.Core;
 
 namespace TruthCardGame.Content.Sqlite.Tests
 {
@@ -115,6 +116,46 @@ namespace TruthCardGame.Content.Sqlite.Tests
             stack.Redo();
             Assert.AreEqual(1, Count("session_graph_node WHERE id='d1'"));
             Assert.AreEqual(1, Count("wpf_session_node_layout WHERE node_id='d1'"));
+        }
+
+        [Test]
+        public void ActionInstances_AddEditReorderRemove_UndoRestoresTypedRows()
+        {
+            PhaseRepository.CreateWithEntry(_connection, "p1", "Phase");
+            var action = new ActionNodeDefinition
+            {
+                Id = "action",
+                Sequence = new ActionSequenceDefinition { Id = "action-sequence" },
+            };
+            action.Outputs.Add(new GraphOutputDefinition { Id = "action-out", Kind = GraphPortKind.Normal });
+            PhaseGraphRepository.AddNode(_connection, "p1", action);
+
+            var stack = new AuthoringCommandStack();
+            stack.PushOrMerge(new AddActionInstanceCommand(Conn, action.Sequence.Id,
+                ActionOwnerScope.PhaseActionSequence, ActionTypeKeys.WaitForContinue, "wait"));
+            stack.PushOrMerge(new AddActionInstanceCommand(Conn, action.Sequence.Id,
+                ActionOwnerScope.PhaseActionSequence, ActionTypeKeys.IncrementProgress, "increment"));
+            stack.PushOrMerge(new UpdateActionInstanceCommand(Conn, "increment",
+                ActionTypeKeys.IncrementProgress, "", 10f, "", 25f));
+            stack.PushOrMerge(new MoveActionInstanceCommand(Conn, action.Sequence.Id, "increment", "wait"));
+
+            var loaded = GameContentSnapshotLoader.Load(_connection).Phases.Find(p => p.Id == "p1");
+            var sequence = ((ActionNodeDefinition)loaded.Graph.Nodes.Find(n => n.Id == "action")).Sequence;
+            Assert.IsInstanceOf<IncrementProgressInstanceDefinition>(sequence.Instances[0]);
+            Assert.AreEqual(25f, ((IncrementProgressInstanceDefinition)sequence.Instances[0]).Amount);
+            Assert.IsInstanceOf<WaitForContinueInstanceDefinition>(sequence.Instances[1]);
+
+            var removed = sequence.Instances[0];
+            stack.PushOrMerge(new RemoveActionInstanceCommand(Conn, action.Sequence.Id, removed, 0));
+            var afterRemove = GameContentSnapshotLoader.Load(_connection).Phases.Find(p => p.Id == "p1");
+            Assert.AreEqual(1, ((ActionNodeDefinition)afterRemove.Graph.Nodes.Find(n => n.Id == "action"))
+                .Sequence.Instances.Count);
+            stack.Undo();
+            var restored = GameContentSnapshotLoader.Load(_connection).Phases.Find(p => p.Id == "p1");
+            var restoredSequence = ((ActionNodeDefinition)restored.Graph.Nodes.Find(n => n.Id == "action")).Sequence;
+            Assert.AreEqual(2, restoredSequence.Instances.Count);
+            Assert.AreEqual("increment", restoredSequence.Instances[0].Id);
+            Assert.AreEqual(25f, ((IncrementProgressInstanceDefinition)restoredSequence.Instances[0]).Amount);
         }
 
         [Test]

@@ -36,9 +36,8 @@ namespace TruthCardGame
 
         /// <summary>
         /// Conversion to the v2 card shape: one owned Action sequence whose
-        /// instances are this card's own (never shared). Cards without an
-        /// authored progress action get the v2 default IncrementProgress(+10)
-        /// appended, matching the portable card contract so phases can complete.
+        /// instances are this card's own (never shared). Pacing and progress
+        /// are ordinary authored instances; conversion never injects either.
         /// </summary>
         public TruthCardGame.Content.CardDefinition ToDefinition(UnityContentGraphBuilder builder)
         {
@@ -53,13 +52,6 @@ namespace TruthCardGame
                     definition.Sequence.Instances.Add(action.ToDefinition(builder));
                 }
             }
-            // v2 default: cards without an authored progress action get the
-            // portable IncrementProgress(+10) appended so phases can complete.
-            definition.Sequence.Instances.Add(new TruthCardGame.Content.IncrementProgressInstanceDefinition
-            {
-                Id = id + "-default-progress",
-                Amount = 10f
-            });
             return definition;
         }
     }

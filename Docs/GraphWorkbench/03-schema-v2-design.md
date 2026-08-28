@@ -272,7 +272,9 @@ Add/replace with:
 card.action_sequence_id FK action_sequence
 ```
 
-New Card creation creates sequence + default `increment_phase_progress(amount=10)` Action Instance.
+New Card creation creates an owned sequence with default `wait_for_continue`
+followed by `increment_phase_progress(amount=10)` Action Instances. Both are
+ordinary editable instances.
 
 Legacy `card_action` and top-level `action*` become ignored/deprecated after migration.
 
@@ -302,7 +304,9 @@ Transform current sample Session/Phase/Card content to runnable v2 data:
 - standard migrated Phase exports at least `Complete` and optionally `Fail`;
 - standard low graph may be `Entry -> CardExecutor -> Progress>=100? -> GOTO Complete / loop` (and a Happiness<10 fail check if useful to exercise Temperature/exit wiring);
 - current Card configured Actions are cloned into per-Card Action Instances;
-- append default `Increment Phase Progress +10` to each migrated Card so sample flow progresses;
+- append explicit `WaitForContinue` and `Increment Phase Progress +10` instances
+  to each newly authored Card; migration preserves existing authored sequences
+  and does not blindly mutate arbitrary future Cards;
 - convert existing Choice Action to per-instance PromptChoice with option Action sequences;
 - preserve cutscene Resource IDs.
 

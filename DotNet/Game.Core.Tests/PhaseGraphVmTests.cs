@@ -26,6 +26,13 @@ namespace TruthCardGame.Core.Tests
         public void SetUp()
         {
             _content = SampleContent.Create();
+            // These tests exercise low-level graph traversal. Keep the sample
+            // card fixtures unpaced here; explicit WaitForContinue behavior has
+            // dedicated coverage in RunUntilYieldRemediationTests.
+            foreach (var card in _content.Cards)
+            {
+                card.Sequence.Instances.RemoveAll(instance => instance is WaitForContinueInstanceDefinition);
+            }
             _catalog = new ContentCatalog(_content);
             _tracker = new BackgroundActionTracker(null);
             _services = new CoreServices(new FakeDelayService());
@@ -57,50 +64,42 @@ namespace TruthCardGame.Core.Tests
         // ---------- standard progress loop ----------
 
         [Test]
-        public async Task StandardLoop_YieldsOneCardPerAdvance_ThenTransfersOnComplete()
+        public async Task StandardLoop_RunsAllCardsThenTransfersOnComplete()
         {
             var vm = Vm(SampleContent.PhaseWarmUp);
             var run = Run(SampleContent.PhaseWarmUp);
+            var cardsStarted = 0;
+            vm.CardStarted += _ => cardsStarted++;
 
-            var results = new List<PhaseAdvanceResult>();
-            for (var i = 0; i < 12; i++)
-            {
-                var result = await Advance(vm, run);
-                results.Add(result);
-                if (result.Outcome != PhaseAdvanceOutcome.CardExecuted) break;
-            }
+            var result = await Advance(vm, run);
 
-            // Cards carry +10 progress; 10 cards hit >=100 and the graph transfers.
-            var cardAdvances = 0;
-            PhaseAdvanceResult final = null;
-            foreach (var result in results)
-            {
-                if (result.Outcome == PhaseAdvanceOutcome.CardExecuted) cardAdvances++;
-                final = result;
-            }
-
-            // 10 cards of +10 reach 100; the 10th advance runs its card then
-            // transfers, so 9 advances report CardExecuted before the transfer.
-            Assert.GreaterOrEqual(cardAdvances, 9, "progress accumulates to the completion threshold");
-            Assert.AreEqual(PhaseAdvanceOutcome.Transferred, final.Outcome, "graph GOTOs Complete at 100 progress");
-            Assert.AreEqual(ActionTransfer.PhaseGoto, final.Transfer.Transfer);
-            Assert.AreEqual($"px-{SampleContent.PhaseWarmUp}-complete", final.Transfer.PhaseExitId);
+            // Cards carry +10 progress; one run crosses all ten card executions
+            // and then follows the completion GOTO without an artificial pause.
+            Assert.AreEqual(10, cardsStarted, "all cards ran in one continuous advance");
+            Assert.AreEqual(100f, run.Progress.Value, "progress accumulates to the completion threshold");
+            Assert.AreEqual(PhaseAdvanceOutcome.Transferred, result.Outcome, "graph GOTOs Complete at 100 progress");
+            Assert.AreEqual(ActionTransfer.PhaseGoto, result.Transfer.Transfer);
+            Assert.AreEqual($"px-{SampleContent.PhaseWarmUp}-complete", result.Transfer.PhaseExitId);
         }
 
         [Test]
-        public async Task OneCardPerAdvance_EvenAcrossCardExecutors()
+        public async Task RunUntilYield_CrossesMultipleCardExecutors()
         {
             // Phase where CardExecutor -> normal -> second CardExecutor (two in a row):
-            // one Advance must execute exactly one card and yield at the second.
+            // one run executes both cards and then reaches the Return transfer.
             var phase = BuildPhase("two-exec", withFail: false);
+            var returnNode = new ReturnNodeDefinition { Id = "n-return" };
+            phase.Graph.Nodes.Add(returnNode);
+            phase.Graph.Edges.Add(Edge("n-exec2-out", "n-return"));
             var vm = new PhaseGraphVm(_content, phase, _services, _tracker);
             var run = Run(phase.Id);
+            var cardsStarted = 0;
+            vm.CardStarted += _ => cardsStarted++;
 
             var result = await Advance(vm, run);
-            Assert.AreEqual(PhaseAdvanceOutcome.CardExecuted, result.Outcome);
-
-            var second = await Advance(vm, run);
-            Assert.AreEqual(PhaseAdvanceOutcome.CardExecuted, second.Outcome, "next Advance draws the second executor's card");
+            Assert.AreEqual(2, cardsStarted, "both card executors ran in one call");
+            Assert.AreEqual(PhaseAdvanceOutcome.Transferred, result.Outcome);
+            Assert.AreEqual(ActionTransfer.Return, result.Transfer.Transfer);
         }
 
         // ---------- action-only / check-before-card ----------
@@ -217,13 +216,15 @@ namespace TruthCardGame.Core.Tests
                 phase.Graph.Nodes.Add(exec);
                 phase.Graph.Edges.Add(Edge("n-entry-out", "n-check"));
                 phase.Graph.Edges.Add(Edge(expectedTrue ? "n-check-true" : "n-check-false", "n-exec"));
-                phase.Graph.Edges.Add(Edge("n-exec-out", "n-check"));
+                phase.Graph.Edges.Add(Edge("n-exec-out", "n-return"));
+                phase.Graph.Nodes.Add(new ReturnNodeDefinition { Id = "n-return" });
 
                 var vm = new PhaseGraphVm(_content, phase, _services, _tracker);
                 var run = Run(phase.Id);
                 var result = await Advance(vm, run);
-                Assert.AreEqual(PhaseAdvanceOutcome.CardExecuted, result.Outcome,
-                    $"op {op} against happiness 50 / {compare} should reach the executor");
+                Assert.AreEqual(PhaseAdvanceOutcome.Transferred, result.Outcome,
+                    $"op {op} against happiness 50 / {compare} should reach and leave the executor");
+                Assert.AreEqual(ActionTransfer.Return, result.Transfer.Transfer);
             }
         }
 
@@ -325,7 +326,7 @@ namespace TruthCardGame.Core.Tests
             var result = await Advance(vm, run);
 
             Assert.AreEqual(PhaseAdvanceOutcome.Error, result.Outcome);
-            StringAssert.Contains("loop guard", result.ErrorMessage);
+            StringAssert.Contains("safety budget", result.ErrorMessage);
         }
 
         // ---------- events ----------
@@ -368,7 +369,6 @@ namespace TruthCardGame.Core.Tests
             phase.Graph.Nodes.Add(exec2);
             phase.Graph.Edges.Add(Edge("n-entry-out", "n-exec1"));
             phase.Graph.Edges.Add(Edge("n-exec1-out", "n-exec2"));
-            phase.Graph.Edges.Add(Edge("n-exec2-out", "n-exec1")); // loop back so the second executor parks after its card
             return phase;
         }
 

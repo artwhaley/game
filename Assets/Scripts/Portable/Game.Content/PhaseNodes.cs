@@ -31,7 +31,7 @@ namespace TruthCardGame.Content
     {
     }
 
-    /// <summary>Card-yield node: executes at most one eligible Card per user Advance budget. No eligible Card is a clear runtime error in v1.</summary>
+    /// <summary>Card-selection node: executes eligible Cards until an authored yield or transfer. No eligible Card is a clear runtime error in v1.</summary>
     public sealed class CardExecutorNodeDefinition : PhaseGraphNodeDefinition
     {
     }

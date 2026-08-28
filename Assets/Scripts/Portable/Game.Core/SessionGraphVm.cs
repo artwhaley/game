@@ -29,6 +29,7 @@ namespace TruthCardGame.Core
         private readonly PhaseRunRngFactory _rngFactory;
         private readonly SessionDefinition _session;
         private readonly ActionExecutor _executor;
+        private readonly int _executionBudget;
 
         private readonly Dictionary<string, GraphNodeDefinition> _nodesById;
         private readonly Dictionary<string, GraphOutputDefinition> _outputsById;
@@ -43,6 +44,12 @@ namespace TruthCardGame.Core
         /// <summary>Set by RETURN: the next loop iteration resumes this saved frame instead of advancing fresh.</summary>
         private ContinuationFrame _pendingResume;
 
+        // SessionDecision option sequences can also contain an explicit wait.
+        // This is separate from the GOTO/RETURN stack: WaitForContinue is not a
+        // call frame and resumes in place on the next RunUntilYield call.
+        private GraphNodeDefinition _suspendedSessionLocus;
+        private IReadOnlyList<ContinuationPoint> _suspendedSessionChain;
+
         public event Action<string> SessionNodeChanged;      // node id
         public event Action<string> PhaseEntered;            // phase id (forwarded)
         public event Action<string> PhaseNodeChanged;        // node id (forwarded)
@@ -54,13 +61,16 @@ namespace TruthCardGame.Core
 
         public SessionGraphVm(
             GameContentDefinition content, string sessionId, CoreServices services,
-            BackgroundActionTracker tracker, PhaseRunRngFactory rngFactory)
+            BackgroundActionTracker tracker, PhaseRunRngFactory rngFactory,
+            int executionBudget = PhaseGraphVm.DefaultExecutionBudget)
         {
             _content = content ?? throw new ArgumentNullException(nameof(content));
             _catalog = new ContentCatalog(content);
             _services = services ?? throw new ArgumentNullException(nameof(services));
             _tracker = tracker ?? throw new ArgumentNullException(nameof(tracker));
             _rngFactory = rngFactory ?? new PhaseRunRngFactory();
+            if (executionBudget <= 0) throw new ArgumentOutOfRangeException(nameof(executionBudget));
+            _executionBudget = executionBudget;
             _session = _catalog.SessionById(sessionId);
             _executor = new ActionExecutor(_tracker);
 
@@ -131,11 +141,17 @@ namespace TruthCardGame.Core
         public IReadOnlyList<(string PhaseId, string NodeId)> ContinuationSummary() => _stack.DebugSummary();
 
         /// <summary>
-        /// Advances the whole session one user-paced step: runs at most one card
-        /// (through whatever phase/transfer/return chain that involves), then
-        /// yields. Fails loudly on runtime content errors.
+        /// Runs the whole session graph until an authored yield, end, or error.
+        /// Card completion alone is not a pause boundary.
         /// </summary>
-        public async Task<SessionAdvanceResult> AdvanceAsync(ActionExecutionContext context, CancellationToken cancellationToken)
+        public Task<SessionAdvanceResult> AdvanceAsync(ActionExecutionContext context, CancellationToken cancellationToken)
+        {
+            return RunUntilYieldAsync(context, cancellationToken);
+        }
+
+        /// <summary>Runs the whole Session graph until an authored wait, end, or error.</summary>
+        public async Task<SessionAdvanceResult> RunUntilYieldAsync(ActionExecutionContext context,
+            CancellationToken cancellationToken)
         {
             if (IsComplete)
             {
@@ -144,7 +160,7 @@ namespace TruthCardGame.Core
 
             try
             {
-                return await AdvanceCoreAsync(context, cancellationToken);
+                return await AdvanceCoreAsync(context, cancellationToken, new GraphExecutionBudget(_executionBudget));
             }
             catch (InvalidOperationException ex)
             {
@@ -153,35 +169,61 @@ namespace TruthCardGame.Core
             }
         }
 
-        private async Task<SessionAdvanceResult> AdvanceCoreAsync(ActionExecutionContext context, CancellationToken cancellationToken)
+        private async Task<SessionAdvanceResult> AdvanceCoreAsync(ActionExecutionContext context,
+            CancellationToken cancellationToken, GraphExecutionBudget budget)
         {
-            var steps = 0;
             while (!IsComplete)
             {
-                if (++steps > PhaseGraphVm.MaxStepsPerAdvance)
-                {
-                    throw new InvalidOperationException(
-                        $"Session '{_session.Id}': loop guard exceeded {PhaseGraphVm.MaxStepsPerAdvance} session steps in one Advance. No silent gameplay loop.");
-                }
+                budget.Consume("session node", sessionId: _session.Id, nodeId: _sessionNode?.Id);
 
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (_pendingResume != null)
+                if (_suspendedSessionLocus != null)
+                {
+                    var locus = _suspendedSessionLocus;
+                    var chain = _suspendedSessionChain;
+                    _suspendedSessionLocus = null;
+                    _suspendedSessionChain = null;
+                    var sessionContext = SessionDecisionContext(context);
+                    var resumed = await _executor.ResumeChainAsync(chain ?? Array.Empty<ContinuationPoint>(),
+                        sessionContext, cancellationToken, budget);
+                    if (resumed.Transfer == ActionTransfer.WaitForContinue)
+                    {
+                        _suspendedSessionLocus = locus;
+                        _suspendedSessionChain = resumed.Continuation;
+                        return SessionAdvanceResult.YieldedForContinue;
+                    }
+                    if (resumed.Transfer != ActionTransfer.None)
+                    {
+                        _sessionNode = locus;
+                        await HandleTransferAsync(resumed, context, cancellationToken);
+                    }
+                    else
+                    {
+                        _sessionNode = FollowNormal(locus);
+                        SessionNodeChanged?.Invoke(_sessionNode.Id);
+                    }
+                }
+                else if (_pendingResume != null)
                 {
                     var frame = _pendingResume;
                     _pendingResume = null;
-                    var resumed = await ResumeFrameAsync(frame, context, cancellationToken);
+                    var resumed = await ResumeFrameAsync(frame, context, cancellationToken, budget);
                     if (resumed != null) return resumed;
                 }
                 else if (_activeRun != null)
                 {
-                    var phaseResult = await _activePhaseVm.AdvanceAsync(_activeRun, context, cancellationToken);
+                    var phaseResult = await _activePhaseVm.RunUntilYieldAsync(_activeRun, context, cancellationToken, budget);
                     var result = await HandlePhaseResultAsync(phaseResult, context, cancellationToken);
                     if (result != null) return result;
                 }
                 else
                 {
-                    await StepSessionNodeAsync(context, cancellationToken);
+                    await StepSessionNodeAsync(context, cancellationToken, budget);
+                    if (_suspendedSessionLocus != null)
+                    {
+                        return SessionAdvanceResult.YieldedForContinue;
+                    }
                 }
             }
 
@@ -194,11 +236,8 @@ namespace TruthCardGame.Core
         {
             switch (phaseResult.Outcome)
             {
-                case PhaseAdvanceOutcome.CardExecuted:
-                    return SessionAdvanceResult.CardExecuted(phaseResult.Card);
-
-                case PhaseAdvanceOutcome.YieldedForCard:
-                    return SessionAdvanceResult.YieldedForCard;
+                case PhaseAdvanceOutcome.YieldedForContinue:
+                    return SessionAdvanceResult.YieldedForContinue;
 
                 case PhaseAdvanceOutcome.Error:
                     return SessionAdvanceResult.Error(phaseResult.ErrorMessage);
@@ -218,7 +257,8 @@ namespace TruthCardGame.Core
 
         // ---------- session node stepping ----------
 
-        private async Task StepSessionNodeAsync(ActionExecutionContext context, CancellationToken cancellationToken)
+        private async Task StepSessionNodeAsync(ActionExecutionContext context, CancellationToken cancellationToken,
+            GraphExecutionBudget budget)
         {
             if (_sessionNode == null)
             {
@@ -244,7 +284,7 @@ namespace TruthCardGame.Core
                     break;
 
                 case SessionDecisionNodeDefinition decision:
-                    await EnterDecisionAsync(decision, context, cancellationToken);
+                    await EnterDecisionAsync(decision, context, cancellationToken, budget);
                     break;
 
                 default:
@@ -262,12 +302,13 @@ namespace TruthCardGame.Core
         {
             var run = new PhaseRun(reference.Id, reference.PhaseId, _rngFactory.Create());
             _activeRun = run;
-            _activePhaseVm = new PhaseGraphVm(_content, _catalog.PhaseById(reference.PhaseId), _services, _tracker);
+            _activePhaseVm = new PhaseGraphVm(_content, _catalog.PhaseById(reference.PhaseId), _services, _tracker, _executionBudget);
             WirePhaseEvents(_activePhaseVm);
             return Task.CompletedTask;
         }
 
-        private async Task EnterDecisionAsync(SessionDecisionNodeDefinition decision, ActionExecutionContext context, CancellationToken cancellationToken)
+        private async Task EnterDecisionAsync(SessionDecisionNodeDefinition decision, ActionExecutionContext context,
+            CancellationToken cancellationToken, GraphExecutionBudget budget)
         {
             if (decision.Options.Count > 3)
             {
@@ -280,7 +321,14 @@ namespace TruthCardGame.Core
             if (selected != null && selected.Sequence != null && selected.Sequence.Instances.Count > 0)
             {
                 var optionContext = SessionDecisionContext(context);
-                var optionResult = await _executor.ExecuteSequenceAsync(selected.Sequence, optionContext, cancellationToken);
+                var optionResult = await _executor.ExecuteSequenceAsync(selected.Sequence, optionContext, cancellationToken, budget);
+                if (optionResult.Transfer == ActionTransfer.WaitForContinue)
+                {
+                    _sessionNode = decision;
+                    _suspendedSessionLocus = decision;
+                    _suspendedSessionChain = optionResult.Continuation;
+                    return;
+                }
                 if (optionResult.Transfer != ActionTransfer.None)
                 {
                     await HandleTransferAsync(optionResult, context, cancellationToken);
@@ -346,7 +394,8 @@ namespace TruthCardGame.Core
             }
 
             // Save the continuation BEFORE transferring.
-            _stack.Push(new ContinuationFrame(_activeRun.CurrentNode, _activeRun, transfer.Continuation, null));
+            _stack.Push(new ContinuationFrame(_activeRun.CurrentNode, _activeRun, transfer.Continuation,
+                transfer.InterruptedCard));
 
             // Resolve through the current placement's projected socket.
             var placement = FindPlacement(_activeRun.PlacementNodeId);
@@ -421,14 +470,22 @@ namespace TruthCardGame.Core
         /// frames resume through the phase VM as before.
         /// </summary>
         private async Task<SessionAdvanceResult> ResumeFrameAsync(
-            ContinuationFrame frame, ActionExecutionContext context, CancellationToken cancellationToken)
+            ContinuationFrame frame, ActionExecutionContext context, CancellationToken cancellationToken,
+            GraphExecutionBudget budget)
         {
             if (frame.PhaseRun == null)
             {
+                _sessionNode = frame.GraphLocus;
                 if (frame.Chain != null && frame.Chain.Count > 0)
                 {
                     var optionContext = SessionDecisionContext(context);
-                    var chainResult = await _executor.ResumeChainAsync(frame.Chain, optionContext, cancellationToken);
+                    var chainResult = await _executor.ResumeChainAsync(frame.Chain, optionContext, cancellationToken, budget);
+                    if (chainResult.Transfer == ActionTransfer.WaitForContinue)
+                    {
+                        _suspendedSessionLocus = frame.GraphLocus;
+                        _suspendedSessionChain = chainResult.Continuation;
+                        return SessionAdvanceResult.YieldedForContinue;
+                    }
                     if (chainResult.Transfer != ActionTransfer.None)
                     {
                         await HandleTransferAsync(chainResult, context, cancellationToken);
@@ -445,7 +502,7 @@ namespace TruthCardGame.Core
             }
 
             var resumeResult = await _activePhaseVm.ResumeFromContinuationAsync(
-                _activeRun, frame.GraphLocus, frame.Chain, context, cancellationToken);
+                _activeRun, frame.GraphLocus, frame.Chain, context, cancellationToken, budget, frame.Card);
             return await HandlePhaseResultAsync(resumeResult, context, cancellationToken);
         }
 
@@ -469,7 +526,7 @@ namespace TruthCardGame.Core
             else
             {
                 _activeRun = frame.PhaseRun;
-                _activePhaseVm = new PhaseGraphVm(_content, _catalog.PhaseById(frame.PhaseRun.PhaseId), _services, _tracker);
+                _activePhaseVm = new PhaseGraphVm(_content, _catalog.PhaseById(frame.PhaseRun.PhaseId), _services, _tracker, _executionBudget);
                 WirePhaseEvents(_activePhaseVm);
             }
             _pendingResume = frame;
@@ -581,8 +638,8 @@ namespace TruthCardGame.Core
 
     public enum SessionAdvanceOutcome
     {
-        CardExecuted,
-        YieldedForCard,
+        /// <summary>An authored WaitForContinue paused the graph.</summary>
+        YieldedForContinue,
         SessionCompleted,
         Error,
     }
@@ -600,13 +657,8 @@ namespace TruthCardGame.Core
             ErrorMessage = error;
         }
 
-        public static SessionAdvanceResult CardExecuted(CardDefinition card)
-        {
-            return new SessionAdvanceResult(SessionAdvanceOutcome.CardExecuted, card, null);
-        }
-
-        public static readonly SessionAdvanceResult YieldedForCard =
-            new SessionAdvanceResult(SessionAdvanceOutcome.YieldedForCard, null, null);
+        public static readonly SessionAdvanceResult YieldedForContinue =
+            new SessionAdvanceResult(SessionAdvanceOutcome.YieldedForContinue, null, null);
 
         public static readonly SessionAdvanceResult SessionCompleted =
             new SessionAdvanceResult(SessionAdvanceOutcome.SessionCompleted, null, null);

@@ -65,6 +65,15 @@ namespace TruthCardGame.Content
         public List<PromptChoiceOptionDefinition> Options { get; set; } = new List<PromptChoiceOptionDefinition>();
     }
 
+    /// <summary>
+    /// Explicit gameplay yield. The current run suspends immediately after this
+    /// instance and resumes at the following instance when the host continues.
+    /// It carries no v1 parameters and never creates a GOTO continuation frame.
+    /// </summary>
+    public sealed class WaitForContinueInstanceDefinition : ActionInstanceDefinition
+    {
+    }
+
     /// <summary>One option of a PromptChoice instance; owns its nested sequence.</summary>
     public sealed class PromptChoiceOptionDefinition
     {

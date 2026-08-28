@@ -38,6 +38,21 @@ namespace TruthCardGame.Content.Sqlite.Tests
         // ---------- phase metadata ----------
 
         [Test]
+        public void CreateWithEntry_CreatesSingularEntryAndInitialLayout()
+        {
+            PhaseRepository.CreateWithEntry(_connection, "p1", "Cold Start");
+
+            var graph = GameContentSnapshotLoader.Load(_connection).Phases.Find(p => p.Id == "p1").Graph;
+            Assert.AreEqual(1, graph.Nodes.Count);
+            Assert.IsInstanceOf<PhaseEntryNodeDefinition>(graph.Nodes[0]);
+            var layout = AuthoringLayoutRepository.LoadPhaseNodePositions(_connection, "p1");
+            Assert.AreEqual(0, layout[graph.Nodes[0].Id].X, 0.001);
+            Assert.AreEqual(0, layout[graph.Nodes[0].Id].Y, 0.001);
+            Assert.Throws<InvalidOperationException>(() => PhaseGraphRepository.AddNode(
+                _connection, "p1", new PhaseEntryNodeDefinition { Id = "another-entry" }));
+        }
+
+        [Test]
         public void CreateRenameTags_AndLoaderRoundTrip()
         {
             PhaseRepository.Create(_connection, "p1", "Cold Start");
@@ -184,6 +199,15 @@ namespace TruthCardGame.Content.Sqlite.Tests
             var layout = AuthoringLayoutRepository.LoadPhaseNodePositions(_connection, "p1");
             Assert.AreEqual(15, layout["n-entry"].X, 0.001);
             Assert.AreEqual(25, layout["n-entry"].Y, 0.001);
+        }
+
+        [Test]
+        public void RemoveEntry_IsRejected_ByStructuralInvariant()
+        {
+            PhaseRepository.CreateWithEntry(_connection, "p1", "Cold Start");
+            var entry = GameContentSnapshotLoader.Load(_connection).Phases.Find(p => p.Id == "p1").Graph.Nodes[0];
+            Assert.Throws<InvalidOperationException>(() => PhaseGraphRepository.RemoveNode(_connection, "p1", entry.Id));
+            Assert.AreEqual(1, Count("phase_graph_node"));
         }
 
         // ---------- helpers ----------

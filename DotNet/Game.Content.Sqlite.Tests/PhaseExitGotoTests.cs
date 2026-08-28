@@ -1,4 +1,5 @@
 using System;
+using System.Data.Common;
 using System.IO;
 using Microsoft.Data.Sqlite;
 using NUnit.Framework;
@@ -17,6 +18,14 @@ namespace TruthCardGame.Content.Sqlite.Tests
     {
         private string _dbPath;
         private SqliteConnection _connection;
+
+        private Func<DbConnection> Conn => () =>
+        {
+            var connection = new SqliteConnection("Data Source=" + _dbPath);
+            connection.Open();
+            ConnectionInitializer.Initialize(connection);
+            return connection;
+        };
 
         [SetUp]
         public void SetUp()
@@ -157,6 +166,45 @@ namespace TruthCardGame.Content.Sqlite.Tests
         }
 
         [Test]
+        public void PhaseGoto_UnassignedIsNull_AndCanBeAssignedLater()
+        {
+            SetupPhaseWithPlacement();
+            var action = new ActionNodeDefinition
+            {
+                Id = "n-action",
+                Sequence = new ActionSequenceDefinition { Id = "n-action-seq" },
+            };
+            PhaseGraphRepository.AddNode(_connection, "p1", action);
+
+            PhaseGraphRepository.AddPhaseGoto(_connection, "n-action", null);
+            var list = PhaseGraphRepository.ListPhaseGotoInstances(_connection, "n-action");
+            Assert.IsNull(list[0].ExitId);
+            var loadedAction = (ActionNodeDefinition)GameContentSnapshotLoader.Load(_connection)
+                .Phases.Find(p => p.Id == "p1").Graph.Nodes.Find(n => n.Id == "n-action");
+            Assert.IsNull(((PhaseGotoInstanceDefinition)loadedAction.Sequence.Instances[0]).PhaseExitId);
+
+            PhaseGraphRepository.SetPhaseGotoExit(_connection, list[0].InstanceId, "px-fail");
+            Assert.AreEqual("px-fail", PhaseGraphRepository.ListPhaseGotoInstances(_connection, "n-action")[0].ExitId);
+            PhaseGraphRepository.SetPhaseGotoExit(_connection, list[0].InstanceId, null);
+            Assert.IsNull(PhaseGraphRepository.ListPhaseGotoInstances(_connection, "n-action")[0].ExitId);
+        }
+
+        [Test]
+        public void PhaseGoto_NonexistentExitIsRejectedWithoutLeavingOrphanInstance()
+        {
+            SetupPhaseWithPlacement();
+            var action = new ActionNodeDefinition
+            {
+                Id = "n-action",
+                Sequence = new ActionSequenceDefinition { Id = "n-action-seq" },
+            };
+            PhaseGraphRepository.AddNode(_connection, "p1", action);
+
+            Assert.Throws<SqliteException>(() => PhaseGraphRepository.AddPhaseGoto(_connection, "n-action", "missing-exit"));
+            Assert.AreEqual(0, Count("action_instance"));
+        }
+
+        [Test]
         public void RemovePhaseGoto_DeletesInstanceAndSubtypeRow()
         {
             SetupPhaseWithPlacement();
@@ -190,6 +238,36 @@ namespace TruthCardGame.Content.Sqlite.Tests
             Assert.Throws<SqliteException>(() => PhaseExitRepository.Delete(_connection, "px-complete"));
             // The exit survives — we never silently auto-delete an exit.
             Assert.AreEqual(1, Count("phase_exit WHERE id='px-complete'"));
+        }
+
+        [Test]
+        public void ForceDeleteExit_ClearsReferences_AndUndoRestoresExactAssignmentAndEdge()
+        {
+            SetupPhaseWithPlacement();
+            var action = new ActionNodeDefinition
+            {
+                Id = "n-action",
+                Sequence = new ActionSequenceDefinition { Id = "n-action-seq" },
+            };
+            PhaseGraphRepository.AddNode(_connection, "p1", action);
+            PhaseGraphRepository.AddPhaseGoto(_connection, "n-action", "px-complete");
+            SessionGraphRepository.AddEdge(_connection, "s1", new GraphEdgeDefinition
+            {
+                Id = "se-exact", SourceOutputId = "ref-exit-px-complete", TargetNodeId = "end",
+            });
+
+            var projected = AuthoringUndo.ExitProjectedEdges(_connection, "px-complete");
+            var stack = new AuthoringCommandStack();
+            stack.PushOrMerge(new DeleteExitCommand(Conn, "p1",
+                new PhaseExitDefinition { Id = "px-complete", Name = "Complete" }, 0, projected));
+
+            Assert.AreEqual(0, Count("phase_exit WHERE id='px-complete'"));
+            Assert.IsNull(AuthoringUndo.GetPhaseGotoExit(_connection, "n-action-goto-0"));
+            Assert.AreEqual(0, Count("session_graph_edge WHERE id='se-exact'"));
+
+            stack.Undo();
+            Assert.AreEqual("px-complete", AuthoringUndo.GetPhaseGotoExit(_connection, "n-action-goto-0"));
+            Assert.AreEqual(1, Count("session_graph_edge WHERE id='se-exact' AND session_id='s1'"));
         }
 
         // ---------- helpers ----------

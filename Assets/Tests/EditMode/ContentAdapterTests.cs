@@ -10,8 +10,8 @@ namespace TruthCardGame.Tests
     /// EditMode tests for ScriptableObject → portable reference graph
     /// conversion through UnityContentGraphBuilder (Ticket 11). Proves the
     /// serialized asset shells convert to the v2 shape: action occurrences
-    /// become owned instances, cards own sequences with the default progress
-    /// instance, phases build the standard executable graph, sessions compose
+    /// become owned instances, cards preserve only authored sequence entries,
+    /// phases build the standard executable graph, sessions compose
     /// PhaseReferences, shared-SO-once collection, duplicate-id failures, and
     /// the cutscene registry bridge.
     /// </summary>
@@ -275,7 +275,7 @@ namespace TruthCardGame.Tests
         // ---------- cards / deck / session ----------
 
         [Test]
-        public void Card_Converts_OwnedSequence_WithDefaultProgress()
+        public void Card_Converts_OwnedSequence_WithoutImplicitProgress()
         {
             var debug = ScriptableObject.CreateInstance<DebugAction>();
             Set(debug, "message", "d");
@@ -292,11 +292,26 @@ namespace TruthCardGame.Tests
             Assert.AreEqual(card.Id, definition.Id);
             Assert.AreEqual("The Card", definition.Title);
             CollectionAssert.AreEqual(new[] { "party", "truth" }, definition.Tags.ToArray());
-            // Null entries skipped; the authored action becomes an instance; the
-            // v2 default progress instance is appended so phases can complete.
-            Assert.AreEqual(2, definition.Sequence.Instances.Count);
+            // Null entries are skipped; conversion does not invent a hidden
+            // progress action. Pacing/progress must be authored in the Card.
+            Assert.AreEqual(1, definition.Sequence.Instances.Count);
             Assert.AreEqual(debug.Id, definition.Sequence.Instances[0].Id);
-            Assert.IsInstanceOf<Content.IncrementProgressInstanceDefinition>(definition.Sequence.Instances[1]);
+        }
+
+        [Test]
+        public void ExplicitPacingActions_ConvertToOwnedInstances()
+        {
+            var wait = ScriptableObject.CreateInstance<WaitForContinueAction>();
+            var progress = ScriptableObject.CreateInstance<IncrementProgressAction>();
+            wait.EnsureId();
+            progress.EnsureId();
+            Set(progress, "amount", 10f);
+
+            var waitDefinition = (Content.WaitForContinueInstanceDefinition)wait.ToDefinition(Builder());
+            var progressDefinition = (Content.IncrementProgressInstanceDefinition)progress.ToDefinition(Builder());
+
+            Assert.IsTrue(waitDefinition.IsBlocking);
+            Assert.AreEqual(10f, progressDefinition.Amount);
         }
 
         [Test]

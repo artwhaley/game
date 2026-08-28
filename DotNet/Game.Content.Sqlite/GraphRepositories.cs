@@ -14,9 +14,19 @@ namespace TruthCardGame.Content.Sqlite
     /// </summary>
     public static class PhaseGraphRepository
     {
+        /// <remarks>
+        /// Import/restore API only. Normal Workbench edits use AddNode, remove,
+        /// and semantic commands so stable IDs and host extension rows are not
+        /// replaced wholesale.
+        /// </remarks>
         public static void ReplaceGraph(DbConnection connection, string phaseId, PhaseGraphDefinition graph)
         {
             if (graph == null) throw new ArgumentNullException(nameof(graph));
+            var entryCount = 0;
+            foreach (var node in graph.Nodes)
+                if (node is PhaseEntryNodeDefinition) entryCount++;
+            if (entryCount != 1)
+                throw new InvalidOperationException($"Phase '{phaseId}' must have exactly one Entry node (found {entryCount}).");
 
             using (var transaction = connection.BeginTransaction())
             {
@@ -52,6 +62,9 @@ namespace TruthCardGame.Content.Sqlite
 
         public static void RemoveNode(DbConnection connection, string phaseId, string nodeId)
         {
+            var nodeType = ReadNodeType(connection, "phase_graph_node", nodeId, phaseId);
+            if (nodeType == "Entry")
+                throw new InvalidOperationException("The Phase Entry node is singular and cannot be deleted.");
             Sql.Execute(connection, null,
                 "DELETE FROM phase_graph_node WHERE id = @node AND phase_id = @phase;",
                 ("node", nodeId), ("phase", phaseId));
@@ -66,6 +79,15 @@ namespace TruthCardGame.Content.Sqlite
         {
             if (node == null) throw new ArgumentNullException(nameof(node));
 
+            if (node is PhaseEntryNodeDefinition)
+            {
+                var existing = Convert.ToInt32(SqlScalar(connection,
+                    "SELECT COUNT(*) FROM phase_graph_node WHERE phase_id = @phase AND node_type = 'Entry';",
+                    ("phase", phaseId)));
+                if (existing > 0)
+                    throw new InvalidOperationException("A phase may contain exactly one Entry node.");
+            }
+
             using (var transaction = connection.BeginTransaction())
             {
                 try
@@ -78,6 +100,29 @@ namespace TruthCardGame.Content.Sqlite
                     transaction.Rollback();
                     throw;
                 }
+            }
+        }
+
+        private static string ReadNodeType(DbConnection connection, string table, string nodeId, string parentId)
+        {
+            return Convert.ToString(SqlScalar(connection,
+                $"SELECT node_type FROM {table} WHERE id = @node AND phase_id = @phase;",
+                ("node", nodeId), ("phase", parentId)));
+        }
+
+        private static object SqlScalar(DbConnection connection, string sql, params (string Name, object Value)[] parameters)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = sql;
+                foreach (var parameter in parameters)
+                {
+                    var dbParameter = command.CreateParameter();
+                    dbParameter.ParameterName = parameter.Name;
+                    dbParameter.Value = parameter.Value ?? DBNull.Value;
+                    command.Parameters.Add(dbParameter);
+                }
+                return command.ExecuteScalar();
             }
         }
 
@@ -117,7 +162,7 @@ namespace TruthCardGame.Content.Sqlite
                 "JOIN phase_node_action pna ON pna.action_sequence_id = ai.action_sequence_id " +
                 "JOIN action_instance_phase_goto g ON g.action_instance_id = ai.id " +
                 "WHERE pna.node_id = @node ORDER BY ai.ordinal;",
-                reader => result.Add((reader.GetString(0), reader.GetString(1))),
+                reader => result.Add((reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1))),
                 ("node", nodeId));
             return result;
         }
@@ -140,7 +185,6 @@ namespace TruthCardGame.Content.Sqlite
         public static void AddPhaseGotoToOption(DbConnection connection, string optionId, string exitId)
         {
             if (string.IsNullOrEmpty(optionId)) throw new ArgumentException("Option id required.", nameof(optionId));
-            if (string.IsNullOrEmpty(exitId)) throw new ArgumentException("Exit id required.", nameof(exitId));
 
             var sequenceId = "";
             Sql.QueryAll(connection,
@@ -159,24 +203,35 @@ namespace TruthCardGame.Content.Sqlite
         {
             var nextOrdinal = NextInstanceOrdinal(connection, sequenceId);
             var instanceId = idPrefix + "goto-" + nextOrdinal;
-
-            Sql.Execute(connection, null,
-                "INSERT INTO action_instance (id, action_sequence_id, ordinal, action_type, is_blocking) " +
-                "VALUES (@id, @seq, @ordinal, @type, 1);",
-                ("id", instanceId), ("seq", sequenceId), ("ordinal", nextOrdinal),
-                ("type", ActionType.PhaseGotoV2));
-            Sql.Execute(connection, null,
-                "INSERT INTO action_instance_phase_goto (action_instance_id, phase_exit_id) VALUES (@i, @exit);",
-                ("i", instanceId), ("exit", exitId));
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    Sql.Execute(connection, transaction,
+                        "INSERT INTO action_instance (id, action_sequence_id, ordinal, action_type, is_blocking) " +
+                        "VALUES (@id, @seq, @ordinal, @type, 1);",
+                        ("id", instanceId), ("seq", sequenceId), ("ordinal", nextOrdinal),
+                        ("type", ActionType.PhaseGotoV2));
+                    Sql.Execute(connection, transaction,
+                        "INSERT INTO action_instance_phase_goto (action_instance_id, phase_exit_id) VALUES (@i, @exit);",
+                        ("i", instanceId),
+                        ("exit", string.IsNullOrEmpty(exitId) ? DBNull.Value : (object)exitId));
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
         }
 
         /// <summary>Re-points an existing PhaseGoto instance at a different exit (inline ComboBox).</summary>
         public static void SetPhaseGotoExit(DbConnection connection, string instanceId, string exitId)
         {
-            if (string.IsNullOrEmpty(exitId)) throw new ArgumentException("Exit id required.", nameof(exitId));
             Sql.Execute(connection, null,
                 "UPDATE action_instance_phase_goto SET phase_exit_id = @exit WHERE action_instance_id = @i;",
-                ("exit", exitId), ("i", instanceId));
+                ("exit", string.IsNullOrEmpty(exitId) ? DBNull.Value : (object)exitId), ("i", instanceId));
         }
 
         /// <summary>Deletes one PhaseGoto instance and its subtype row from the node's sequence.</summary>
@@ -240,9 +295,19 @@ namespace TruthCardGame.Content.Sqlite
     /// </summary>
     public static class SessionGraphRepository
     {
+        /// <remarks>
+        /// Import/restore API only. Normal Workbench edits use AddNode, remove,
+        /// and semantic commands so stable IDs and host extension rows are not
+        /// replaced wholesale.
+        /// </remarks>
         public static void ReplaceGraph(DbConnection connection, string sessionId, SessionGraphDefinition graph)
         {
             if (graph == null) throw new ArgumentNullException(nameof(graph));
+            var startCount = 0;
+            foreach (var node in graph.Nodes)
+                if (node is SessionStartNodeDefinition) startCount++;
+            if (startCount != 1)
+                throw new InvalidOperationException($"Session '{sessionId}' must have exactly one Start node (found {startCount}).");
 
             using (var transaction = connection.BeginTransaction())
             {
@@ -278,6 +343,9 @@ namespace TruthCardGame.Content.Sqlite
 
         public static void RemoveNode(DbConnection connection, string sessionId, string nodeId)
         {
+            var nodeType = ReadNodeType(connection, nodeId, sessionId);
+            if (nodeType == "Start")
+                throw new InvalidOperationException("The Session Start node is singular and cannot be deleted.");
             Sql.Execute(connection, null,
                 "DELETE FROM session_graph_node WHERE id = @node AND session_id = @session;",
                 ("node", nodeId), ("session", sessionId));
@@ -291,6 +359,15 @@ namespace TruthCardGame.Content.Sqlite
         public static void AddNode(DbConnection connection, string sessionId, SessionGraphNodeDefinition node)
         {
             if (node == null) throw new ArgumentNullException(nameof(node));
+
+            if (node is SessionStartNodeDefinition)
+            {
+                var existing = Convert.ToInt32(SqlScalar(connection,
+                    "SELECT COUNT(*) FROM session_graph_node WHERE session_id = @session AND node_type = 'Start';",
+                    ("session", sessionId)));
+                if (existing > 0)
+                    throw new InvalidOperationException("A session may contain exactly one Start node.");
+            }
 
             using (var transaction = connection.BeginTransaction())
             {
@@ -335,6 +412,33 @@ namespace TruthCardGame.Content.Sqlite
         private static void RequireId(string id, string what)
         {
             if (string.IsNullOrEmpty(id)) throw new InvalidOperationException(what + " has an empty id.");
+        }
+
+        private static string ReadNodeType(DbConnection connection, string nodeId, string sessionId)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "SELECT node_type FROM session_graph_node WHERE id = @node AND session_id = @session;";
+                var node = command.CreateParameter(); node.ParameterName = "node"; node.Value = nodeId; command.Parameters.Add(node);
+                var session = command.CreateParameter(); session.ParameterName = "session"; session.Value = sessionId; command.Parameters.Add(session);
+                return Convert.ToString(command.ExecuteScalar());
+            }
+        }
+
+        private static object SqlScalar(DbConnection connection, string sql, params (string Name, object Value)[] parameters)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = sql;
+                foreach (var parameter in parameters)
+                {
+                    var dbParameter = command.CreateParameter();
+                    dbParameter.ParameterName = parameter.Name;
+                    dbParameter.Value = parameter.Value ?? DBNull.Value;
+                    command.Parameters.Add(dbParameter);
+                }
+                return command.ExecuteScalar();
+            }
         }
     }
 }

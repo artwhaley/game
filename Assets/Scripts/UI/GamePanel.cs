@@ -51,6 +51,13 @@ namespace TruthCardGame
             drawNextButton.interactable = true;
         }
 
+        public void ShowWaitingForContinue(string cardTitle)
+        {
+            this.cardTitle.text = cardTitle;
+            status.text = "Waiting for Continue.";
+            drawNextButton.interactable = true;
+        }
+
         public void HidePrompt()
         {
             if (!_promptActive) return;

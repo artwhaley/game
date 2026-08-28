@@ -26,8 +26,8 @@ Verified against actual source at HEAD of this stack's start. This is the author
 | `CardSelector.cs` | Move/adapt | Selection becomes PhaseRun-local state (fresh RNG object/run via `IRandomSource` factory on spawn); tag include/exclude logic reused against Phase metadata instead of PhaseSlot candidates. |
 | `ActionExecutor.cs` | Replace internals | Executes **instances** dispatched through an explicit `ActionTypeRegistry` (stable keys, scopes, defaults, blocking rules). Legacy configured-action execution disappears. |
 | `CoreServices.cs` / `IRandomSource.cs` / `SystemRandomSource.cs` | Extend | Add RNG factory seam (`Func<IRandomSource>`) so each PhaseRun mints its own source deterministically; existing Delay/Log/Prompt/Cutscene services remain. |
-| `GameSessionEngine.cs` | Adapt facade | Public UX kept where meaningful (`AdvanceOneCardAsync`, `Player`, completion/events); internals delegate to the graph VM; add `SessionSpawnOptions` (temperature overrides, seed/factory) + Events for phase-node context where hosts need it. |
-| `BackgroundActionTracker.cs`, host service interfaces, `Player.cs`, `PlayerStats.cs`, `GameContext.cs`, `AdvanceResult.cs` | Keep/adapt | Retained; `AdvanceResult` may gain richer yield reasons (card-budget yield vs completion); flow-control actions are always blocking per §10 semantics. |
+| `GameSessionEngine.cs` | Adapt facade | `RunUntilYieldAsync` / `ContinueAsync`, `Player`, completion/events; internals delegate to the graph VM; add `SessionSpawnOptions` (temperature overrides, seed/factory) + Events for phase-node context where hosts need it. |
+| `BackgroundActionTracker.cs`, host service interfaces, `Player.cs`, `PlayerStats.cs`, `GameContext.cs`, `AdvanceResult.cs` | Keep/adapt | Retained; `AdvanceResult` reports authored WaitForContinue, completion, busy, and errors; flow-control actions are always blocking per §10 semantics. |
 
 ## 3. SQLite — `DotNet/Game.Content.Sqlite/`
 
@@ -52,7 +52,7 @@ Verified against actual source at HEAD of this stack's start. This is the author
 
 | Current | Fate | Target |
 |---|---|---|
-| `DotNet/Game.ReferenceHost.Wpf/MainWindow.xaml(.cs)` | Evolve (Tickets 12+) | Four-pane Nodify Workbench shell; runtime playing code remains behind preview/debug surfaces. `Nodify 7.3.0` pinned. |
+| `DotNet/Game.ReferenceHost.Wpf/MainWindow.xaml(.cs)` | Evolve (remediation tickets) | Stacked Session/Phase Nodify center shell; runtime playing code remains behind preview/debug surfaces. `Nodify 7.3.0` pinned. |
 | `Assets/Scripts/Game/UnityContentGraphBuilder.cs` + GameManager wiring | Adapt (Ticket 11) | Thin-host builder emits/consumes the v2 graph snapshot; no SQLite provider; presentation stays scriptable-object-driven. |
 
 ## Sequence gates honored

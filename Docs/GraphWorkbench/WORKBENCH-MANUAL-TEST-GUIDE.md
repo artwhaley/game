@@ -16,8 +16,8 @@ source of truth**. To avoid dirtying the committed DB during testing, run with
 
 ## Session authoring (T13)
 
-1. **New Session** → add **+ Start** (singular), **+ Phase** (pick a phase in
-   the Library first — drag one from the Phase list onto the canvas too),
+1. **New Session** already contains its singular **Start** node; add **+ Phase**
+   (pick a phase in the Library first — drag one from the Phase list onto the canvas too),
    **+ Decision**, **+ End**.
 2. **Connect** nodes by dragging from an output socket to a node body. A
    PhaseReference node shows **one projected exit socket per exit** of the
@@ -29,8 +29,8 @@ source of truth**. To avoid dirtying the committed DB during testing, run with
 
 ## Phase authoring (T14–T16)
 
-1. **New Phase** → add **+ Entry** (singular), **+ Draw**, **+ Check**, **+
-   Action**, **+ Decision**, **+ Return**; connect them.
+1. **New Phase** already contains its singular **Entry** node; add **+ Draw**,
+   **+ Check**, **+ Action**, **+ Decision**, **+ Return**; connect them.
 2. **Exits strip** (above the phase canvas): rename any exit; add/delete while
    the phase has ≤1 placement. Renaming never breaks wiring.
 3. Inline editors inside nodes: **Check** (source/operator/literal),
@@ -56,14 +56,16 @@ source of truth**. To avoid dirtying the committed DB during testing, run with
 - Drag a node, type a title/prompt, change a check, add/delete an exit, copy a
   session, make unique — then **Ctrl+Z** repeatedly: each action undoes as one
   step (typing/dragging coalesce). **Ctrl+Y** redoes. Buttons reflect state.
-- Switching sessions/phases clears the history (per-document).
+- Switching sessions/phases preserves the shared history; edits remain undoable
+  across the two graph panes.
 
 ## Live preview / debugger (T19)
 
 1. **Preview ▸** opens the strip. **Start ▶** runs the CURRENT session through
    the real Core engine on a **fresh snapshot** — edit the DB during a run and
    the running snapshot is unaffected.
-2. **Draw Next** advances one card; **Restart ↺** takes a fresh snapshot;
+2. **Continue** resumes after an authored WaitForContinue; cards without Wait
+   flow automatically. **Restart ↺** takes a fresh snapshot;
    **Stop ■** halts.
 3. Watch the amber **node rings** on both canvases follow the run; the
    transfer edge into the current session node highlights; check nodes light
@@ -84,5 +86,5 @@ source of truth**. To avoid dirtying the committed DB during testing, run with
   boxes exist; tabs are future work).
 - The legacy Run Session window has no progress/temperature debug readouts —
   the Preview strip is the debugging surface.
-- Reorder of action instances inside a sequence is not yet exposed in the UI
-  (undo snapshots restore exact ordinals, so the data layer supports it).
+- Action instances can be added, edited by type, reordered, and deleted inline;
+  PhaseGoto exposes an explicit Unassigned state with a red warning.

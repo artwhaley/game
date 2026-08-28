@@ -60,7 +60,10 @@ A Phase is one reusable entity consisting of metadata + exactly one low-level gr
 Node types:
 
 - `PhaseEntry` — exactly one; cannot be deleted; owns Phase metadata editing surface; one normal output.
-- `CardExecutor` — card-yield node; executes at most one card per user Advance budget; one normal output. If no eligible card exists, fail loudly in v1 rather than silently advance a Phase.
+- `CardExecutor` — card-selection node; runs eligible Cards until an authored
+  `WaitForContinue`, transfer, completion, cancellation, or runtime error;
+  one normal output. If no eligible card exists, fail loudly in v1 rather than
+  silently advance a Phase.
 - `VariableCheck` — True/False outputs.
 - `ActionNode` — ordered Action Instance sequence; one normal output.
 - `PhaseDecision` — prompt + up to 3 options, each with ordered Action Instances; one common normal output.
@@ -321,9 +324,13 @@ When a new Card is authored, its initial Action sequence contains one default in
 Increment Phase Progress: +10
 ```
 
-The author may change, move, duplicate, or delete it.
+The author may change, move, duplicate, or delete it. The conventional new-card
+sequence is `WaitForContinue`, then `Increment Phase Progress: +10`, so the
+default experience is user-paced while the progress mutation remains explicit.
 
-If a Card's Action sequence GOTO-like control is ever legal in a given scope, its continuation resumes the remaining Actions before normal completion. In the current v1 scope, Phase GOTO is not offered directly to reusable Cards because Phase exits belong to the containing reusable Phase, not the Card.
+Card Action sequences may contain Phase GOTO. Its continuation preserves the
+Card identity, remaining Action index, PhaseRun, and graph locus; RETURN resumes
+the remaining Actions before CardFinished and normal node completion.
 
 PhaseProgress itself is not clamped; zero/negative mutation is legal.
 
@@ -332,28 +339,28 @@ PhaseProgress itself is not clamped; zero/negative mutation is legal.
 Internal graph nodes normally follow their local output after they complete.
 
 - Entry -> normal output.
-- CardExecutor -> normal output after the one Card finishes.
+- CardExecutor -> normal output after its run completes.
 - ActionNode -> normal output after Action sequence completes normally.
 - Decision -> common normal output after selected option's Actions complete normally.
 - VariableCheck -> True or False.
 
 If GOTO suspends an Action sequence, RETURN resumes at the next Action, then normal node completion continues.
 
-## 19. User-paced Card yield
+## 19. Run-until-yield pacing
 
-Preserve the existing useful behavior: one explicit Advance request executes **at most one Card**.
+`RunUntilYield` executes finite graph work and ordinary Cards continuously until:
 
-A Core `Advance`/`RunUntilYield` call may execute unlimited finite non-card graph work (Entry, checks, Actions, Decisions, transitions) until:
-
-- it reaches a CardExecutor and has not consumed its one-card budget -> select/execute one Card, continue automatic graph work;
-- it later reaches another CardExecutor after a Card was already consumed -> yield before drawing;
+- an authored `WaitForContinue` yields before its next Action;
+- a GOTO/RETURN transfer needs the next call to continue at its saved locus;
 - Session ends;
 - a runtime error occurs;
 - cancellation occurs.
 
-Thus a one-shot/action-only Phase may transition into another Phase and reach its first CardExecutor in the same Advance if no Card was consumed yet.
+`ContinueAsync` resumes the same suspended locus. A Card without WaitForContinue
+does not pause merely because CardFinished was emitted.
 
-Add a generous deterministic node-step guard per Advance to detect accidental infinite non-yield loops and fail loudly rather than hang the Workbench.
+Add a generous deterministic node/action-step guard per run to detect accidental
+infinite non-yield loops and fail loudly rather than hang the Workbench.
 
 ## 20. CardExecutor no-match behavior
 

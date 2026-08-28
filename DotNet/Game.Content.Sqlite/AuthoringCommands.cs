@@ -458,6 +458,83 @@ namespace TruthCardGame.Content.Sqlite
     // Session/Phase metadata
     // ==================================================================
 
+    /// <summary>Creates a session with its singular Start node and layout row.</summary>
+    public sealed class CreateSessionCommand : AuthoringCommandBase
+    {
+        private readonly string _id;
+        private readonly string _title;
+        private readonly string _typeId;
+
+        public CreateSessionCommand(Func<DbConnection> conn, string id, string title, string typeId) : base(conn)
+        {
+            _id = id; _title = title; _typeId = typeId;
+        }
+
+        public override string Name => "Create session";
+        protected override void ExecuteCore(DbConnection connection) => SessionRepository.CreateWithStart(connection, _id, _title, _typeId);
+        protected override void UndoCore(DbConnection connection) => SessionRepository.Delete(connection, _id);
+    }
+
+    /// <summary>Creates a phase with its singular Entry node and layout row.</summary>
+    public sealed class CreatePhaseCommand : AuthoringCommandBase
+    {
+        private readonly string _id;
+        private readonly string _title;
+
+        public CreatePhaseCommand(Func<DbConnection> conn, string id, string title) : base(conn)
+        {
+            _id = id; _title = title;
+        }
+
+        public override string Name => "Create phase";
+        protected override void ExecuteCore(DbConnection connection) => PhaseRepository.CreateWithEntry(connection, _id, _title);
+        protected override void UndoCore(DbConnection connection) => PhaseRepository.Delete(connection, _id);
+    }
+
+    /// <summary>Deletes a session and restores its full graph/layout snapshot on undo.</summary>
+    public sealed class DeleteSessionCommand : AuthoringCommandBase
+    {
+        private readonly SessionDefinition _session;
+        private readonly List<(string NodeId, double X, double Y)> _layout;
+
+        public DeleteSessionCommand(Func<DbConnection> conn, SessionDefinition session,
+            List<(string NodeId, double X, double Y)> layout) : base(conn)
+        {
+            _session = session; _layout = layout;
+        }
+
+        public override string Name => "Delete session";
+        protected override void ExecuteCore(DbConnection connection) => SessionRepository.Delete(connection, _session.Id);
+        protected override void UndoCore(DbConnection connection)
+        {
+            ReuseWriter.WriteClonedSession(connection, _session);
+            foreach (var pair in _layout)
+                AuthoringLayoutRepository.SaveSessionNodePosition(connection, _session.Id, pair.NodeId, pair.X, pair.Y);
+        }
+    }
+
+    /// <summary>Deletes a phase and restores its full graph/layout snapshot on undo.</summary>
+    public sealed class DeletePhaseCommand : AuthoringCommandBase
+    {
+        private readonly PhaseDefinition _phase;
+        private readonly List<(string NodeId, double X, double Y)> _layout;
+
+        public DeletePhaseCommand(Func<DbConnection> conn, PhaseDefinition phase,
+            List<(string NodeId, double X, double Y)> layout) : base(conn)
+        {
+            _phase = phase; _layout = layout;
+        }
+
+        public override string Name => "Delete phase";
+        protected override void ExecuteCore(DbConnection connection) => PhaseRepository.Delete(connection, _phase.Id);
+        protected override void UndoCore(DbConnection connection)
+        {
+            ReuseWriter.WriteClonedPhase(connection, _phase);
+            foreach (var pair in _layout)
+                AuthoringLayoutRepository.SavePhaseNodePosition(connection, _phase.Id, pair.NodeId, pair.X, pair.Y);
+        }
+    }
+
     /// <summary>Session title rename (coalesced per keystroke burst).</summary>
     public sealed class RenameSessionCommand : AuthoringCommandBase
     {
@@ -502,6 +579,44 @@ namespace TruthCardGame.Content.Sqlite
 
         protected override void ExecuteCore(DbConnection connection) => PhaseRepository.Rename(connection, _phaseId, _newTitle);
         protected override void UndoCore(DbConnection connection) => PhaseRepository.Rename(connection, _phaseId, _oldTitle);
+    }
+
+    /// <summary>Replaces both phase tag lists as one coalesced metadata edit.</summary>
+    public sealed class SetPhaseTagsCommand : AuthoringCommandBase
+    {
+        private readonly string _phaseId;
+        private readonly List<string> _oldInclude;
+        private readonly List<string> _oldExclude;
+        private List<string> _newInclude;
+        private List<string> _newExclude;
+
+        public SetPhaseTagsCommand(Func<DbConnection> conn, string phaseId,
+            IReadOnlyList<string> oldInclude, IReadOnlyList<string> oldExclude,
+            IReadOnlyList<string> newInclude, IReadOnlyList<string> newExclude) : base(conn)
+        {
+            _phaseId = phaseId;
+            _oldInclude = new List<string>(oldInclude ?? new List<string>());
+            _oldExclude = new List<string>(oldExclude ?? new List<string>());
+            _newInclude = new List<string>(newInclude ?? new List<string>());
+            _newExclude = new List<string>(newExclude ?? new List<string>());
+        }
+
+        public override string Name => "Edit phase tags";
+        public override string MergeKey => "phasetags:" + _phaseId;
+
+        public override bool Merge(IAuthoringCommand incoming)
+        {
+            if (!(incoming is SetPhaseTagsCommand tags)) return false;
+            _newInclude = new List<string>(tags._newInclude);
+            _newExclude = new List<string>(tags._newExclude);
+            return true;
+        }
+
+        protected override void ExecuteCore(DbConnection connection) =>
+            PhaseRepository.ReplaceAllTags(connection, _phaseId, _newInclude, _newExclude);
+
+        protected override void UndoCore(DbConnection connection) =>
+            PhaseRepository.ReplaceAllTags(connection, _phaseId, _oldInclude, _oldExclude);
     }
 
     /// <summary>Session type change (discrete ComboBox pick).</summary>
@@ -700,7 +815,8 @@ namespace TruthCardGame.Content.Sqlite
         private readonly string _exitName;
         private PhaseExitDefinition _exit;
         private int _ordinal = -1;
-        private List<(string PortId, string TargetNodeId)> _projectedEdges = new List<(string, string)>();
+        private List<ProjectedEdgeSnapshot> _projectedEdges = new List<ProjectedEdgeSnapshot>();
+        private List<PhaseGotoSnapshot> _gotoSnapshots = new List<PhaseGotoSnapshot>();
 
         public DeleteExitOnCloneCommand(Func<DbConnection> conn, string newPhaseId, string exitName) : base(conn)
         {
@@ -717,7 +833,8 @@ namespace TruthCardGame.Content.Sqlite
             _exit = match;
             _ordinal = exits.IndexOf(match);
             _projectedEdges = AuthoringUndo.ExitProjectedEdges(connection, match.Id);
-            PhaseExitRepository.Delete(connection, match.Id);
+            _gotoSnapshots = AuthoringUndo.SnapshotPhaseGotosByExit(connection, match.Id);
+            PhaseExitRepository.ForceDelete(connection, match.Id);
         }
 
         protected override void UndoCore(DbConnection connection)
@@ -729,26 +846,30 @@ namespace TruthCardGame.Content.Sqlite
             {
                 Sql.Execute(connection, null,
                     "INSERT INTO session_graph_edge (id, session_id, source_port_id, target_node_id) " +
-                    "SELECT 'se-' || lower(hex(randomblob(8))), session_id, @port, @target " +
-                    "FROM session_graph_node WHERE id = @target;",
+                    "VALUES (@id, @session, @port, @target);",
+                    ("id", edge.EdgeId), ("session", edge.SessionId),
                     ("port", edge.PortId), ("target", edge.TargetNodeId));
             }
+            foreach (var gotoSnapshot in _gotoSnapshots)
+                PhaseGraphRepository.SetPhaseGotoExit(connection, gotoSnapshot.InstanceId, gotoSnapshot.ExitId);
         }
     }
 
     /// <summary>
     /// Deletes an exit; undo restores the exit, its projected sockets and any
-    /// edges wired from them (edge ids regenerated) as one semantic edit.
+    /// edges wired from them as one semantic edit. Used GOTO assignments are
+    /// cleared on execute and restored with the original exit id on undo.
     /// </summary>
     public sealed class DeleteExitCommand : AuthoringCommandBase
     {
         private readonly string _phaseId;
         private readonly PhaseExitDefinition _exit;
         private readonly int _ordinal;
-        private readonly List<(string PortId, string TargetNodeId)> _projectedEdges;
+        private readonly List<ProjectedEdgeSnapshot> _projectedEdges;
+        private List<PhaseGotoSnapshot> _gotoSnapshots = new List<PhaseGotoSnapshot>();
 
         public DeleteExitCommand(Func<DbConnection> conn, string phaseId, PhaseExitDefinition exit, int ordinal,
-            List<(string PortId, string TargetNodeId)> projectedEdges) : base(conn)
+            List<ProjectedEdgeSnapshot> projectedEdges) : base(conn)
         {
             _phaseId = phaseId; _exit = exit; _ordinal = ordinal; _projectedEdges = projectedEdges;
         }
@@ -757,7 +878,8 @@ namespace TruthCardGame.Content.Sqlite
 
         protected override void ExecuteCore(DbConnection connection)
         {
-            PhaseExitRepository.Delete(connection, _exit.Id);
+            _gotoSnapshots = AuthoringUndo.SnapshotPhaseGotosByExit(connection, _exit.Id);
+            PhaseExitRepository.ForceDelete(connection, _exit.Id);
         }
 
         protected override void UndoCore(DbConnection connection)
@@ -768,16 +890,117 @@ namespace TruthCardGame.Content.Sqlite
             {
                 Sql.Execute(connection, null,
                     "INSERT INTO session_graph_edge (id, session_id, source_port_id, target_node_id) " +
-                    "SELECT 'se-' || lower(hex(randomblob(8))), session_id, @port, @target " +
-                    "FROM session_graph_node WHERE id = @target;",
+                    "VALUES (@id, @session, @port, @target);",
+                    ("id", edge.EdgeId), ("session", edge.SessionId),
                     ("port", edge.PortId), ("target", edge.TargetNodeId));
             }
+            foreach (var gotoSnapshot in _gotoSnapshots)
+                PhaseGraphRepository.SetPhaseGotoExit(connection, gotoSnapshot.InstanceId, gotoSnapshot.ExitId);
         }
     }
 
     // ==================================================================
     // Action instances (PhaseGoto / SessionGoto)
     // ==================================================================
+
+    /// <summary>Adds one registry-defined Action Instance to an owned sequence.</summary>
+    public sealed class AddActionInstanceCommand : AuthoringCommandBase
+    {
+        private readonly string _sequenceId;
+        private readonly ActionOwnerScope _scope;
+        private readonly string _typeKey;
+        private readonly string _instanceId;
+
+        public AddActionInstanceCommand(Func<DbConnection> conn, string sequenceId, ActionOwnerScope scope,
+            string typeKey, string instanceId) : base(conn)
+        {
+            _sequenceId = sequenceId; _scope = scope; _typeKey = typeKey; _instanceId = instanceId;
+        }
+
+        public override string Name => "Add action";
+        protected override void ExecuteCore(DbConnection connection) =>
+            ActionInstanceRepository.AppendDefault(connection, _sequenceId, _scope, _typeKey, _instanceId);
+        protected override void UndoCore(DbConnection connection) => ActionInstanceRepository.Delete(connection, _instanceId);
+    }
+
+    /// <summary>Deletes one explicit Action Instance and restores its exact ordinal on undo.</summary>
+    public sealed class RemoveActionInstanceCommand : AuthoringCommandBase
+    {
+        private readonly string _sequenceId;
+        private readonly ActionInstanceDefinition _instance;
+        private readonly int _ordinal;
+
+        public RemoveActionInstanceCommand(Func<DbConnection> conn, string sequenceId,
+            ActionInstanceDefinition instance, int ordinal) : base(conn)
+        {
+            _sequenceId = sequenceId; _instance = instance; _ordinal = ordinal;
+        }
+
+        public override string Name => "Remove action";
+        protected override void ExecuteCore(DbConnection connection) => ActionInstanceRepository.Delete(connection, _instance.Id);
+        protected override void UndoCore(DbConnection connection)
+        {
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    ActionSequenceWriter.WriteSingleAt(connection, transaction, _sequenceId, _instance, _ordinal);
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+    }
+
+    /// <summary>Updates the explicit parameter fields of one Action Instance.</summary>
+    public sealed class UpdateActionInstanceCommand : AuthoringCommandBase
+    {
+        private readonly string _instanceId;
+        private readonly string _typeKey;
+        private readonly string _oldText;
+        private readonly float _oldNumber;
+        private string _newText;
+        private float _newNumber;
+
+        public UpdateActionInstanceCommand(Func<DbConnection> conn, string instanceId, string typeKey,
+            string oldText, float oldNumber, string newText, float newNumber) : base(conn)
+        {
+            _instanceId = instanceId; _typeKey = typeKey; _oldText = oldText; _oldNumber = oldNumber;
+            _newText = newText; _newNumber = newNumber;
+        }
+
+        public override string Name => "Edit action";
+        public override string MergeKey => "action:" + _instanceId + ":" + _typeKey;
+        public override bool Merge(IAuthoringCommand incoming)
+        {
+            if (incoming is UpdateActionInstanceCommand update && update._instanceId == _instanceId && update._typeKey == _typeKey)
+            {
+                _newText = update._newText; _newNumber = update._newNumber; return true;
+            }
+            return false;
+        }
+        protected override void ExecuteCore(DbConnection connection) => ActionInstanceRepository.Update(connection, _instanceId, _typeKey, _newText, _newNumber);
+        protected override void UndoCore(DbConnection connection) => ActionInstanceRepository.Update(connection, _instanceId, _typeKey, _oldText, _oldNumber);
+    }
+
+    /// <summary>Swaps adjacent Action Instance ordinals.</summary>
+    public sealed class MoveActionInstanceCommand : AuthoringCommandBase
+    {
+        private readonly string _sequenceId;
+        private readonly string _instanceId;
+        private readonly string _otherInstanceId;
+
+        public MoveActionInstanceCommand(Func<DbConnection> conn, string sequenceId, string instanceId, string otherInstanceId)
+            : base(conn) { _sequenceId = sequenceId; _instanceId = instanceId; _otherInstanceId = otherInstanceId; }
+
+        public override string Name => "Reorder action";
+        protected override void ExecuteCore(DbConnection connection) => ActionInstanceRepository.Move(connection, _sequenceId, _instanceId, _otherInstanceId);
+        protected override void UndoCore(DbConnection connection) => ActionInstanceRepository.Move(connection, _sequenceId, _otherInstanceId, _instanceId);
+    }
 
     /// <summary>Appends a PhaseGoto to an Action node's sequence; undo removes it (deterministic instance id).</summary>
     public sealed class AddPhaseGotoCommand : AuthoringCommandBase

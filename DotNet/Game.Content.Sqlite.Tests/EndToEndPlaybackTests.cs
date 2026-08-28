@@ -115,13 +115,18 @@ namespace TruthCardGame.Content.Sqlite.Tests
             var cardsDrawn = 0;
             engine.CardStarted += _ => cardsDrawn++;
             var guard = 0;
+            var waitingForContinue = false;
             while (!engine.IsComplete)
             {
                 guard++;
                 Assert.Less(guard, 200, "end-to-end run did not complete (loop guard)");
-                var result = engine.AdvanceOneCardAsync(default).GetAwaiter().GetResult();
+                var result = (waitingForContinue
+                        ? engine.ContinueAsync(default)
+                        : engine.RunUntilYieldAsync(default))
+                    .GetAwaiter().GetResult();
+                waitingForContinue = result.Kind == TruthCardGame.Core.AdvanceResultKind.WaitForContinue;
                 Assert.That(result.Kind, Is.AnyOf(
-                    TruthCardGame.Core.AdvanceResultKind.CardCompleted,
+                    TruthCardGame.Core.AdvanceResultKind.WaitForContinue,
                     TruthCardGame.Core.AdvanceResultKind.SessionCompleted));
             }
 

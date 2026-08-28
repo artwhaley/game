@@ -30,6 +30,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private GameSessionEngine _engine;
         private CancellationTokenSource _sessionCts;
         private CancellationTokenSource _autoCts;
+        private bool _waitingForContinue;
 
         /// <summary>Raised on the UI thread whenever playback enters a phase (phase id).</summary>
         public event Action<string> PhaseChanged;
@@ -108,6 +109,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 StopAuto();
                 CancelSession();
                 _sessionCts = new CancellationTokenSource();
+                _waitingForContinue = false;
 
                 var services = new CoreServices(
                     delay: new WpfGameDelay(),
@@ -169,11 +171,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
             Log("Auto-run started.");
             try
             {
+                var waitingForContinue = false;
                 while (!_autoCts.IsCancellationRequested && _engine != null && !_engine.IsComplete)
                 {
-                    var result = await _engine.AdvanceOneCardAsync(_autoCts.Token);
+                    var result = waitingForContinue
+                        ? await _engine.ContinueAsync(_autoCts.Token)
+                        : await _engine.RunUntilYieldAsync(_autoCts.Token);
                     RefreshRunState();
                     if (result.Kind == AdvanceResultKind.SessionCompleted) break;
+                    waitingForContinue = result.Kind == AdvanceResultKind.WaitForContinue;
                     await Task.Delay(300, _autoCts.Token);
                 }
             }
@@ -194,7 +200,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 if (_engine == null || !_engine.IsComplete)
                 {
                     DrawNextButton.IsEnabled = _engine != null;
-                    SetStatus("Paused — draw next when ready");
+                    SetStatus("Paused — continue when ready");
                 }
             }
         }
@@ -211,23 +217,27 @@ namespace TruthCardGame.ReferenceHost.Wpf
             DrawNextButton.IsEnabled = false;
             try
             {
-                var result = await _engine.AdvanceOneCardAsync(_sessionCts.Token);
+                var result = _waitingForContinue
+                    ? await _engine.ContinueAsync(_sessionCts.Token)
+                    : await _engine.RunUntilYieldAsync(_sessionCts.Token);
                 RefreshRunState();
 
                 switch (result.Kind)
                 {
-                    case AdvanceResultKind.CardCompleted:
-                        SetStatus("Done — draw next when ready");
+                    case AdvanceResultKind.WaitForContinue:
+                        _waitingForContinue = true;
+                        SetStatus("Waiting — press Continue");
                         DrawNextButton.IsEnabled = true;
                         break;
                     case AdvanceResultKind.SessionCompleted:
+                        _waitingForContinue = false;
                         SetStatus("Complete");
                         CardTitle.Text = result.Card?.Title ?? "(no card — skipped empty phases)";
                         DrawNextButton.IsEnabled = false;
                         Log("SESSION COMPLETE");
                         break;
                     case AdvanceResultKind.BusyIgnored:
-                        Log("Draw ignored (advance already running).");
+                        Log("Continue ignored (advance already running).");
                         DrawNextButton.IsEnabled = true;
                         break;
                 }

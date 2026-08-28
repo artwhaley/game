@@ -536,7 +536,7 @@ namespace TruthCardGame.Core.Tests
             _content.Phases.Add(a);
 
             var engine = new GameSessionEngine(_content, "s10", _services);
-            var result = await engine.AdvanceOneCardAsync(CancellationToken.None);
+            var result = await engine.RunUntilYieldAsync(CancellationToken.None);
 
             Assert.AreEqual(AdvanceResultKind.SessionCompleted, result.Kind);
             Assert.IsTrue(engine.IsComplete);

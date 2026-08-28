@@ -6,7 +6,7 @@ and how to move an existing database forward.
 ## Ledger mechanics
 
 `Game.Content.Sqlite` runs embedded migration scripts in order
-(`SQLITE-SCHEMA-V1.sql` → `V2.sql` → `V3-WPF-AUTHORING.sql`), each recorded in
+(`SQLITE-SCHEMA-V1.sql` → `V2.sql` → `V3-WPF-AUTHORING.sql` → `V4`), each recorded in
 a `schema_migration` ledger by `CoreMigrator.EnsureSchema`. Any connection
 opened through `ConnectionInitializer` + `EnsureSchema` migrates an older file
 in place to the current version. The canonical `Content/GameContent.db` is
@@ -38,6 +38,14 @@ kept at the current version by the seed/migrate tool
   are authoring-only: never part of the snapshot, ignored by the Core VM.
 - Adding a migration is safe on already-migrated files; the canonical DB was
   migrated in place and re-committed.
+
+## v3 → v4 (nullable PhaseGoto assignment)
+
+- Rebuilt the core-owned `action_instance_phase_goto` table so
+  `phase_exit_id` may be NULL while an Action Instance is being authored.
+- Force-deleting an exit clears referenced GOTO assignments and removes its
+  projected session sockets/edges in one transaction; undo restores the exact
+  assignments and projected edge identities.
 
 ## WPF extension tables vs core migrations
 

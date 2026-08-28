@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
 using System.Linq;
@@ -92,6 +93,28 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         /// <summary>PhaseGoto rows of an Action node (one per instance, empty when none).</summary>
         public ObservableCollection<GotoRowData> GotoRows { get; } = new ObservableCollection<GotoRowData>();
+
+        /// <summary>Ordered explicit Action Instance rows owned by this node.</summary>
+        public ObservableCollection<ActionRowData> ActionRows { get; } = new ObservableCollection<ActionRowData>();
+
+        /// <summary>Registry-filtered type picker for this node's owned sequence.</summary>
+        public List<ActionTypeInfo> ActionTypeOptions { get; set; } = new List<ActionTypeInfo>();
+
+        private string _selectedActionTypeKey;
+        public string SelectedActionTypeKey
+        {
+            get => _selectedActionTypeKey;
+            set
+            {
+                if (_selectedActionTypeKey != value)
+                {
+                    _selectedActionTypeKey = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedActionTypeKey)));
+                }
+            }
+        }
+
+        public bool CanEditActions { get; set; }
 
         /// <summary>Exit choices for the GOTO ComboBoxes (shared per phase).</summary>
         public List<ExitOption> GotoExitOptions { get; set; } = new List<ExitOption>();
@@ -213,6 +236,94 @@ namespace TruthCardGame.ReferenceHost.Wpf
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
+    }
+
+    /// <summary>Explicit, instance-local action editor row; fields map to one typed subtype.</summary>
+    public sealed class ActionRowData : INotifyPropertyChanged
+    {
+        private string _textValue;
+        private string _numberText;
+
+        public GraphNodeViewModel Owner { get; set; }
+        public ActionInstanceDefinition Definition { get; set; }
+        public string SequenceId { get; set; }
+        public int Ordinal { get; set; }
+        public string InstanceId => Definition?.Id;
+        public string TypeKey { get; set; }
+        public string DisplayLabel { get; set; }
+        public List<ExitOption> ExitOptions { get; set; } = new List<ExitOption>();
+        public string PersistedTextValue { get; set; }
+        public string PersistedNumberText { get; set; }
+
+        public string TextValue
+        {
+            get => _textValue;
+            set
+            {
+                if (_textValue != value)
+                {
+                    _textValue = value;
+                    SyncDefinition();
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TextValue)));
+                }
+            }
+        }
+
+        public string NumberText
+        {
+            get => _numberText;
+            set
+            {
+                if (_numberText != value)
+                {
+                    _numberText = value;
+                    SyncDefinition();
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NumberText)));
+                }
+            }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        private void SyncDefinition()
+        {
+            if (Definition == null) return;
+            switch (Definition)
+            {
+                case DebugInstanceDefinition debug:
+                    debug.Message = TextValue ?? "";
+                    debug.DelaySeconds = ParseNumber(NumberText);
+                    break;
+                case StatIncreaseInstanceDefinition stat:
+                    stat.StatKey = TextValue ?? "";
+                    stat.Amount = ParseNumber(NumberText);
+                    break;
+                case IncrementProgressInstanceDefinition progress:
+                    progress.Amount = ParseNumber(NumberText);
+                    break;
+                case ModifyTemperatureInstanceDefinition temperature:
+                    temperature.TemperatureId = TextValue ?? "";
+                    temperature.Amount = ParseNumber(NumberText);
+                    break;
+                case CutsceneInstanceDefinition cutscene:
+                    cutscene.ResourceId = TextValue ?? "";
+                    break;
+                case PromptChoiceInstanceDefinition choice:
+                    choice.Prompt = TextValue ?? "";
+                    break;
+                case PhaseGotoInstanceDefinition phaseGoto:
+                    phaseGoto.PhaseExitId = TextValue ?? "";
+                    break;
+                case SessionGotoInstanceDefinition sessionGoto:
+                    sessionGoto.Label = TextValue ?? "";
+                    break;
+            }
+        }
+
+        private static float ParseNumber(string value)
+        {
+            return float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) ? number : 0f;
+        }
     }
 
     /// <summary>One option row of a decision node (label + owned action sequence with GOTO rows).</summary>
@@ -487,6 +598,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// <summary>A GOTO row changed: exit selection (phase) or label (session); the string is the property name.</summary>
         public event Action<GraphNodeViewModel, GotoRowData, string> GotoExitChanged;
 
+        /// <summary>An explicit Action Instance parameter changed.</summary>
+        public event Action<GraphNodeViewModel, ActionRowData, string> ActionChanged;
+
         /// <summary>The user asked to add a new GOTO instance (phase: exit ComboBox; session: label).</summary>
         public event Action<GraphNodeViewModel> GotoAddRequested;
 
@@ -550,6 +664,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 foreach (var row in node.GotoRows)
                 {
                     row.PropertyChanged += (_, args) => GotoExitChanged?.Invoke(node, row, args.PropertyName);
+                }
+                foreach (var row in node.ActionRows)
+                {
+                    row.PropertyChanged += (_, args) => ActionChanged?.Invoke(node, row, args.PropertyName);
                 }
                 if (node.DecisionScope != null)
                 {
@@ -702,6 +820,79 @@ namespace TruthCardGame.ReferenceHost.Wpf
         }
     }
 
+    /// <summary>
+    /// Deterministic first-load layout. Stable saved coordinates always win;
+    /// only missing node ids are assigned. Connections determine horizontal
+    /// layers, while sorted ids determine repeatable vertical slots.
+    /// </summary>
+    public static class GraphAutoLayout
+    {
+        public static Dictionary<string, (double X, double Y)> FillMissing(
+            IEnumerable<GraphNodeDefinition> nodeDefinitions,
+            IEnumerable<GraphEdgeDefinition> edges,
+            Dictionary<string, (double X, double Y)> saved)
+        {
+            var nodes = (nodeDefinitions ?? Enumerable.Empty<GraphNodeDefinition>())
+                .Where(node => node != null && !string.IsNullOrEmpty(node.Id))
+                .OrderBy(node => node.Id, StringComparer.Ordinal)
+                .ToList();
+            var result = saved != null
+                ? new Dictionary<string, (double X, double Y)>(saved)
+                : new Dictionary<string, (double X, double Y)>();
+            var ids = new HashSet<string>(nodes.Select(node => node.Id));
+            var outputOwner = new Dictionary<string, string>();
+            foreach (var node in nodes)
+            {
+                foreach (var output in node.Outputs ?? new List<GraphOutputDefinition>())
+                {
+                    if (output != null && !string.IsNullOrEmpty(output.Id)) outputOwner[output.Id] = node.Id;
+                }
+            }
+
+            var incoming = nodes.ToDictionary(node => node.Id, _ => 0);
+            var successors = nodes.ToDictionary(node => node.Id, _ => new List<string>());
+            foreach (var edge in (edges ?? Enumerable.Empty<GraphEdgeDefinition>()).OrderBy(edge => edge?.Id, StringComparer.Ordinal))
+            {
+                if (edge == null || !outputOwner.TryGetValue(edge.SourceOutputId, out var source)
+                    || !ids.Contains(edge.TargetNodeId) || !ids.Contains(source)) continue;
+                successors[source].Add(edge.TargetNodeId);
+                incoming[edge.TargetNodeId]++;
+            }
+
+            var layers = nodes.ToDictionary(node => node.Id, _ => 0);
+            var queue = new Queue<string>(incoming.Where(pair => pair.Value == 0)
+                .Select(pair => pair.Key).OrderBy(id => id, StringComparer.Ordinal));
+            var processed = new HashSet<string>();
+            while (queue.Count > 0)
+            {
+                var source = queue.Dequeue();
+                if (!processed.Add(source)) continue;
+                foreach (var target in successors[source].OrderBy(id => id, StringComparer.Ordinal))
+                {
+                    layers[target] = Math.Max(layers[target], layers[source] + 1);
+                    if (--incoming[target] == 0) queue.Enqueue(target);
+                }
+            }
+
+            var occupied = result.Where(pair => ids.Contains(pair.Key)).Select(pair => pair.Value).ToList();
+            foreach (var node in nodes)
+            {
+                if (result.ContainsKey(node.Id)) continue;
+                var layer = layers[node.Id];
+                var slot = 0;
+                var candidate = (X: layer * 260.0, Y: slot * 160.0);
+                while (occupied.Any(point => Math.Abs(point.X - candidate.X) < 190.0 && Math.Abs(point.Y - candidate.Y) < 120.0))
+                {
+                    slot++;
+                    candidate = (X: layer * 260.0, Y: slot * 160.0);
+                }
+                result[node.Id] = candidate;
+                occupied.Add(candidate);
+            }
+            return result;
+        }
+    }
+
     /// <summary>Session graph editor: Start / PhaseReference / SessionDecision / End.</summary>
     public sealed class SessionGraphViewModel : GraphEditorViewModel
     {
@@ -725,6 +916,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 return;
             }
 
+            var effectiveLayout = GraphAutoLayout.FillMissing(session.Graph.Nodes, session.Graph.Edges, layout);
             var nodes = new Dictionary<string, GraphNodeViewModel>();
             var connections = new List<ConnectionViewModel>();
 
@@ -735,7 +927,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             foreach (var node in session.Graph.Nodes)
             {
                 var (title, subtitle, kind, refId) = DescribeSessionNode(node);
-                var point = layout != null && layout.TryGetValue(node.Id, out var saved)
+                var point = effectiveLayout.TryGetValue(node.Id, out var saved)
                     ? new Point(saved.X, saved.Y)
                     : new Point(column * 260, row * 160);
                 var vm = new GraphNodeViewModel
@@ -934,6 +1126,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 return;
             }
 
+            var effectiveLayout = GraphAutoLayout.FillMissing(phase.Graph.Nodes, phase.Graph.Edges, layout);
             var nodes = new Dictionary<string, GraphNodeViewModel>();
             var connections = new List<ConnectionViewModel>();
 
@@ -949,7 +1142,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             foreach (var node in phase.Graph.Nodes)
             {
                 var (title, subtitle, kind) = DescribePhaseNode(node, exitNameById);
-                var point = layout != null && layout.TryGetValue(node.Id, out var saved)
+                var point = effectiveLayout.TryGetValue(node.Id, out var saved)
                     ? new Point(saved.X, saved.Y)
                     : new Point(column * 220, row * 150);
                 var vm = new GraphNodeViewModel
@@ -972,19 +1165,16 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 }
                 if (node is ActionNodeDefinition actionNode)
                 {
-                    vm.CanAddGoto = true;
-                    vm.GotoExitOptions = ExitOptionsFor(phase);
+                    vm.CanEditActions = true;
+                    vm.ActionTypeOptions = ActionTypeRegistry.All
+                        .Where(info => (info.LegalScopes & ActionOwnerScope.PhaseActionSequence) != 0)
+                        .OrderBy(info => info.DisplayLabel, StringComparer.Ordinal).ToList();
+                    vm.SelectedActionTypeKey = vm.ActionTypeOptions.Count > 0
+                        ? vm.ActionTypeOptions[0].TypeKey : null;
+                    var ordinal = 0;
                     foreach (var instance in actionNode.Sequence?.Instances ?? new List<ActionInstanceDefinition>())
                     {
-                        if (instance is PhaseGotoInstanceDefinition gotoInstance)
-                        {
-                            vm.GotoRows.Add(new GotoRowData
-                            {
-                                Scope = "phase",
-                                InstanceId = gotoInstance.Id,
-                                ExitId = gotoInstance.PhaseExitId,
-                            });
-                        }
+                        vm.ActionRows.Add(ToActionRow(vm, actionNode.Sequence?.Id, instance, ordinal++, phase));
                     }
                 }
                 if (node is PhaseDecisionNodeDefinition phaseDecision)
@@ -1030,6 +1220,55 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 ViewportZoom = viewport.Value.Zoom;
                 ViewportLocation = new Point(viewport.Value.X, viewport.Value.Y);
             }
+        }
+
+        private static ActionRowData ToActionRow(GraphNodeViewModel owner, string sequenceId,
+            ActionInstanceDefinition instance, int ordinal, PhaseDefinition phase)
+        {
+            var info = ActionTypeRegistry.ForInstance(instance);
+            var row = new ActionRowData
+            {
+                Owner = owner,
+                Definition = instance,
+                SequenceId = sequenceId,
+                Ordinal = ordinal,
+                TypeKey = info.TypeKey,
+                DisplayLabel = info.DisplayLabel,
+            };
+            switch (instance)
+            {
+                case DebugInstanceDefinition debug:
+                    row.TextValue = debug.Message;
+                    row.NumberText = debug.DelaySeconds.ToString("0.###", CultureInfo.InvariantCulture);
+                    break;
+                case StatIncreaseInstanceDefinition stat:
+                    row.TextValue = stat.StatKey;
+                    row.NumberText = stat.Amount.ToString("0.###", CultureInfo.InvariantCulture);
+                    break;
+                case IncrementProgressInstanceDefinition progress:
+                    row.NumberText = progress.Amount.ToString("0.###", CultureInfo.InvariantCulture);
+                    break;
+                case ModifyTemperatureInstanceDefinition temperature:
+                    row.TextValue = temperature.TemperatureId;
+                    row.NumberText = temperature.Amount.ToString("0.###", CultureInfo.InvariantCulture);
+                    break;
+                case CutsceneInstanceDefinition cutscene:
+                    row.TextValue = cutscene.ResourceId;
+                    break;
+                case PromptChoiceInstanceDefinition choice:
+                    row.TextValue = choice.Prompt;
+                    break;
+                case PhaseGotoInstanceDefinition phaseGoto:
+                    row.TextValue = phaseGoto.PhaseExitId;
+                    row.ExitOptions = ExitOptionsFor(phase);
+                    break;
+                case SessionGotoInstanceDefinition sessionGoto:
+                    row.TextValue = sessionGoto.Label;
+                    break;
+            }
+            row.PersistedTextValue = row.TextValue;
+            row.PersistedNumberText = row.NumberText;
+            return row;
         }
 
         /// <summary>Palette: adds a CardExecutor node.</summary>
@@ -1117,7 +1356,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         internal static List<ExitOption> ExitOptionsFor(PhaseDefinition phase)
         {
-            var options = new List<ExitOption>();
+            var options = new List<ExitOption>
+            {
+                new ExitOption { Id = "", Name = "Unassigned" },
+            };
             foreach (var exit in phase?.Exits ?? new List<PhaseExitDefinition>())
             {
                 options.Add(new ExitOption { Id = exit.Id, Name = exit.Name });

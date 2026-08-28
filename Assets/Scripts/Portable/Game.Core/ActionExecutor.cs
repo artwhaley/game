@@ -33,9 +33,10 @@ namespace TruthCardGame.Core
         /// points) and resumes on RETURN.
         /// </summary>
         public Task<ActionExecutionResult> ExecuteSequenceAsync(
-            ActionSequenceDefinition sequence, ActionExecutionContext context, CancellationToken cancellationToken)
+            ActionSequenceDefinition sequence, ActionExecutionContext context, CancellationToken cancellationToken,
+            GraphExecutionBudget budget = null)
         {
-            return ExecuteSequenceFromAsync(sequence, 0, context, cancellationToken);
+            return ExecuteSequenceFromAsync(sequence, 0, context, cancellationToken, budget ?? new GraphExecutionBudget());
         }
 
         /// <summary>
@@ -44,20 +45,22 @@ namespace TruthCardGame.Core
         /// its own saved point; only then does the caller follow the graph locus.
         /// </summary>
         public async Task<ActionExecutionResult> ResumeChainAsync(
-            IReadOnlyList<ContinuationPoint> chain, ActionExecutionContext context, CancellationToken cancellationToken)
+            IReadOnlyList<ContinuationPoint> chain, ActionExecutionContext context, CancellationToken cancellationToken,
+            GraphExecutionBudget budget = null)
         {
             if (chain == null) throw new ArgumentNullException(nameof(chain));
+            budget = budget ?? new GraphExecutionBudget();
 
             // Innermost first: resume the deepest saved sequence point, then
             // cascade outward through the enclosing sequences.
             for (var i = 0; i < chain.Count; i++)
             {
                 var point = chain[i];
-                var result = await ExecuteSequenceFromAsync(point.Sequence, point.NextActionIndex, context, cancellationToken);
+                var result = await ExecuteSequenceFromAsync(point.Sequence, point.NextActionIndex, context, cancellationToken, budget);
                 if (result.Transfer != ActionTransfer.None)
                 {
                     // A nested transfer mid-resume re-saves the remaining points.
-                    for (var j = i; j < chain.Count; j++)
+                    for (var j = i + 1; j < chain.Count; j++)
                     {
                         var remaining = chain[j];
                         result.Continuation.Add(new ContinuationPoint(remaining.Sequence, remaining.NextActionIndex));
@@ -70,15 +73,17 @@ namespace TruthCardGame.Core
         }
 
         private async Task<ActionExecutionResult> ExecuteSequenceFromAsync(
-            ActionSequenceDefinition sequence, int startIndex, ActionExecutionContext context, CancellationToken cancellationToken)
+            ActionSequenceDefinition sequence, int startIndex, ActionExecutionContext context, CancellationToken cancellationToken,
+            GraphExecutionBudget budget)
         {
             if (sequence == null) throw new ArgumentNullException(nameof(sequence));
 
             for (var index = startIndex; index < sequence.Instances.Count; index++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                budget.Consume("action", nodeId: sequence.Id);
                 var instance = sequence.Instances[index];
-                var result = await ExecuteInstanceAsync(instance, context, cancellationToken);
+                var result = await ExecuteInstanceAsync(instance, context, cancellationToken, budget);
                 if (result.Transfer != ActionTransfer.None)
                 {
                     // Save this sequence's resume point after the transferring
@@ -93,10 +98,12 @@ namespace TruthCardGame.Core
         }
 
         public async Task<ActionExecutionResult> ExecuteInstanceAsync(
-            ActionInstanceDefinition instance, ActionExecutionContext context, CancellationToken cancellationToken)
+            ActionInstanceDefinition instance, ActionExecutionContext context, CancellationToken cancellationToken,
+            GraphExecutionBudget budget = null)
         {
             if (instance == null) throw new ArgumentNullException(nameof(instance));
             if (context == null) throw new ArgumentNullException(nameof(context));
+            budget = budget ?? new GraphExecutionBudget();
 
             var info = ActionTypeRegistry.ForInstance(instance);
             ActionTypeRegistry.ValidateScope(instance, context.ActiveScope);
@@ -115,14 +122,15 @@ namespace TruthCardGame.Core
 
             if (!instance.IsBlocking)
             {
-                _background.Start(ExecuteAsync(instance, context, cancellationToken));
+                _background.Start(ExecuteAsync(instance, context, cancellationToken, budget));
                 return ActionExecutionResult.Continue;
             }
 
-            return await ExecuteAsync(instance, context, cancellationToken);
+            return await ExecuteAsync(instance, context, cancellationToken, budget);
         }
 
-        private async Task<ActionExecutionResult> ExecuteAsync(ActionInstanceDefinition instance, ActionExecutionContext context, CancellationToken cancellationToken)
+        private async Task<ActionExecutionResult> ExecuteAsync(ActionInstanceDefinition instance, ActionExecutionContext context,
+            CancellationToken cancellationToken, GraphExecutionBudget budget)
         {
             switch (instance)
             {
@@ -163,7 +171,7 @@ namespace TruthCardGame.Core
                     return ActionExecutionResult.Continue;
 
                 case PromptChoiceInstanceDefinition choice:
-                    return await ExecutePromptChoiceAsync(choice, context, cancellationToken);
+                    return await ExecutePromptChoiceAsync(choice, context, cancellationToken, budget);
 
                 default:
                     throw new InvalidOperationException(
@@ -172,7 +180,8 @@ namespace TruthCardGame.Core
         }
 
         private async Task<ActionExecutionResult> ExecutePromptChoiceAsync(
-            PromptChoiceInstanceDefinition choice, ActionExecutionContext context, CancellationToken cancellationToken)
+            PromptChoiceInstanceDefinition choice, ActionExecutionContext context, CancellationToken cancellationToken,
+            GraphExecutionBudget budget)
         {
             if (context.Services.Prompts == null)
             {
@@ -197,7 +206,7 @@ namespace TruthCardGame.Core
             }
 
             // The option sequence inherits the enclosing execution context and scope.
-            return await ExecuteSequenceAsync(selected.Sequence, context, cancellationToken);
+            return await ExecuteSequenceAsync(selected.Sequence, context, cancellationToken, budget);
         }
 
         private static ActionExecutionResult ReduceFlow(ActionInstanceDefinition instance, string typeKey)
@@ -212,6 +221,8 @@ namespace TruthCardGame.Core
                     return ActionExecutionResult.ReturnTransfer;
                 case EndSessionInstanceDefinition endSession:
                     return ActionExecutionResult.EndSessionTransfer;
+                case WaitForContinueInstanceDefinition wait:
+                    return ActionExecutionResult.WaitForContinueTransfer;
                 default:
                     throw new InvalidOperationException(
                         $"ActionExecutor: unknown flow action type '{typeKey}'.");

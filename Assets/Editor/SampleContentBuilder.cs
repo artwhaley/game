@@ -43,6 +43,18 @@ namespace TruthCardGame.EditorTools
                 SetBool(action, "isBlocking", false);
             });
 
+            // Sample pacing is explicit content, not a Card conversion default.
+            // These two instances are appended only to the known sample Cards.
+            var waitForContinue = GetOrCreateAction<WaitForContinueAction>(ActionsFolder + "/Wait_ForContinue.asset", action =>
+            {
+                SetBool(action, "isBlocking", true);
+            });
+            var incrementProgress = GetOrCreateAction<IncrementProgressAction>(ActionsFolder + "/Increment_Progress10.asset", action =>
+            {
+                SetFloat(action, "amount", 10f);
+                SetBool(action, "isBlocking", false);
+            });
+
             var courage = GetOrCreateAction<StatIncreaseAction>(ActionsFolder + "/CouragePlusOne.asset", action =>
             {
                 SetString(action, "statKey", "courage");
@@ -78,13 +90,14 @@ namespace TruthCardGame.EditorTools
                 SetChoiceOption(action, 1, "Shrug it off", continuous);
             });
 
-            var courageBoost = GetOrCreateCard(CardsFolder + "/CourageBoost.asset", "Courage Boost", new[] { "party", "truth" }, courage);
-            var crowdWatches = GetOrCreateCard(CardsFolder + "/TheCrowdWatches.asset", "The Crowd Watches", new[] { "party", "dare" }, blocking);
-            var ambientWhispers = GetOrCreateCard(CardsFolder + "/AmbientWhispers.asset", "Ambient Whispers", new[] { "solo", "truth" }, continuous);
-            var dareCelebrate = GetOrCreateCard(CardsFolder + "/DareAndCelebrate.asset", "Dare & Celebrate", new[] { "party", "dare" }, courage, blocking);
-            var twinWhispers = GetOrCreateCard(CardsFolder + "/TwinWhispers.asset", "Twin Whispers", new[] { "solo" }, continuous, continuous);
-            var cutsceneIntro = GetOrCreateCard(CardsFolder + "/CutsceneIntro.asset", "A Familiar Face", new[] { "cutscene" }, cutscene);
-            var crowdChoice = GetOrCreateCard(CardsFolder + "/FaceTheCrowd.asset", "Face the Crowd", new[] { "party", "dare" }, choice);
+            var courageBoost = GetOrCreateCard(CardsFolder + "/CourageBoost.asset", "Courage Boost", new[] { "party", "truth" }, courage, waitForContinue, incrementProgress);
+            var crowdWatches = GetOrCreateCard(CardsFolder + "/TheCrowdWatches.asset", "The Crowd Watches", new[] { "party", "dare" }, blocking, waitForContinue, incrementProgress);
+            var ambientWhispers = GetOrCreateCard(CardsFolder + "/AmbientWhispers.asset", "Ambient Whispers", new[] { "solo", "truth" }, continuous, waitForContinue, incrementProgress);
+            var dareCelebrate = GetOrCreateCard(CardsFolder + "/DareAndCelebrate.asset", "Dare & Celebrate", new[] { "party", "dare" }, courage, blocking, waitForContinue, incrementProgress);
+            var twinWhispers = GetOrCreateCard(CardsFolder + "/TwinWhispers.asset", "Twin Whispers", new[] { "solo" }, continuous, continuous, waitForContinue, incrementProgress);
+            var cutsceneIntro = GetOrCreateCard(CardsFolder + "/CutsceneIntro.asset", "A Familiar Face", new[] { "cutscene" }, cutscene, waitForContinue, incrementProgress);
+            var crowdChoice = GetOrCreateCard(CardsFolder + "/FaceTheCrowd.asset", "Face the Crowd", new[] { "party", "dare" }, choice, waitForContinue, incrementProgress);
+            EnsureSamplePacing(new[] { courageBoost, crowdWatches, ambientWhispers, dareCelebrate, twinWhispers, cutsceneIntro, crowdChoice }, waitForContinue, incrementProgress);
 
             var deck = AssetDatabase.LoadAssetAtPath<CardDeck>(StarterDeckPath);
             if (deck == null)
@@ -114,7 +127,13 @@ namespace TruthCardGame.EditorTools
         /// <summary>Creates a session library with two sessions, each ending in an authored ending phase.</summary>
         private static void EnsureSampleSessions()
         {
-            var endingCard = GetOrCreateCard(CardsFolder + "/TheEnd.asset", "The End", new[] { "ending" }, courageForSessions());
+            var endingCard = GetOrCreateCard(CardsFolder + "/TheEnd.asset", "The End", new[] { "ending" }, courageForSessions(),
+                GetOrCreateAction<WaitForContinueAction>(ActionsFolder + "/Wait_ForContinue.asset", action => SetBool(action, "isBlocking", true)),
+                GetOrCreateAction<IncrementProgressAction>(ActionsFolder + "/Increment_Progress10.asset", action =>
+                {
+                    SetFloat(action, "amount", 10f);
+                    SetBool(action, "isBlocking", false);
+                }));
 
             var relaxing = GetOrCreateSession(SessionsFolder + "/Relaxing.asset", "Relaxing", new[] { "relaxing" },
                 CreatePhase(SessionsFolder + "/Phase_WarmUp.asset", "Warm Up", new[] { "solo" }, 2, 3),
@@ -203,6 +222,33 @@ namespace TruthCardGame.EditorTools
         }
 
         // ---------- asset helpers ----------
+
+        private static void EnsureSamplePacing(Card[] cards, WaitForContinueAction wait, IncrementProgressAction progress)
+        {
+            foreach (var card in cards)
+            {
+                if (card == null) continue;
+
+                var so = new SerializedObject(card);
+                var actions = so.FindProperty("actions");
+                var retained = new System.Collections.Generic.List<UnityEngine.Object>();
+                for (var i = 0; i < actions.arraySize; i++)
+                {
+                    var value = actions.GetArrayElementAtIndex(i).objectReferenceValue;
+                    if (value is WaitForContinueAction || value is IncrementProgressAction) continue;
+                    if (value != null) retained.Add(value);
+                }
+                retained.Add(wait);
+                retained.Add(progress);
+                actions.arraySize = retained.Count;
+                for (var i = 0; i < retained.Count; i++)
+                {
+                    actions.GetArrayElementAtIndex(i).objectReferenceValue = retained[i];
+                }
+                so.ApplyModifiedPropertiesWithoutUndo();
+                EditorUtility.SetDirty(card);
+            }
+        }
 
         private static T GetOrCreateAction<T>(string path, Action<T> configure) where T : CardAction
         {

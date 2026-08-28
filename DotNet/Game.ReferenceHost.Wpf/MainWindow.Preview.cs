@@ -31,6 +31,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private CancellationTokenSource _previewCts;
         private readonly ObservableCollection<string> _previewLog = new ObservableCollection<string>();
         private bool _previewVmSubscribed;
+        private bool _previewWaitingForContinue;
 
         // ---------- strip toggle ----------
 
@@ -58,6 +59,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             StopPreview();
             ClearPreviewHighlights();
             _previewVmSubscribed = false;
+            _previewWaitingForContinue = false;
             _previewLog.Clear();
             try
             {
@@ -68,6 +70,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     _previewContent = GameContentSnapshotLoader.Load(connection);
                 }
                 _previewCts = new CancellationTokenSource();
+                _previewWaitingForContinue = false;
 
                 var services = new CoreServices(
                     delay: new PreviewDelay(),
@@ -107,6 +110,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             StopPreview();
             ClearPreviewHighlights();
             _previewVmSubscribed = false;
+            _previewWaitingForContinue = false;
             try
             {
                 var path = ReferencePlayerWindow.ResolveDatabasePath();
@@ -115,6 +119,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     _previewContent = GameContentSnapshotLoader.Load(connection);
                 }
                 _previewCts = new CancellationTokenSource();
+                _previewWaitingForContinue = false;
                 var services = new CoreServices(
                     delay: new PreviewDelay(),
                     log: new PreviewLogSink(PreviewLog),
@@ -160,6 +165,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             _previewEngine = null;
             _previewContent = null;
             _previewVmSubscribed = false;
+            _previewWaitingForContinue = false;
             PreviewDrawButton.IsEnabled = false;
         }
 
@@ -169,15 +175,19 @@ namespace TruthCardGame.ReferenceHost.Wpf
             PreviewDrawButton.IsEnabled = false;
             try
             {
-                var result = await _previewEngine.AdvanceOneCardAsync(_previewCts.Token);
+                var result = _previewWaitingForContinue
+                    ? await _previewEngine.ContinueAsync(_previewCts.Token)
+                    : await _previewEngine.RunUntilYieldAsync(_previewCts.Token);
                 RefreshPreviewState();
                 switch (result.Kind)
                 {
-                    case AdvanceResultKind.CardCompleted:
-                        PreviewStatus("Done — draw next when ready");
+                    case AdvanceResultKind.WaitForContinue:
+                        _previewWaitingForContinue = true;
+                        PreviewStatus("Waiting — press Continue");
                         PreviewDrawButton.IsEnabled = true;
                         break;
                     case AdvanceResultKind.SessionCompleted:
+                        _previewWaitingForContinue = false;
                         PreviewStatus("Complete");
                         PreviewDrawButton.IsEnabled = false;
                         PreviewLog("SESSION COMPLETE");

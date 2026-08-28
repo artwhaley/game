@@ -401,6 +401,11 @@ namespace TruthCardGame.Content.Samples
             return new IncrementProgressInstanceDefinition { Id = instanceId, Amount = amount };
         }
 
+        private static WaitForContinueInstanceDefinition Wait(string instanceId)
+        {
+            return new WaitForContinueInstanceDefinition { Id = instanceId, IsBlocking = true };
+        }
+
         private static PromptChoiceOptionDefinition Option(string optionId, string label, params ActionInstanceDefinition[] instances)
         {
             var sequence = new ActionSequenceDefinition { Id = "seq-" + optionId };
@@ -419,6 +424,7 @@ namespace TruthCardGame.Content.Samples
                 Title = "A Familiar Face",
                 Tags = { "cutscene" },
                 Sequence = Seq(
+                    Wait("inst-intro-wait"),
                     new CutsceneInstanceDefinition { Id = "inst-intro-cutscene", ResourceId = ResourceCutsceneIntro },
                     Progress("inst-intro-progress")),
             };
@@ -432,6 +438,7 @@ namespace TruthCardGame.Content.Samples
                 Title = "Courage Boost",
                 Tags = { "party", "truth" },
                 Sequence = Seq(
+                    Wait("inst-courage-wait"),
                     new StatIncreaseInstanceDefinition { Id = "inst-courage-up", StatKey = "courage", Amount = 1f },
                     Progress("inst-courage-progress")),
             };
@@ -445,6 +452,7 @@ namespace TruthCardGame.Content.Samples
                 Title = "Ambient Whispers",
                 Tags = { "solo", "truth" },
                 Sequence = Seq(
+                    Wait("inst-ambient-wait"),
                     new DebugInstanceDefinition { Id = "inst-ambient-whisper", Message = "A soft whisper at the edge of hearing." },
                     Progress("inst-ambient-progress")),
             };
@@ -458,6 +466,7 @@ namespace TruthCardGame.Content.Samples
                 Title = "Twin Whispers",
                 Tags = { "solo" },
                 Sequence = Seq(
+                    Wait("inst-twin-wait"),
                     new PromptChoiceInstanceDefinition
                     {
                         Id = "inst-twin-choice",
@@ -487,6 +496,7 @@ namespace TruthCardGame.Content.Samples
                 Title = "Face the Crowd",
                 Tags = { "party", "dare" },
                 Sequence = Seq(
+                    Wait("inst-crowdcard-wait"),
                     new PromptChoiceInstanceDefinition
                     {
                         Id = "inst-crowd-choice",
@@ -517,6 +527,7 @@ namespace TruthCardGame.Content.Samples
                 Title = "The Crowd Watches",
                 Tags = { "party", "dare" },
                 Sequence = Seq(
+                    Wait("inst-watchful-wait"),
                     new DebugInstanceDefinition { Id = "inst-watchful-jeer", Message = "The crowd leans in; nobody speaks first.", IsBlocking = false },
                     Progress("inst-watchful-progress")),
             };
@@ -530,6 +541,7 @@ namespace TruthCardGame.Content.Samples
                 Title = "Dare & Celebrate",
                 Tags = { "party", "dare" },
                 Sequence = Seq(
+                    Wait("inst-dare-wait"),
                     new StatIncreaseInstanceDefinition { Id = "inst-dare-spark", StatKey = "spark", Amount = 3f },
                     new DebugInstanceDefinition { Id = "inst-dare-log", Message = "The dare lands; cheers follow." },
                     Progress("inst-dare-progress")),
@@ -544,6 +556,7 @@ namespace TruthCardGame.Content.Samples
                 Title = "The End",
                 Tags = { "ending" },
                 Sequence = Seq(
+                    Wait("inst-theend-wait"),
                     // Ends the whole session the moment this card executes.
                     new EndSessionInstanceDefinition { Id = "inst-end-now" },
                     // Deliberately unreachable after EndSession; authors may move or delete such trailing actions.

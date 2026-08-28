@@ -38,12 +38,12 @@ namespace TruthCardGame.Core.Tests
             var content = Sample();
 
             // The two choice cards each own their own PromptChoice occurrence object.
-            var twinChoice = (PromptChoiceInstanceDefinition)content.Cards
+            var twinChoice = content.Cards
                 .Single(c => c.Id == SampleContent.CardTwinWhispers)
-                .Sequence.Instances[0];
-            var crowdChoice = (PromptChoiceInstanceDefinition)content.Cards
+                .Sequence.Instances.OfType<PromptChoiceInstanceDefinition>().Single();
+            var crowdChoice = content.Cards
                 .Single(c => c.Id == SampleContent.CardFaceTheCrowd)
-                .Sequence.Instances[0];
+                .Sequence.Instances.OfType<PromptChoiceInstanceDefinition>().Single();
 
             Assert.AreNotSame(twinChoice, crowdChoice);
             Assert.AreEqual("inst-twin-choice", twinChoice.Id);

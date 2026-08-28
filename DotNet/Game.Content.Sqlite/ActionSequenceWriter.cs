@@ -50,6 +50,16 @@ namespace TruthCardGame.Content.Sqlite
                 ("id", sequenceId));
         }
 
+        internal static void WriteSingleAt(DbConnection connection, DbTransaction transaction,
+            string sequenceId, ActionInstanceDefinition instance, int ordinal)
+        {
+            if (string.IsNullOrEmpty(sequenceId)) throw new InvalidOperationException("Sequence id required.");
+            Sql.Execute(connection, transaction,
+                "INSERT INTO action_sequence (id) VALUES (@id) ON CONFLICT(id) DO NOTHING;",
+                ("id", sequenceId));
+            WriteInstance(connection, transaction, sequenceId, instance, ordinal);
+        }
+
         private static void WriteInstance(DbConnection connection, DbTransaction transaction, string sequenceId, ActionInstanceDefinition instance, int ordinal)
         {
             if (string.IsNullOrEmpty(instance.Id))
@@ -119,10 +129,16 @@ namespace TruthCardGame.Content.Sqlite
                     }
                     break;
 
+                case WaitForContinueInstanceDefinition wait:
+                    // Code-defined no-parameter action; its action_instance row
+                    // is the complete persisted representation.
+                    break;
+
                 case PhaseGotoInstanceDefinition phaseGoto:
                     Sql.Execute(connection, transaction,
                         "INSERT INTO action_instance_phase_goto (action_instance_id, phase_exit_id) VALUES (@i, @exit);",
-                        ("i", instance.Id), ("exit", phaseGoto.PhaseExitId));
+                        ("i", instance.Id),
+                        ("exit", string.IsNullOrEmpty(phaseGoto.PhaseExitId) ? DBNull.Value : (object)phaseGoto.PhaseExitId));
                     break;
 
                 case SessionGotoInstanceDefinition sessionGoto:
@@ -182,6 +198,7 @@ namespace TruthCardGame.Content.Sqlite
             if (instance is ModifyTemperatureInstanceDefinition) return ActionType.ModifyTemperatureV2;
             if (instance is CutsceneInstanceDefinition) return ActionType.Cutscene;
             if (instance is PromptChoiceInstanceDefinition) return ActionType.PromptChoiceV2;
+            if (instance is WaitForContinueInstanceDefinition) return ActionType.WaitForContinueV2;
             if (instance is PhaseGotoInstanceDefinition) return ActionType.PhaseGotoV2;
             if (instance is SessionGotoInstanceDefinition) return ActionType.SessionGotoV2;
             if (instance is ReturnInstanceDefinition) return ActionType.ReturnV2;

@@ -25,6 +25,9 @@ namespace TruthCardGame.Core
 
         /// <summary>EndSession: absolute terminal.</summary>
         EndSession,
+
+        /// <summary>WaitForContinue: yield gameplay until the host continues.</summary>
+        WaitForContinue,
     }
 
     /// <summary>
@@ -59,6 +62,13 @@ namespace TruthCardGame.Core
         public string SessionGotoLabel { get; set; } = "";
 
         /// <summary>
+        /// Card whose Action sequence was interrupted by a transfer. This is
+        /// populated by the Phase VM so the Session VM can finish the same Card
+        /// after RETURN instead of firing CardFinished early.
+        /// </summary>
+        public CardDefinition InterruptedCard { get; set; }
+
+        /// <summary>
         /// Continuation points saved at transfer time, innermost sequence first.
         /// A RETURN resumes point 0, then 1, ... before following the graph locus
         /// normal edge. Flow transfers never discard later actions.
@@ -82,8 +92,12 @@ namespace TruthCardGame.Core
             };
         }
 
-        public static readonly ActionExecutionResult ReturnTransfer = new ActionExecutionResult { Transfer = ActionTransfer.Return };
+        // These are factories rather than mutable static instances because the
+        // sequence runner appends continuation points to transfer results.
+        public static ActionExecutionResult ReturnTransfer => new ActionExecutionResult { Transfer = ActionTransfer.Return };
 
-        public static readonly ActionExecutionResult EndSessionTransfer = new ActionExecutionResult { Transfer = ActionTransfer.EndSession };
+        public static ActionExecutionResult EndSessionTransfer => new ActionExecutionResult { Transfer = ActionTransfer.EndSession };
+
+        public static ActionExecutionResult WaitForContinueTransfer => new ActionExecutionResult { Transfer = ActionTransfer.WaitForContinue };
     }
 }

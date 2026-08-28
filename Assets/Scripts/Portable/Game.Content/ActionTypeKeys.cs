@@ -19,6 +19,7 @@ namespace TruthCardGame.Content
         public const string ModifyTemperature = "modify_temperature";
         public const string Cutscene = "cutscene";
         public const string PromptChoice = "prompt_choice";
+        public const string WaitForContinue = "wait_for_continue";
 
         // Flow-control types.
         public const string PhaseGoto = "phase_goto";
@@ -32,7 +33,8 @@ namespace TruthCardGame.Content
             return typeKey == PhaseGoto
                 || typeKey == SessionGoto
                 || typeKey == Return
-                || typeKey == EndSession;
+                || typeKey == EndSession
+                || typeKey == WaitForContinue;
         }
     }
 }

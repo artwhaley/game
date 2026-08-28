@@ -10,7 +10,8 @@ namespace TruthCardGame.Content.Sqlite
     /// v1 is the initial core schema (PhaseSlot-era). v2 introduces the Graph
     /// Workbench structures (Docs/GraphWorkbench/03-schema-v2-design.md) plus its
     /// in-transaction legacy-content transformation; obsolete v1 tables remain
-    /// physically present but unused (see the v2 script header).
+    /// physically present but unused (see the v2 script header). v4 changes
+    /// PhaseGoto assignment to nullable so Unassigned is a first-class state.
     /// </summary>
     public static class CoreMigrations
     {
@@ -35,7 +36,9 @@ namespace TruthCardGame.Content.Sqlite
                 LoadEmbeddedScript("SQLITE-SCHEMA-V2.sql"),
                 Migration2Transform.Transform),
             new CoreMigration(3, "wpf-authoring-layout",
-                LoadEmbeddedScript("SQLITE-SCHEMA-V3-WPF-AUTHORING.sql"))
+                LoadEmbeddedScript("SQLITE-SCHEMA-V3-WPF-AUTHORING.sql")),
+            new CoreMigration(4, "phase-goto-nullable-exit",
+                LoadEmbeddedScript("SQLITE-SCHEMA-V4-PHASE-GOTO-NULL.sql"))
         };
 
         private static string LoadEmbeddedScript(string resourceName)

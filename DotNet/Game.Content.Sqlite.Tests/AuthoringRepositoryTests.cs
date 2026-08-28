@@ -97,9 +97,13 @@ namespace TruthCardGame.Content.Sqlite.Tests
             Assert.AreEqual(1L, Scalar("SELECT COUNT(*) FROM phase_graph_node WHERE phase_id=@p;", phaseId));
             Assert.AreEqual(1L, Scalar("SELECT COUNT(*) FROM phase_node_output WHERE node_id=@p;", $"pn-{phaseId}-entry"));
 
-            // Replace with an empty graph: node + socket + edges must cascade away.
-            PhaseGraphRepository.ReplaceGraph(_connection, phaseId, new PhaseGraphDefinition());
-            Assert.AreEqual(0L, Scalar("SELECT COUNT(*) FROM phase_graph_node WHERE phase_id=@p;", phaseId));
+            // Replace with another valid graph: the old node/socket is removed
+            // and the singular Entry replacement is written.
+            PhaseGraphRepository.ReplaceGraph(_connection, phaseId, new PhaseGraphDefinition
+            {
+                Nodes = { new PhaseEntryNodeDefinition { Id = "entry-replacement" } },
+            });
+            Assert.AreEqual(1L, Scalar("SELECT COUNT(*) FROM phase_graph_node WHERE phase_id=@p;", phaseId));
             Assert.AreEqual(0L, Scalar("SELECT COUNT(*) FROM phase_node_output WHERE node_id=@p;", $"pn-{phaseId}-entry"));
         }
 
@@ -223,7 +227,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
         }
 
         [Test]
-        public void Card_CreateWithoutSequence_GetsDefaultProgressAction()
+        public void Card_CreateWithoutSequence_GetsDefaultWaitThenProgressActions()
         {
             var cardId = Id();
             var card = new CardDefinition { Id = cardId, Title = "Defaulted" };
@@ -234,8 +238,9 @@ namespace TruthCardGame.Content.Sqlite.Tests
             var reloaded = loaded.Cards.Find(c => c.Id == cardId);
             Assert.IsNotNull(reloaded);
             Assert.IsNotNull(reloaded.Sequence, "repository creates the owned sequence");
-            Assert.AreEqual(1, reloaded.Sequence.Instances.Count);
-            var progress = reloaded.Sequence.Instances[0] as IncrementProgressInstanceDefinition;
+            Assert.AreEqual(2, reloaded.Sequence.Instances.Count);
+            Assert.IsInstanceOf<WaitForContinueInstanceDefinition>(reloaded.Sequence.Instances[0]);
+            var progress = reloaded.Sequence.Instances[1] as IncrementProgressInstanceDefinition;
             Assert.IsNotNull(progress, "default instance is IncrementProgress");
             Assert.AreEqual(10f, progress.Amount, "default amount is 10");
         }
@@ -256,7 +261,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
                     },
                 },
             };
-            var second = new CardDefinition { Id = Id(), Title = "Second" }; // gets default 10
+            var second = new CardDefinition { Id = Id(), Title = "Second" }; // gets default wait + 10
 
             CardRepository.Create(_connection, first);
             CardRepository.Create(_connection, second);
@@ -267,7 +272,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
 
             Assert.AreEqual(25f, ((IncrementProgressInstanceDefinition)reloadedFirst.Sequence.Instances[0]).Amount,
                 "authored amount survives untouched");
-            Assert.AreEqual(10f, ((IncrementProgressInstanceDefinition)reloadedSecond.Sequence.Instances[0]).Amount,
+            Assert.AreEqual(10f, ((IncrementProgressInstanceDefinition)reloadedSecond.Sequence.Instances[1]).Amount,
                 "defaulted card keeps its own default; changing one card never affects another");
         }
 

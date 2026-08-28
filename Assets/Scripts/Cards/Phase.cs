@@ -4,16 +4,16 @@ using UnityEngine;
 namespace TruthCardGame
 {
     /// <summary>
-    /// One stage of a Session. Defines which cards get drawn (tag filter) and
-    /// how long the stage lasts. Pure data — the graph VM walks phases; a
+    /// One stage of a Session. Defines which cards are eligible (tag filter).
+    /// Pure data — the graph VM walks phases; a
     /// phase never executes anything itself.
     ///
     /// The transitional converter builds the standard v2 executable graph
     /// (Entry → CardExecutor → progress-complete check → GOTO Complete).
     /// MinCards/MaxCards are obsolete in Core (deleted from the portable
-    /// model): the serialized fields survive here only to derive a progress
-    /// completion target once at conversion time, preserving the authored
-    /// stage length. No min/max semantics exist in the runtime.
+    /// model): the serialized fields survive only for old Unity asset
+    /// compatibility and are ignored by conversion. Phase completion is
+    /// authored by graph nodes and explicit Action Instances.
     /// </summary>
     [CreateAssetMenu(fileName = "Phase", menuName = "TruthCardGame/Phase")]
     public sealed class Phase : ScriptableObject
@@ -25,7 +25,7 @@ namespace TruthCardGame
         [SerializeField] private List<string> mustIncludeTags = new List<string>();
         [Tooltip("Cards drawn during this phase must have NONE of these tags.")]
         [SerializeField] private List<string> mustExcludeTags = new List<string>();
-        [Tooltip("Unscaled draw count range: the converter derives the progress target from the midpoint. Transitional data; Core has no min/max semantics.")]
+        [Tooltip("Legacy fields retained for asset compatibility; ignored by the graph converter.")]
         [SerializeField] private int minCards = 1;
         [SerializeField] private int maxCards = 3;
 
@@ -74,7 +74,7 @@ namespace TruthCardGame
                 Id = "pn-" + id + "-done",
                 SourceKind = TruthCardGame.Content.VariableSourceKind.PhaseProgress,
                 Operator = TruthCardGame.Content.VariableCompareOperator.GreaterThanOrEqual,
-                CompareValue = ProgressTarget(),
+                CompareValue = 100f,
             };
             done.Outputs.Add(Out(done.Id + "-true", TruthCardGame.Content.GraphPortKind.True));
             done.Outputs.Add(Out(done.Id + "-false", TruthCardGame.Content.GraphPortKind.False));
@@ -91,13 +91,6 @@ namespace TruthCardGame
             definition.Graph.Edges.Add(Edge(FindOutput(done, TruthCardGame.Content.GraphPortKind.True).Id, gotoDone.Id));
 
             return definition;
-        }
-
-        /// <summary>Midpoint of the authored draw range × 10 progress per card, floored at one card.</summary>
-        private float ProgressTarget()
-        {
-            var midpoint = (Mathf.Max(1, minCards) + Mathf.Max(1, maxCards)) / 2f;
-            return Mathf.Max(10f, midpoint * 10f);
         }
 
         private static T Node<T>(T node) where T : TruthCardGame.Content.GraphNodeDefinition

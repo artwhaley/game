@@ -189,7 +189,7 @@ namespace TruthCardGame.Core.Tests
             var results = new List<AdvanceResult>();
             for (var i = 0; i < 200 && !engine.IsComplete; i++)
             {
-                var result = await engine.AdvanceOneCardAsync(CancellationToken.None);
+                var result = await engine.RunUntilYieldAsync(CancellationToken.None);
                 results.Add(result);
             }
             Assert.IsTrue(engine.IsComplete, "session completed");

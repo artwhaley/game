@@ -44,13 +44,16 @@ Every entrance to a PhaseReference creates a new PhaseRun even if the same Phase
 3. apply provided overrides (Happiness default remains 50 when absent);
 4. locate exactly one SessionStart node;
 5. enter it;
-6. host may invoke first Advance automatically to preserve current UX.
+6. host may invoke the first `RunUntilYieldAsync` automatically.
 
-## Advance budget
+## Run-until-yield
 
-One Advance call has `cardBudget = 1`.
+`RunUntilYieldAsync` has one shared graph/action safety budget per call. It does
+not impose a card budget: ordinary Cards and non-card graph nodes continue until
+an authored yield, transfer, session end, cancellation, or error.
 
-Execute graph until yield/end/error.
+`ContinueAsync` calls the same operation after an authored
+`WaitForContinue` instance and resumes the saved action/card locus.
 
 Pseudo-flow:
 
@@ -58,13 +61,12 @@ Pseudo-flow:
 while not complete:
     step current graph node
     if CardExecutor wants card:
-        if cardBudget == 0: YIELD
-        execute one card
-        cardBudget--
+        choose and execute the next eligible card
+        if an authored WaitForContinue is reached: YIELD
     continue automatic nodes
 ```
 
-Decision prompts/cutscene waits are asynchronous operations inside the same Advance.
+Decision prompts/cutscene waits are asynchronous operations inside the same run.
 
 Use cancellation tokens throughout.
 
@@ -96,10 +98,6 @@ Clear stack, clear active execution, set complete, emit completion event.
 Follow normal edge.
 
 ### CardExecutor
-
-If no Card budget -> yield before selection.
-
-Else:
 
 1. choose eligible Card using current Phase metadata/tags and PhaseRun CardSelectionState;
 2. if none -> runtime content error;
@@ -143,7 +141,7 @@ A flow transfer does not discard later Actions.
 3 Increment Progress +20
 ```
 
-At #2 continuation stores `nextActionIndex = 3` and the current PhaseRun. If target eventually RETURNs, #3 executes.
+At #2 continuation stores `nextActionIndex = 3` and the current PhaseRun. If target eventually RETURNs, #3 executes, then CardFinished is emitted exactly once.
 
 If target never returns and Session ends, #3 never executes.
 

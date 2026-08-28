@@ -9,15 +9,15 @@
 - Use MVVM enough to keep graph state/testability sane, but do not introduce a broad framework rewrite solely for ideology.
 - Existing explicit repositories remain the persistence pattern. Add explicit graph/action repositories/services; no generic repository abstraction.
 
-## Four-pane shell
+## Four-pane shell (three outer columns)
 
-Default Grid weights:
+Default outer Grid weights:
 
 ```text
-Library 18* | Session 32* | Phase 32* | Inspector 18*
+Library 18* | center 64* (Session above Phase) | Inspector 18*
 ```
 
-Three `GridSplitter`s.
+Three `GridSplitter`s: Library/center, Session/Phase rows, and center/Inspector.
 
 All panes have practical MinWidth (choose values during implementation so a pane cannot collapse/disappear). Persist ratios as WPF/user workspace state, not core content.
 
@@ -238,7 +238,7 @@ Status may show `Saved` / error. Do not build a fake document Save model on top 
 
 The implementation stack deliberately pauses for user review after:
 
-1. four-pane/Nodify shell;
+1. stacked four-pane/Nodify shell;
 2. real Session canvas;
 3. real Phase canvas;
 4. GOTO exits + live cross-canvas propagation;

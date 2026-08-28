@@ -22,6 +22,7 @@ namespace TruthCardGame.Content.Sqlite
         public const string IncrementProgressV2 = ActionTypeKeys.IncrementProgress;
         public const string ModifyTemperatureV2 = ActionTypeKeys.ModifyTemperature;
         public const string PromptChoiceV2 = ActionTypeKeys.PromptChoice;
+        public const string WaitForContinueV2 = ActionTypeKeys.WaitForContinue;
         public const string PhaseGotoV2 = ActionTypeKeys.PhaseGoto;
         public const string SessionGotoV2 = ActionTypeKeys.SessionGoto;
         public const string ReturnV2 = ActionTypeKeys.Return;

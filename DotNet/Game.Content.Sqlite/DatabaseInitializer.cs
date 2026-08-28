@@ -260,6 +260,7 @@ namespace TruthCardGame.Content.Sqlite
             RequireId(session.Id, "Session");
             RequireId(session.SessionTypeId, $"SessionTypeId of session '{session.Id}'");
             if (session.Graph == null) throw new InvalidOperationException($"Session '{session.Id}' has no graph.");
+            RequireSingularStartNode(session);
 
             Sql.Execute(connection, transaction,
                 "INSERT INTO session (id, title, session_type_id) VALUES (@id, @title, @type);",
@@ -449,6 +450,19 @@ namespace TruthCardGame.Content.Sqlite
             if (entries != 1)
             {
                 throw new InvalidOperationException($"Phase '{phase.Id}' must have exactly one Entry node (found {entries}).");
+            }
+        }
+
+        private static void RequireSingularStartNode(SessionDefinition session)
+        {
+            var starts = 0;
+            foreach (var node in session.Graph.Nodes)
+            {
+                if (node is SessionStartNodeDefinition) starts++;
+            }
+            if (starts != 1)
+            {
+                throw new InvalidOperationException($"Session '{session.Id}' must have exactly one Start node (found {starts}).");
             }
         }
 

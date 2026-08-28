@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using Microsoft.Data.Sqlite;
 using NUnit.Framework;
 using TruthCardGame.Content;
@@ -59,7 +60,8 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 var crowdCard = loaded.Cards.Find(c => c.Id == SampleContent.CardFaceTheCrowd);
                 Assert.IsNotNull(crowdCard);
 
-                var choice = (PromptChoiceInstanceDefinition)crowdCard.Sequence.Instances[0];
+                var choice = crowdCard.Sequence.Instances
+                    .OfType<PromptChoiceInstanceDefinition>().Single();
                 Assert.AreEqual(2, choice.Options.Count);
 
                 var faceIt = choice.Options[0];

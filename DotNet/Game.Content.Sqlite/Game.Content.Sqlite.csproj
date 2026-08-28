@@ -10,12 +10,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Game.Content\Game.Content.csproj" />
+    <ProjectReference Include="..\Game.Core\Game.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="SQLITE-SCHEMA-V1.sql" />
     <EmbeddedResource Include="SQLITE-SCHEMA-V2.sql" />
     <EmbeddedResource Include="SQLITE-SCHEMA-V3-WPF-AUTHORING.sql" />
+    <EmbeddedResource Include="SQLITE-SCHEMA-V4-PHASE-GOTO-NULL.sql" />
   </ItemGroup>
 
 </Project>

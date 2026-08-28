@@ -6,8 +6,8 @@ namespace TruthCardGame.Content
     /// One authored Card: presentation metadata, eligibility tags, and exactly one
     /// owned Action sequence. There are no reusable configured Action entities and
     /// no cross-card ID references — every occurrence is this card's own instance
-    /// with its own values. New cards default to a single
-    /// IncrementProgress(+10) instance that authors may edit or delete.
+    /// with its own values. Pacing and progress are authored Action Instances;
+    /// the runtime never inserts hidden actions into a Card.
     /// </summary>
     public sealed class CardDefinition
     {

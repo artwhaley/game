@@ -38,6 +38,21 @@ namespace TruthCardGame.Content.Sqlite.Tests
         // ---------- session metadata CRUD ----------
 
         [Test]
+        public void CreateWithStart_CreatesSingularStartAndInitialLayout()
+        {
+            SessionRepository.CreateWithStart(_connection, "s1", "Alpha", "type-standard");
+
+            var graph = GameContentSnapshotLoader.LoadSessionGraph(_connection, "s1");
+            Assert.AreEqual(1, graph.Nodes.Count);
+            Assert.IsInstanceOf<SessionStartNodeDefinition>(graph.Nodes[0]);
+            var layout = AuthoringLayoutRepository.LoadSessionNodePositions(_connection, "s1");
+            Assert.AreEqual(0, layout[graph.Nodes[0].Id].X, 0.001);
+            Assert.AreEqual(0, layout[graph.Nodes[0].Id].Y, 0.001);
+            Assert.Throws<InvalidOperationException>(() => SessionGraphRepository.AddNode(
+                _connection, "s1", new SessionStartNodeDefinition { Id = "another-start" }));
+        }
+
+        [Test]
         public void CreateRenameSetType_AndLoaderRoundTrip()
         {
             SessionRepository.Create(_connection, "s1", "Alpha", "type-standard");
@@ -109,23 +124,32 @@ namespace TruthCardGame.Content.Sqlite.Tests
         }
 
         [Test]
-        public void RemoveNode_CascadesItsOutputsAndEdges()
+        public void RemoveNonStructuralNode_CascadesItsOutputsAndEdges()
         {
             SessionRepository.Create(_connection, "s1", "Alpha", "type-standard");
-            var start = new SessionStartNodeDefinition { Id = "n-start" };
-            start.Outputs.Add(new GraphOutputDefinition { Id = "n-start-out", Kind = GraphPortKind.Normal });
-            SessionGraphRepository.AddNode(_connection, "s1", start);
+            var decision = new SessionDecisionNodeDefinition { Id = "n-decision", Prompt = "Choose" };
+            decision.Outputs.Add(new GraphOutputDefinition { Id = "n-decision-out", Kind = GraphPortKind.Normal });
+            SessionGraphRepository.AddNode(_connection, "s1", decision);
             SessionGraphRepository.AddNode(_connection, "s1", new SessionEndNodeDefinition { Id = "n-end" });
             SessionGraphRepository.AddEdge(_connection, "s1", new GraphEdgeDefinition
             {
-                Id = "e1", SourceOutputId = "n-start-out", TargetNodeId = "n-end",
+                Id = "e1", SourceOutputId = "n-decision-out", TargetNodeId = "n-end",
             });
 
-            SessionGraphRepository.RemoveNode(_connection, "s1", "n-start");
+            SessionGraphRepository.RemoveNode(_connection, "s1", "n-decision");
 
             Assert.AreEqual(1, Count("session_graph_node"));
             Assert.AreEqual(0, Count("session_graph_edge"));
             Assert.AreEqual(0, Count("session_node_output"));
+        }
+
+        [Test]
+        public void RemoveStart_IsRejected_ByStructuralInvariant()
+        {
+            SessionRepository.CreateWithStart(_connection, "s1", "Alpha", "type-standard");
+            var start = GameContentSnapshotLoader.LoadSessionGraph(_connection, "s1").Nodes[0];
+            Assert.Throws<InvalidOperationException>(() => SessionGraphRepository.RemoveNode(_connection, "s1", start.Id));
+            Assert.AreEqual(1, Count("session_graph_node"));
         }
 
         [Test]

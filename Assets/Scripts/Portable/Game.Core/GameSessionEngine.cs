@@ -9,7 +9,7 @@ namespace TruthCardGame.Core
     /// Session-run facade over the two-level graph VM. Tickets 07-09 replaced the
     /// slot-era internals with the Phase VM + Session VM; this facade constructs
     /// the session VM on first advance, forwards host events, and exposes the
-    /// one-card-per-request user-paced operation to hosts.
+    /// explicit-yield operation to hosts.
     /// </summary>
     public sealed class GameSessionEngine
     {
@@ -19,6 +19,7 @@ namespace TruthCardGame.Core
         private readonly CoreServices _services;
         private readonly BackgroundActionTracker _tracker;
         private readonly PhaseRunRngFactory _rngFactory;
+        private readonly int _executionBudget;
 
         private SessionGraphVm _vm;
         private bool _busy;
@@ -50,7 +51,8 @@ namespace TruthCardGame.Core
         /// graph fails here, at session start, not on the first draw.
         /// </summary>
         public GameSessionEngine(GameContentDefinition content, string sessionId, CoreServices services,
-            SessionSpawnOptions spawn, PhaseRunRngFactory rngFactory)
+            SessionSpawnOptions spawn, PhaseRunRngFactory rngFactory,
+            int executionBudget = PhaseGraphVm.DefaultExecutionBudget)
         {
             if (content == null) throw new ArgumentNullException(nameof(content));
             if (string.IsNullOrEmpty(sessionId)) throw new ArgumentNullException(nameof(sessionId));
@@ -62,6 +64,8 @@ namespace TruthCardGame.Core
             _tracker = new BackgroundActionTracker(_services.Log);
             SpawnOptions = spawn ?? SessionSpawnOptions.Default;
             _rngFactory = rngFactory ?? new PhaseRunRngFactory();
+            if (executionBudget <= 0) throw new ArgumentOutOfRangeException(nameof(executionBudget));
+            _executionBudget = executionBudget;
             Player = new Player("Player");
             Temperatures = new TemperatureState(_catalog, SpawnOptions);
             EnsureVm();
@@ -88,7 +92,7 @@ namespace TruthCardGame.Core
 
         /// <summary>
         /// The inner session VM (Ticket 19 debugger). Null until the first
-        /// AdvanceOneCardAsync call creates it; the VM raises the fine-grained
+        /// first run call creates it; the VM raises the fine-grained
         /// node/check events the Workbench highlights against its canvases.
         /// </summary>
         public SessionGraphVm SessionVm => _vm;
@@ -99,15 +103,25 @@ namespace TruthCardGame.Core
         /// <summary>How many background actions are still running.</summary>
         public int PendingBackgroundCount => _tracker.ActiveCount;
 
-        // ---------- the user-paced operation ----------
+        // ---------- the explicit-yield operation ----------
 
         /// <summary>
-        /// Advances at most one executed Card per request through the session VM:
-        /// prompts/decisions/cutscenes inside the step are awaited, and the VM is
-        /// driven until exactly one card executes or the session completes. Busy
-        /// requests are ignored; runtime content errors surface loudly.
+        /// Runs automatically through the graph until an authored WaitForContinue,
+        /// SessionEnd, cancellation, or a runtime/content error. Card completion
+        /// is not a pause boundary; one run can execute multiple Cards.
         /// </summary>
-        public async Task<AdvanceResult> AdvanceOneCardAsync(CancellationToken cancellationToken)
+        public Task<AdvanceResult> RunUntilYieldAsync(CancellationToken cancellationToken)
+        {
+            return RunUntilYieldCoreAsync(cancellationToken);
+        }
+
+        /// <summary>Resumes the same run after an authored WaitForContinue.</summary>
+        public Task<AdvanceResult> ContinueAsync(CancellationToken cancellationToken)
+        {
+            return RunUntilYieldAsync(cancellationToken);
+        }
+
+        private async Task<AdvanceResult> RunUntilYieldCoreAsync(CancellationToken cancellationToken)
         {
             if (IsComplete)
             {
@@ -127,21 +141,19 @@ namespace TruthCardGame.Core
                 while (!vm.IsComplete)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    var result = await vm.AdvanceAsync(context, cancellationToken);
+                    var result = await vm.RunUntilYieldAsync(context, cancellationToken);
                     switch (result.Outcome)
                     {
-                        case SessionAdvanceOutcome.CardExecuted:
-                            return new AdvanceResult(AdvanceResultKind.CardCompleted, result.Card);
-                        case SessionAdvanceOutcome.YieldedForCard:
-                            continue; // park at next card boundary and try again
+                        case SessionAdvanceOutcome.YieldedForContinue:
+                            return new AdvanceResult(AdvanceResultKind.WaitForContinue);
                         case SessionAdvanceOutcome.SessionCompleted:
                             IsComplete = true;
                             return new AdvanceResult(AdvanceResultKind.SessionCompleted);
                         case SessionAdvanceOutcome.Error:
-                            throw new InvalidOperationException(
+                            throw new GraphExecutionException(
                                 $"Session '{_session.Id}' runtime error: " + result.ErrorMessage);
                         default:
-                            throw new InvalidOperationException(
+                            throw new GraphExecutionException(
                                 $"Session '{_session.Id}' produced unknown outcome '{result.Outcome}'.");
                     }
                 }
@@ -158,7 +170,7 @@ namespace TruthCardGame.Core
         private SessionGraphVm EnsureVm()
         {
             if (_vm != null) return _vm;
-            _vm = new SessionGraphVm(_content, _session.Id, _services, _tracker, _rngFactory);
+            _vm = new SessionGraphVm(_content, _session.Id, _services, _tracker, _rngFactory, _executionBudget);
             _vm.CardStarted += card => CardStarted?.Invoke(card);
             _vm.CardFinished += card => CardFinished?.Invoke(card);
             _vm.PhaseEntered += title => PhaseEntered?.Invoke(title);

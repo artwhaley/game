@@ -118,6 +118,32 @@ namespace TruthCardGame.Content.Sqlite
             Sql.Execute(connection, null, "DELETE FROM phase_exit WHERE id = @id;", ("id", exitId));
         }
 
+        /// <summary>Deletes an exit and clears its editable references and projected edges atomically.</summary>
+        public static void ForceDelete(DbConnection connection, string exitId)
+        {
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    Sql.Execute(connection, transaction,
+                        "DELETE FROM session_graph_edge WHERE source_port_id IN " +
+                        "(SELECT id FROM session_node_output WHERE phase_exit_id = @exit);",
+                        ("exit", exitId));
+                    Sql.Execute(connection, transaction,
+                        "UPDATE action_instance_phase_goto SET phase_exit_id = NULL WHERE phase_exit_id = @exit;",
+                        ("exit", exitId));
+                    Sql.Execute(connection, transaction,
+                        "DELETE FROM phase_exit WHERE id = @exit;", ("exit", exitId));
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+
         public static void Rename(DbConnection connection, string exitId, string name)
         {
             if (string.IsNullOrEmpty(exitId)) throw new ArgumentException("Exit id required.", nameof(exitId));

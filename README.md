@@ -5,7 +5,7 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
 ## Status
 
 - **SQLite is the canonical source of content truth** at `Content/GameContent.db`
-  (schema v3), owned by the provider-neutral `Game.Content.Sqlite` project.
+  (schema v4), owned by the provider-neutral `Game.Content.Sqlite` project.
   Sessions compose **reusable Phases through a Session/Phase graph model**
   (nodes + edges + Action Instances) — the PhaseSlot/slot-candidate era is
   gone except as v1→v2 migration history. The **Nodify WPF Graph Workbench**
@@ -20,21 +20,23 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   multiple hosts. `GameContentDefinition` is the in-memory snapshot;
   `Game.Core` owns resolution and runtime. See
   [Extraction milestone](#extraction-milestone-01) below.
-- Editor builders generate all scenes + starter content — no manual wiring.
-- Unity 6000.5.9f1 pinned; verified: compiles clean, EditMode 24/24, PlayMode
-  smoke 2/2 headless on this checkout; portable suite **204/204** via
-  `dotnet test Game.Workbench.sln` (102 engine + 102 SQLite). The WPF Workbench
-  and reference player load the canonical SQLite DB. Human passes completed
-  against [`Docs/CoreExtraction/MANUAL-TEST-GUIDE.md`](Docs/CoreExtraction/MANUAL-TEST-GUIDE.md)
-  and [`Docs/GraphWorkbench/WORKBENCH-MANUAL-TEST-GUIDE.md`](Docs/GraphWorkbench/WORKBENCH-MANUAL-TEST-GUIDE.md).
+- Editor builders generate scenes + starter content — no manual wiring.
+- Unity 6000.5.9f1 is pinned. Current remediation verification is recorded in
+  [`Docs/GraphWorkbenchRemediation/FINAL-REPORT.md`](Docs/GraphWorkbenchRemediation/FINAL-REPORT.md);
+  do not infer Unity or human acceptance from older milestone reports.
+- Current automated .NET gates: **105 Core tests passed** and **109 SQLite
+  tests passed, 1 skipped** (the skip preserves the pre-existing dirty
+  canonical DB's unconnected projected PhaseExit). The WPF host builds and
+  launches as a smoke check; interactive WPF and Unity gates remain
+  human/not-run unless the final report says otherwise.
 - Development rules: [`agents.md`](agents.md) · Unity CLI notes: [`unity-cli.md`](unity-cli.md)
 
 ## Graph Workbench milestone (0.3)
 
-The ticket stack in `new tickets/Game_GraphVM_WPF_Authoring_Stack/` delivered
-the graph-model content architecture and the WPF authoring tool. Every ticket
-(00–21) is implemented, committed, and tested; the human review gates are
-logged in [`Docs/GraphWorkbench/FINAL-REPORT.md`](Docs/GraphWorkbench/FINAL-REPORT.md).
+The remediation ticket stack in `new tickets/Game_GraphWorkbench_Remediation_Patch_Stack/`
+patches the graph-model content architecture and WPF authoring tool. Automated,
+human, and not-run gates are separated in
+[`Docs/GraphWorkbenchRemediation/FINAL-REPORT.md`](Docs/GraphWorkbenchRemediation/FINAL-REPORT.md).
 
 - **Schema v2** — two-level graph model: `session_graph_node` (Start /
   PhaseReference / SessionDecision / End), `phase_graph_node` (Entry /
@@ -42,19 +44,21 @@ logged in [`Docs/GraphWorkbench/FINAL-REPORT.md`](Docs/GraphWorkbench/FINAL-REPO
   ordered `action_sequence` + `action_instance` (typed, blocking) replacing
   top-level configured actions; session_node_output carries phase-exit
   projections and session-goto ports. **Schema v3** adds the `wpf_*` authoring
-  layout tables (node positions, viewport state).
+  layout tables (node positions, viewport state); **schema v4** adds nullable PhaseGoto
+  exit assignment.
 - **Portable model** (`Game.Content`) — `SessionGraphDefinition` /
   `PhaseGraphDefinition` with typed node definitions and Action Instances;
   `Game.Core` runs the Session/Phase graph VMs (GOTO/RETURN continuation stack,
   decisions, variable checks, card executors) through the real engine.
-- **WPF Workbench** (`DotNet/Game.ReferenceHost.Wpf`) — four-pane Nodify
-  editor: Library (sessions/phases CRUD + filter), Session Graph, Phase Graph,
+- **WPF Workbench** (`DotNet/Game.ReferenceHost.Wpf`) — four logical Nodify
+  panes in three outer columns: Library, stacked Session/Phase graphs, and
   Inspector. Authoring persists immediately to SQLite (continuous
   persistence — the DB is always the source of truth): node/edge create,
   drag-drop Phase placement with live exit-socket projection, inline
   VariableCheck/GOTO/decision editors, exits strip, Copy Session /
   Duplicate Phase / Make Unique with the shared-port lock, and semantic
-  undo/redo (Ctrl+Z / Ctrl+Y) over every edit.
+  undo/redo (Ctrl+Z / Ctrl+Y) over every edit, including typed Action Instance
+  add/remove/reorder/update, phase tags, and structural node creation.
 - **Live preview/debugger** — a collapsible strip runs the real Core engine
   against a fresh SQLite snapshot with amber node rings, transfer-edge and
   check-branch highlighting, and readable temperatures/progress/stack/PhaseRun
@@ -72,7 +76,7 @@ architecture; the graph model in milestone 0.3 superseded it — v1 data is
 migrated, not taught.)
 
 - `DotNet/Game.Content.Sqlite` — provider-neutral (any `DbConnection`):
-  schema v1→v3 migrations, snapshot loader, empty-DB initializer, granular
+  schema v1→v4 migrations, snapshot loader, empty-DB initializer, granular
   authoring repositories (Session / Phase / graph nodes and edges / exits /
   decision options / action instances), and the seed tool.
 - `Content/GameContent.db` — the committed canonical DB, seeded from the Unity
@@ -102,16 +106,17 @@ changing observable behavior:
 - `Assets/Scripts/Portable/Game.Content/` — inert data model (sessions,
   phases, cards, deck, action definitions).
 - `Assets/Scripts/Portable/Game.Core/` — rules & orchestration
-  (`SessionDriver`, card selector, async `ActionExecutor`, background tracker,
-  user-paced `GameSessionEngine.AdvanceOneCardAsync`).
-- Unity is a host: `GameManager` converts assets once and forwards Draw Next;
+  (Session/Phase graph VMs, card selector, async `ActionExecutor`, background
+  tracker, `GameSessionEngine.RunUntilYieldAsync` / `ContinueAsync`).
+- Unity is a host: `GameManager` converts assets once and forwards Continue;
   the old coroutine engine was removed. ScriptableObject assets keep their
   identity and convert to definitions at session start.
 - `DotNet/` contains SDK projects compiling the **same physical source**:
   - `Game.Workbench.sln` opens in Visual Studio;
   - tests: `dotnet test Game.Workbench.sln`;
   - WPF reference player: run `DotNet/Game.ReferenceHost.Wpf` (loads the
-    canonical `Content/GameContent.db`, one card per Draw Next click).
+    canonical `Content/GameContent.db`; pacing is authored by
+    `WaitForContinue` Action Instances).
 - Facts/reports: [`Docs/CoreExtraction/`](Docs/CoreExtraction/) — baseline
   inventory, extraction map, parity report (the JSON pipeline those reports
   describe was superseded by SQLite in milestone 0.2).
@@ -133,16 +138,21 @@ changing observable behavior:
   - `StatIncreaseAction` — adds to a named player stat.
   - `ChoiceAction` — prompt + ordered options; each option's child action is converted recursively.
   - `CutsceneAction` — serialized `TimelineAsset` plus an authored stable `resourceId` (e.g. `cs:intro`; minted once if left empty). Portable content references the cutscene by that id; `CutsceneBindingRegistry` resolves it to the asset, failing loudly on duplicates. No counter keys — links survive authoring round trips.
+  - `WaitForContinueAction` and `IncrementProgressAction` — explicit authored
+    pacing/progress wrappers; no implicit post-card progress exists.
 - **CardDeck / Phase / Session / SessionLibrary** = data assets likewise converted once at session start.
 - Content lives under `Assets/Content/`. Create, duplicate, mutate in the Project window — the seed of the future authoring tools.
 - **Stable content IDs**: every entity (deck, card, action, choice option, phase, session) carries an opaque string `id` minted once at authoring time and never regenerated. Names, tags, and list positions may change; ids don't — so cross-host references (e.g. a Unity cutscene binding pointing at a card) survive authoring round trips. Unity SOs mint on creation (`OnValidate`/`EnsureId`); the SQLite canonical DB uses the same IDs as the Unity sample content.
 
-### Execution flow — one portable engine, Unity is a host
+### Execution flow — run-until-yield portable engine, Unity is a host
 
 1. **MainMenu** → Start Game loads **GameSetup** (session picker from SessionLibrary); Settings holds the live 0.5×–3.0× length slider writing `SessionConfig.LengthModifier`.
 2. Picking a session writes it to `SessionConfig` (static handoff across scene loads — deliberately not persisted) and loads **Game**.
 3. `GameManager.Awake` converts the selected session/deck to definitions and constructs the portable **GameSessionEngine** with Unity host services (scaled-time delay, console log, Task-based prompt bridge over GamePanel, DirectorPlayer-backed cutscene service, `UnityEngine.Random` card draws + seeded phase RNG).
-4. `GameManager.Start` triggers the **automatic first advance**; every later Draw Next click forwards to `AdvanceOneCardAsync`. Core owns all rules: tag matching, random draw, no-match phase skipping, blocking/continuous action sequencing, phase targets, completion.
+4. `GameManager.Start` starts `RunUntilYieldAsync`; Continue forwards
+   `ContinueAsync`. Core runs through ordinary cards and graph nodes until an
+   authored `WaitForContinue`, `SessionEnd`, cancellation, or runtime error.
+   Card GOTO/RETURN preserves the suspended card/action continuation.
 5. `GamePanel` is the dumb view (card title, status, buttons) driven by Core lifecycle events.
 
 ### Scenes are generated by editor builders

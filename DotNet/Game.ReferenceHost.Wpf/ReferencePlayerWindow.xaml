@@ -14,8 +14,8 @@
                     Style="{StaticResource DarkButton}" Click="OnStartSession"/>
             <Button x:Name="AutoButton" Content="Auto ▶" Width="80" Height="24" Margin="8,0,0,0"
                     Style="{StaticResource DarkButton}" Click="OnAutoToggled"
-                    ToolTip="Advance automatically until the session completes"/>
-            <Button x:Name="DrawNextButton" Content="Draw Next" Width="110" Height="24" Margin="8,0,0,0"
+                    ToolTip="Run automatically until an authored wait or session completion"/>
+            <Button x:Name="DrawNextButton" Content="Continue" Width="110" Height="24" Margin="8,0,0,0"
                     Style="{StaticResource DarkButton}" IsEnabled="False" Click="OnDrawNext"/>
         </StackPanel>
 

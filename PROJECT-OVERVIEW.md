@@ -13,27 +13,29 @@ what's open, and where it should go next.*
 > and are kept for background only** — current truth: README "How it works",
 > [`Docs/CoreExtraction/FINAL-REPORT.md`](Docs/CoreExtraction/FINAL-REPORT.md),
 > and [`Docs/CoreExtraction/02-parity-report.md`](Docs/CoreExtraction/02-parity-report.md).
-> Current test posture: 8 EditMode conversion tests + 2 PlayMode smoke tests +
-> 87 portable tests via `dotnet test`; human Play-mode passes of both hosts are
-> complete. The cutscene timeline assignment (§6.1) remains open. Note on §3.3:
+> That milestone's test posture is historical; current verification is in the
+> remediation report. The cutscene timeline assignment (§6.1) remains open. Note on §3.3:
 > the scene/content builders remain useful bootstrap/editor automation; they
 > are not a standing law that visual Unity work must always be reconstructed
 > from C#.
 
-> **Addendum (Graph Workbench 0.3, 2026-08):** the graph-model content
-> architecture and the WPF authoring tool shipped via the ticket stack in
-> `new tickets/Game_GraphVM_WPF_Authoring_Stack/` (T00–T21, all implemented,
-> committed, and tested — review gates logged in
-> [`Docs/GraphWorkbench/FINAL-REPORT.md`](Docs/GraphWorkbench/FINAL-REPORT.md)).
+> **Addendum (Graph Workbench remediation, 2026-08):** the graph-model content
+> architecture and WPF authoring tool were remediated via
+> `new tickets/Game_GraphWorkbench_Remediation_Patch_Stack/`. Current behavior
+> and verification are recorded in
+> [`Docs/GraphWorkbenchRemediation/FINAL-REPORT.md`](Docs/GraphWorkbenchRemediation/FINAL-REPORT.md).
 > Sessions compose **reusable Phases through a two-level graph model**
 > (session nodes Start/PhaseReference/Decision/End; phase nodes
 > Entry/CardExecutor/VariableCheck/Action/Decision/Return; typed Action
 > Instances replace top-level configured actions). SQLite schema v2 added the
-> graph tables; v3 adds the `wpf_*` authoring layout tables. The Nodify WPF
-> **Graph Workbench** (Library + Session Graph + Phase Graph + Inspector) is
-> the primary core-content authoring host with continuous persistence,
-> live port projection, exits/GOTO authoring, Copy/Duplicate/Make-Unique,
-> semantic undo/redo, and an embedded live Core preview/debugger.
+> graph tables; v3 adds the `wpf_*` authoring layout tables; v4 makes PhaseGoto
+> exit assignment nullable for first-class unassigned authoring. The Nodify WPF
+> **Graph Workbench** (Library + stacked Session/Phase graphs + Inspector) is
+> the primary core-content authoring host with durable layout, live port
+> projection, exits/GOTO authoring, Copy/Duplicate/Make-Unique, typed Action
+> Instance editing, semantic undo/redo, and an embedded live Core preview/
+> debugger. Runtime uses RunUntilYield/Continue with authored WaitForContinue
+> pacing; CardFinished is not a pacing boundary.
 > Authoritative design: [`Docs/GraphWorkbench/`](Docs/GraphWorkbench/).
 >
 > **Addendum (SQLite content pipeline 0.2, 2026-08):** SQLite is the
@@ -45,16 +47,38 @@ what's open, and where it should go next.*
 > `ContentCatalog`; Unity runs a temporary ScriptableObject→snapshot bridge
 > (`UnityContentGraphBuilder`) and will later read the same SQLite schema,
 > owning `unity_*` extension tables (proven safe by the integrity audit and
-> the HostExtensionSafety tests). The v1-era PhaseSlot/PhaseSlotCandidate
+> the HostExtensionSafety tests). The current database is schema v4. The
+> v1-era PhaseSlot/PhaseSlotCandidate
 > model below is superseded by the graph model — v1 data is migrated, not
 > taught. The JSON spike (`Game.Content.Json`) was removed; there is no JSON
-> schema v3. The extraction-era addendum above and §3–§9 below are retained
-> as history.
+> canonical store. The extraction-era addendum above and §3–§9 below are
+> retained as historical background, not current behavior.
 
 Companion docs: [`agents.md`](agents.md) (operating rules),
 [`README.md`](README.md) (current status + dev log),
 [`unity-cli.md`](unity-cli.md) (CLI notes), [`Tickets/`](Tickets/README.md)
 (execution tickets).
+
+---
+
+## Current architecture (2026 remediation)
+
+- SQLite schema v4 is the canonical content store. The portable
+  `Game.Content` snapshot contains typed Session/Phase graphs, reusable Phase
+  references, owned ordered Action Instances, and stable PhaseExit IDs.
+- `Game.Core` runs `RunUntilYieldAsync` / `ContinueAsync` through graph nodes
+  and ordinary Cards. `WaitForContinue` is explicit content; CardFinished is
+  not an implicit pause or progress mutation. GOTO/RETURN preserves the
+  remaining Card actions and PhaseRun-local state.
+- The WPF Workbench is the core-content authoring host: Library, stacked
+  Session/Phase graph canvases, Inspector, durable node/viewport layout, typed
+  Action Instance editing, PhaseExit projection/force-delete, Make Unique, and
+  semantic undo/redo across both graph panes.
+- Unity remains a thin ScriptableObject host/adapter. Its current bridge emits
+  the same portable graph shape; it does not own runtime rules or min/max-card
+  progression.
+- Verification and remaining human gates are maintained in
+  [`Docs/GraphWorkbenchRemediation/FINAL-REPORT.md`](Docs/GraphWorkbenchRemediation/FINAL-REPORT.md).
 
 ---
 
@@ -109,7 +133,7 @@ mode this project guards against is speculative infrastructure.
 
 ---
 
-## 3. Architecture
+## 3. Historical architecture (superseded)
 
 ### 3.1 The core abstraction stack
 

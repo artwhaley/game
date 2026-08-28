@@ -66,6 +66,7 @@ namespace TruthCardGame.Core.Tests
                 new ModifyTemperatureInstanceDefinition(),
                 new CutsceneInstanceDefinition(),
                 new PromptChoiceInstanceDefinition(),
+                new WaitForContinueInstanceDefinition(),
                 new PhaseGotoInstanceDefinition(),
                 new SessionGotoInstanceDefinition(),
                 new ReturnInstanceDefinition(),
@@ -89,6 +90,7 @@ namespace TruthCardGame.Core.Tests
                      {
                          ActionTypeKeys.PhaseGoto,
                          ActionTypeKeys.SessionGoto,
+                         ActionTypeKeys.WaitForContinue,
                          ActionTypeKeys.Return,
                          ActionTypeKeys.EndSession,
                      })
@@ -101,11 +103,12 @@ namespace TruthCardGame.Core.Tests
         }
 
         [Test]
-        public void IllegalOwnerScope_IsRejected()
+        public void OwnerScopeRules_RejectOnlyIllegalCombinations()
         {
-            // PhaseGoto is legal only in phase/choice-option sequences, not a card's.
+            // Card GOTO is legal: the session VM preserves the Card continuation
+            // while the target Phase runs and resumes it after RETURN.
             var gotoInstance = new PhaseGotoInstanceDefinition { Id = "g1", PhaseExitId = "px-x" };
-            Assert.Throws<System.InvalidOperationException>(
+            Assert.DoesNotThrow(
                 () => ActionTypeRegistry.ValidateScope(gotoInstance, ActionOwnerScope.CardSequence));
 
             // SessionGoto only in session decision options.

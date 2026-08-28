@@ -30,6 +30,18 @@ namespace TruthCardGame.Core
         /// <summary>Draw history for future cooldown/repetition rules; empty in v1.</summary>
         public List<string> DrawHistory { get; } = new List<string>();
 
+        /// <summary>Card Action continuation suspended by WaitForContinue.</summary>
+        public CardDefinition SuspendedCard { get; set; }
+
+        /// <summary>Remaining points inside SuspendedCard's nested Action chain.</summary>
+        public IReadOnlyList<ContinuationPoint> SuspendedCardChain { get; set; }
+
+        /// <summary>Phase action/decision continuation suspended by WaitForContinue.</summary>
+        public GraphNodeDefinition SuspendedActionLocus { get; set; }
+
+        /// <summary>Remaining points for SuspendedActionLocus.</summary>
+        public IReadOnlyList<ContinuationPoint> SuspendedActionChain { get; set; }
+
         public PhaseRun(string placementNodeId, string phaseId, IRandomSource cardRng)
         {
             PlacementNodeId = placementNodeId ?? "";
@@ -38,14 +50,11 @@ namespace TruthCardGame.Core
         }
     }
 
-    /// <summary>What one Phase Advance produced.</summary>
+    /// <summary>What one Phase RunUntilYield operation produced.</summary>
     public enum PhaseAdvanceOutcome
     {
-        /// <summary>Exactly one card executed; the graph paused at the next card boundary (user-paced yield).</summary>
-        CardExecuted,
-
-        /// <summary>The next CardExecutor needs a card but the Advance card budget is exhausted.</summary>
-        YieldedForCard,
+        /// <summary>An authored WaitForContinue suspended this Phase run.</summary>
+        YieldedForContinue,
 
         /// <summary>A flow action fired (PhaseGoto / SessionGoto / Return / EndSession) — the session VM resolves it.</summary>
         Transferred,
@@ -72,13 +81,8 @@ namespace TruthCardGame.Core
             ErrorMessage = error;
         }
 
-        public static PhaseAdvanceResult CardExecuted(CardDefinition card)
-        {
-            return new PhaseAdvanceResult(PhaseAdvanceOutcome.CardExecuted, card, null, null);
-        }
-
-        public static readonly PhaseAdvanceResult YieldedForCard =
-            new PhaseAdvanceResult(PhaseAdvanceOutcome.YieldedForCard, null, null, null);
+        public static readonly PhaseAdvanceResult YieldedForContinue =
+            new PhaseAdvanceResult(PhaseAdvanceOutcome.YieldedForContinue, null, null, null);
 
         public static PhaseAdvanceResult Transferred(ActionExecutionResult transfer)
         {

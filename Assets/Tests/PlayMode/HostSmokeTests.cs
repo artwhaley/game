@@ -141,20 +141,17 @@ namespace TruthCardGame.Tests
             var engine = new GameSessionEngine(content, session.Id, services);
 
             var startTime = Time.time;
-            var cards = 0;
             var guard = 0;
             while (!engine.IsComplete && guard++ < 40)
             {
-                var advance = engine.AdvanceOneCardAsync(CancellationToken.None);
+                var advance = engine.RunUntilYieldAsync(CancellationToken.None);
                 yield return Await(advance);
                 AssertTaskSucceeded(advance);
-                if (advance.Result.Kind == AdvanceResultKind.CardCompleted) cards++;
             }
 
             Assert.IsTrue(engine.IsComplete, "session completed");
-            // Ten +10 cards reach 100; the 10th card's advance transfers and
-            // completes the session in the same call, so 9 report CardCompleted.
-            Assert.AreEqual(9, cards, "nine card-completed advances plus the completing one");
+            // No WaitForContinue is authored here: one run may cross all ten
+            // ordinary cards and complete the session.
             Assert.AreEqual(30, engine.Player.Stats.Get("courage"), "3 per card × 10 cards");
             Assert.GreaterOrEqual(Time.time - startTime, 0.05f, "the debug beat really consumed scaled game time");
 
@@ -228,7 +225,7 @@ namespace TruthCardGame.Tests
             var guard = 0;
             while (!engine.IsComplete && guard++ < 40)
             {
-                var advance = engine.AdvanceOneCardAsync(CancellationToken.None);
+                var advance = engine.RunUntilYieldAsync(CancellationToken.None);
                 yield return Await(advance);
                 AssertTaskSucceeded(advance);
             }

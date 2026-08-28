@@ -77,6 +77,80 @@
                             <Button Content="+ GOTO" Click="OnAddGoto" Padding="6,1" Margin="0,2,0,0" HorizontalAlignment="Left"
                                     Style="{StaticResource DarkButton}" ToolTip="Add a PhaseGoto instance (blocking, chooses an exit)"/>
                         </StackPanel>
+                        <!-- Explicit registry-backed Action Instance editor. Each
+                             row edits one typed instance; no generic property bag. -->
+                        <StackPanel Visibility="{Binding CanEditActions, Converter={StaticResource BoolToVisible}}" Margin="0,4,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <ComboBox Style="{StaticResource DarkComboBox}" Padding="2,0" MinWidth="110"
+                                          ItemsSource="{Binding ActionTypeOptions}" DisplayMemberPath="DisplayLabel"
+                                          SelectedValuePath="TypeKey" SelectedValue="{Binding SelectedActionTypeKey}"/>
+                                <Button Content="+ Action" Click="OnAddActionInstance" Padding="5,1" Margin="3,0,0,0"
+                                        Style="{StaticResource DarkButton}" ToolTip="Add the selected code-defined Action Type"/>
+                            </StackPanel>
+                            <ItemsControl ItemsSource="{Binding ActionRows}" Margin="0,3,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="0,1,0,1">
+                                            <TextBlock Text="{Binding DisplayLabel}" Width="78" FontSize="10"
+                                                       VerticalAlignment="Center" Foreground="#FFB0B0B0" TextTrimming="CharacterEllipsis"/>
+                                            <ComboBox Padding="2,0" Width="82" Margin="2,0,2,0"
+                                                      ItemsSource="{Binding ExitOptions}" DisplayMemberPath="Name"
+                                                      SelectedValuePath="Id" SelectedValue="{Binding TextValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                                <ComboBox.Style>
+                                                    <Style TargetType="ComboBox" BasedOn="{StaticResource DarkComboBox}">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding TypeKey}" Value="phase_goto">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ComboBox.Style>
+                                            </ComboBox>
+                                            <TextBlock Text="!" Foreground="#FFFF6B6B" FontWeight="Bold" Margin="0,0,2,0"
+                                                       ToolTip="Unassigned PhaseExit; playback will fail until assigned">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <MultiDataTrigger>
+                                                                <MultiDataTrigger.Conditions>
+                                                                    <Condition Binding="{Binding TypeKey}" Value="phase_goto"/>
+                                                                    <Condition Binding="{Binding TextValue}" Value=""/>
+                                                                </MultiDataTrigger.Conditions>
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </MultiDataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBox Padding="2,0" Width="82" Margin="2,0,2,0"
+                                                     Text="{Binding TextValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                                <TextBox.Style>
+                                                    <Style TargetType="TextBox" BasedOn="{StaticResource DarkTextBox}">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding TypeKey}" Value="phase_goto">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding TypeKey}" Value="increment_progress">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBox.Style>
+                                            </TextBox>
+                                            <TextBox Padding="2,0" Width="42" Margin="2,0,2,0"
+                                                     Text="{Binding NumberText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="Numeric parameter (instance-local)"/>
+                                            <Button Content="↑" Click="OnMoveActionUp" Padding="2,0" Style="{StaticResource DarkButton}"/>
+                                            <Button Content="↓" Click="OnMoveActionDown" Padding="2,0" Style="{StaticResource DarkButton}"/>
+                                            <Button Content="×" Click="OnRemoveActionInstance" Padding="3,0" Style="{StaticResource DarkButton}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                         <!-- Inline decision editor (ticket 16): prompt + 1-3 option rows. -->
                         <StackPanel Visibility="{Binding DecisionScope, Converter={StaticResource NullToCollapsed}}" Margin="0,4,0,0">
                             <TextBlock Text="Prompt" FontSize="10" Foreground="#FFB0B0B0"/>
@@ -202,7 +276,7 @@
                     <TextBlock x:Name="PreviewSessionLabel" Text="(no session)" Margin="10,0,0,0" VerticalAlignment="Center"
                                Foreground="#FFB0B0B0"/>
                     <Button Content="Start ▶" Click="OnPreviewStart" Padding="8,2" Margin="14,0,0,0" Style="{StaticResource DarkButton}"/>
-                    <Button Content="Draw Next" x:Name="PreviewDrawButton" Click="OnPreviewAdvance" Padding="8,2" Margin="4,0,0,0"
+                    <Button Content="Continue" x:Name="PreviewDrawButton" Click="OnPreviewAdvance" Padding="8,2" Margin="4,0,0,0"
                             Style="{StaticResource DarkButton}" IsEnabled="False"/>
                     <Button Content="Restart ↺" Click="OnPreviewRestart" Padding="8,2" Margin="4,0,0,0" Style="{StaticResource DarkButton}"/>
                     <Button Content="Stop ■" Click="OnPreviewStop" Padding="8,2" Margin="4,0,0,0" Style="{StaticResource DarkButton}"/>
@@ -235,21 +309,24 @@
             </Grid>
         </Border>
 
-        <!-- Four panes with three GridSplitters. Ratios are applied in code-behind
-             so they are driven by the persisted WorkbenchLayout model. -->
+        <!-- Library / stacked graph workbench / Inspector. Outer ratios are
+             applied in code-behind; the center splitter is row-based. -->
         <Grid x:Name="PaneGrid" Background="#FF1B1B1C">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" MinHeight="120"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*" MinHeight="120"/>
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" MinWidth="120"/>
+                <ColumnDefinition Width="18*" MinWidth="120"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*" MinWidth="120"/>
+                <ColumnDefinition Width="64*" MinWidth="360"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*" MinWidth="120"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*" MinWidth="120"/>
+                <ColumnDefinition Width="18*" MinWidth="120"/>
             </Grid.ColumnDefinitions>
 
             <!-- Pane 1: Library -->
-            <DockPanel Grid.Column="0" Margin="4,4,2,4" Background="#FF212226">
+            <DockPanel Grid.Column="0" Grid.RowSpan="3" Margin="4,4,2,4" Background="#FF212226">
                 <Border DockPanel.Dock="Top" Background="#FF2B2B2B" Padding="6,4"
                         BorderBrush="#FF3A3A3E" BorderThickness="0,0,0,1">
                     <TextBlock Text="Library" FontWeight="Bold" Foreground="#FFDDDDDD"/>
@@ -260,8 +337,12 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <DockPanel Grid.Column="0" Margin="0,0,3,0">
-                        <TextBlock DockPanel.Dock="Top" Text="Sessions" FontWeight="Bold" Margin="2,0,2,4"
-                                   Foreground="#FFBBBBBB"/>
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="2,0,2,4">
+                            <TextBlock x:Name="SessionModeText" Text="Sessions" FontWeight="Bold"
+                                       Foreground="#FFBBBBBB"/>
+                            <Button Content="×" Click="OnClearSessionUsageFilter" Padding="3,0" Margin="4,0,0,0"
+                                    Style="{StaticResource DarkButton}" ToolTip="Clear Uses Phase filter"/>
+                        </StackPanel>
                         <StackPanel DockPanel.Dock="Bottom" Margin="0,4,0,0">
                             <StackPanel Orientation="Horizontal">
                                 <Button Content="New" Click="OnNewSession" Padding="6,1" Margin="0,0,3,0"
@@ -276,8 +357,7 @@
                         </StackPanel>
                         <ListBox x:Name="SessionList" Style="{StaticResource DarkListBox}"
                                  ItemContainerStyle="{StaticResource DarkListBoxItem}"
-                                 SelectionChanged="OnSessionListChanged"
-                                 PreviewMouseMove="OnSessionListMouseMove"/>
+                                 SelectionChanged="OnSessionListChanged"/>
                     </DockPanel>
                     <DockPanel Grid.Column="1" Margin="3,0,0,0">
                         <TextBlock DockPanel.Dock="Top" Text="Phases" FontWeight="Bold" Margin="2,0,2,4"
@@ -296,7 +376,8 @@
                         </StackPanel>
                         <ListBox x:Name="PhaseList" Style="{StaticResource DarkListBox}"
                                  ItemContainerStyle="{StaticResource DarkListBoxItem}"
-                                 SelectionChanged="OnPhaseListChanged"/>
+                                 SelectionChanged="OnPhaseListChanged"
+                                 PreviewMouseMove="OnPhaseListMouseMove"/>
                     </DockPanel>
                 </Grid>
             </DockPanel>
@@ -305,14 +386,18 @@
                           Background="#FF505050" ResizeBehavior="PreviousAndNext"
                           DragCompleted="OnSplitterDragCompleted"/>
 
+            <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Stretch"
+                          Background="#FF505050" ResizeBehavior="PreviousAndNext"
+                          DragCompleted="OnSplitterDragCompleted"/>
+
             <!-- Pane 2: Session Graph -->
-            <DockPanel Grid.Column="2" Margin="2,4,2,4" Background="#FF212226">
-                <Border DockPanel.Dock="Top" Background="#FF2B2B2B" Padding="6,4"
+            <DockPanel Grid.Column="2" Grid.Row="0" Margin="2,4,2,2" Background="#FF212226">
+                <Border DockPanel.Dock="Left" Width="150" Background="#FF2B2B2B" Padding="6,4"
                         BorderBrush="#FF3A3A3E" BorderThickness="0,0,0,1">
-                    <StackPanel Orientation="Horizontal">
+                    <WrapPanel>
                         <TextBlock x:Name="SessionHeader" Text="Session Graph" FontWeight="Bold"
                                    VerticalAlignment="Center" Foreground="#FFDDDDDD"/>
-                        <StackPanel Orientation="Horizontal" Margin="14,0,0,0">
+                        <WrapPanel Margin="8,4,0,0">
                             <Button Content="+ Start" Click="OnAddSessionStart" Padding="6,1" Margin="0,0,3,0"
                                     Style="{StaticResource DarkButton}" ToolTip="Add SessionStart (singular)"/>
                             <Button Content="+ Phase" Click="OnAddPhaseReference" Padding="6,1" Margin="0,0,3,0"
@@ -323,8 +408,8 @@
                                     Style="{StaticResource DarkButton}"/>
                             <Button Content="Delete" Click="OnDeleteSelectedNode" Padding="6,1"
                                     Style="{StaticResource DarkButton}" ToolTip="Delete the selected node"/>
-                        </StackPanel>
-                    </StackPanel>
+                        </WrapPanel>
+                    </WrapPanel>
                 </Border>
                 <nodify:NodifyEditor x:Name="SessionEditor"
                                      ItemsSource="{Binding SessionGraph.Nodes}"
@@ -366,19 +451,20 @@
                 </nodify:NodifyEditor>
             </DockPanel>
 
-            <GridSplitter Grid.Column="3" Width="4" HorizontalAlignment="Stretch"
+            <GridSplitter Grid.Column="2" Grid.Row="1" Width="Auto" Height="4" HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch" ResizeDirection="Rows"
                           Background="#FF505050" ResizeBehavior="PreviousAndNext"
                           DragCompleted="OnSplitterDragCompleted"/>
 
             <!-- Pane 3: Phase Graph -->
-            <DockPanel Grid.Column="4" Margin="2,4,2,4" Background="#FF212226">
-                <Border DockPanel.Dock="Top" Background="#FF2B2B2B" Padding="6,4"
+            <DockPanel Grid.Column="2" Grid.Row="2" Margin="2,2,2,4" Background="#FF212226">
+                <Border DockPanel.Dock="Left" Width="150" Background="#FF2B2B2B" Padding="6,4"
                         BorderBrush="#FF3A3A3E" BorderThickness="0,0,0,1">
                     <StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock x:Name="PhaseHeader" Text="Phase Graph" FontWeight="Bold"
                                        VerticalAlignment="Center" Foreground="#FFDDDDDD"/>
-                            <StackPanel Orientation="Horizontal" Margin="14,0,0,0">
+                            <WrapPanel Margin="8,4,0,0">
                                 <Button Content="+ Entry" Click="OnAddPhaseEntry" Padding="6,1" Margin="0,0,3,0"
                                         Style="{StaticResource DarkButton}" ToolTip="Add PhaseEntry (singular)"/>
                                 <Button Content="+ Draw" Click="OnAddCardExecutor" Padding="6,1" Margin="0,0,3,0"
@@ -393,16 +479,16 @@
                                         Style="{StaticResource DarkButton}"/>
                                 <Button Content="Delete" Click="OnDeleteSelectedNode" Padding="6,1"
                                         Style="{StaticResource DarkButton}" ToolTip="Delete the selected node"/>
-                            </StackPanel>
+                            </WrapPanel>
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="2,4,0,0">
+                        <WrapPanel Margin="2,4,0,0">
                             <TextBlock x:Name="PhaseUsageText" Text="" FontSize="10" VerticalAlignment="Center"
                                        Foreground="#FF9CCC65"/>
                             <Button Content="Show Sessions" Click="OnShowSessions" Padding="6,1" Margin="12,0,0,0"
                                     Style="{StaticResource DarkButton}" ToolTip="List sessions referencing this phase"/>
                             <Button x:Name="MakeUniqueButton" Content="Make Unique" Click="OnMakeUnique" Padding="6,1" Margin="6,0,0,0"
                                     Style="{StaticResource DarkButton}" ToolTip="Make Unique (Ticket 17)"/>
-                        </StackPanel>
+                        </WrapPanel>
                         <!-- Exits strip (ticket 15): ordered PhaseExit list; rename always,
                              add/delete only while placement count <= 1. -->
                         <StackPanel Orientation="Horizontal" Margin="2,4,0,2">
@@ -475,12 +561,8 @@
                 </nodify:NodifyEditor>
             </DockPanel>
 
-            <GridSplitter Grid.Column="5" Width="4" HorizontalAlignment="Stretch"
-                          Background="#FF505050" ResizeBehavior="PreviousAndNext"
-                          DragCompleted="OnSplitterDragCompleted"/>
-
             <!-- Pane 4: Inspector -->
-            <DockPanel Grid.Column="6" Margin="2,4,4,4" Background="#FF212226">
+            <DockPanel Grid.Column="4" Grid.RowSpan="3" Margin="2,4,4,4" Background="#FF212226">
                 <Border DockPanel.Dock="Top" Background="#FF2B2B2B" Padding="6,4"
                         BorderBrush="#FF3A3A3E" BorderThickness="0,0,0,1">
                     <TextBlock Text="Inspector" FontWeight="Bold" Foreground="#FFDDDDDD"/>

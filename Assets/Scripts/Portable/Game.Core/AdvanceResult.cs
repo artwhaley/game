@@ -4,11 +4,11 @@ namespace TruthCardGame.Core
 {
     public enum AdvanceResultKind
     {
-        /// <summary>Exactly one card finished and the session remains active.</summary>
-        CardCompleted,
-
-        /// <summary>The session became complete. Card holds the finishing card, or null when completion came from skipping no-match phases.</summary>
+        /// <summary>The session became complete.</summary>
         SessionCompleted,
+
+        /// <summary>An authored WaitForContinue action paused the current run.</summary>
+        WaitForContinue,
 
         /// <summary>A second advance arrived while one was already running; no work was started.</summary>
         BusyIgnored

@@ -21,6 +21,15 @@ namespace TruthCardGame.Content.Sqlite
         public bool IsBlocking;
     }
 
+    /// <summary>One projected session edge, including its stable identity.</summary>
+    public sealed class ProjectedEdgeSnapshot
+    {
+        public string EdgeId;
+        public string SessionId;
+        public string PortId;
+        public string TargetNodeId;
+    }
+
     /// <summary>Everything needed to restore one SessionGoto instance (including its unique port + edges).</summary>
     public sealed class SessionGotoSnapshot
     {
@@ -77,7 +86,7 @@ namespace TruthCardGame.Content.Sqlite
                     snapshot.SequenceId = reader.GetString(0);
                     snapshot.Ordinal = reader.GetInt32(1);
                     snapshot.IsBlocking = reader.GetInt32(2) != 0;
-                    snapshot.ExitId = reader.GetString(3);
+                    snapshot.ExitId = reader.IsDBNull(3) ? null : reader.GetString(3);
                 },
                 ("i", instanceId));
             if (snapshot.SequenceId == null)
@@ -100,7 +109,7 @@ namespace TruthCardGame.Content.Sqlite
                 ("type", ActionType.PhaseGotoV2), ("block", isBlocking ? 1 : 0));
             Sql.Execute(connection, null,
                 "INSERT INTO action_instance_phase_goto (action_instance_id, phase_exit_id) VALUES (@i, @exit);",
-                ("i", instanceId), ("exit", exitId));
+                ("i", instanceId), ("exit", string.IsNullOrEmpty(exitId) ? DBNull.Value : (object)exitId));
         }
 
         public static void RestorePhaseGoto(DbConnection connection, PhaseGotoSnapshot snapshot)
@@ -111,10 +120,10 @@ namespace TruthCardGame.Content.Sqlite
 
         public static string GetPhaseGotoExit(DbConnection connection, string instanceId)
         {
-            var exitId = "";
+            string exitId = null;
             Sql.QueryAll(connection,
                 "SELECT phase_exit_id FROM action_instance_phase_goto WHERE action_instance_id = @i;",
-                reader => exitId = reader.GetString(0), ("i", instanceId));
+                reader => exitId = reader.IsDBNull(0) ? null : reader.GetString(0), ("i", instanceId));
             return exitId;
         }
 
@@ -426,14 +435,31 @@ namespace TruthCardGame.Content.Sqlite
         }
 
         /// <summary>Edges wired from the projected sockets of one exit (restore on exit-delete undo).</summary>
-        public static List<(string PortId, string TargetNodeId)> ExitProjectedEdges(DbConnection connection, string exitId)
+        public static List<ProjectedEdgeSnapshot> ExitProjectedEdges(DbConnection connection, string exitId)
         {
-            var result = new List<(string, string)>();
+            var result = new List<ProjectedEdgeSnapshot>();
             Sql.QueryAll(connection,
-                "SELECT e.source_port_id, e.target_node_id FROM session_graph_edge e " +
+                "SELECT e.id, e.session_id, e.source_port_id, e.target_node_id FROM session_graph_edge e " +
                 "JOIN session_node_output o ON o.id = e.source_port_id " +
                 "WHERE o.phase_exit_id = @exit;",
-                reader => result.Add((reader.GetString(0), reader.GetString(1))),
+                reader => result.Add(new ProjectedEdgeSnapshot
+                {
+                    EdgeId = reader.GetString(0),
+                    SessionId = reader.GetString(1),
+                    PortId = reader.GetString(2),
+                    TargetNodeId = reader.GetString(3),
+                }),
+                ("exit", exitId));
+            return result;
+        }
+
+        /// <summary>Snapshots every PhaseGoto currently assigned to an exit.</summary>
+        public static List<PhaseGotoSnapshot> SnapshotPhaseGotosByExit(DbConnection connection, string exitId)
+        {
+            var result = new List<PhaseGotoSnapshot>();
+            Sql.QueryAll(connection,
+                "SELECT action_instance_id FROM action_instance_phase_goto WHERE phase_exit_id = @exit;",
+                reader => result.Add(SnapshotPhaseGoto(connection, reader.GetString(0))),
                 ("exit", exitId));
             return result;
         }

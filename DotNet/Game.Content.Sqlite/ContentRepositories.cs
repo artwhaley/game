@@ -60,12 +60,12 @@ namespace TruthCardGame.Content.Sqlite
 
     /// <summary>
     /// Narrow v2 repository: Card creation with an owned Action Sequence —
-    /// the minimum the Workbench needs to author a card whose default Progress
-    /// Action is an ordinary editable instance.
+    /// the minimum the Workbench needs to author a card whose default pacing
+    /// and Progress Actions are ordinary editable instances.
     ///
-    /// Per the Ticket 05 contract, Create owns sequence construction: a card
-    /// without a sequence gets a fresh owned one seeded with the default
-    /// IncrementProgress(+10) instance. An author-supplied sequence is used
+    /// Create owns sequence construction: a card without a sequence gets a
+    /// fresh owned one seeded with WaitForContinue followed by
+    /// IncrementProgress(+10). An author-supplied sequence is used
     /// verbatim; the default is only applied when the card arrives without one,
     /// so deleting or changing it affects only that card.
     /// </summary>
@@ -85,6 +85,10 @@ namespace TruthCardGame.Content.Sqlite
                     Id = $"cseq-{card.Id}",
                     Instances =
                     {
+                        new WaitForContinueInstanceDefinition
+                        {
+                            Id = $"inst-{card.Id}-default-wait",
+                        },
                         new IncrementProgressInstanceDefinition
                         {
                             Id = $"inst-{card.Id}-default-progress",

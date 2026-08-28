@@ -15,6 +15,7 @@ Every Action the game can author or run is named by a stable key in
 | `modify_temperature` | `ModifyTemperatureInstanceDefinition` | Modify Temperature | configurable (default off) | all |
 | `cutscene` | `CutsceneInstanceDefinition` | Cutscene | configurable (default on) | all |
 | `prompt_choice` | `PromptChoiceInstanceDefinition` | Prompt Choice | always on (not configurable) | all |
+| `wait_for_continue` | `WaitForContinueInstanceDefinition` | Wait for Continue | always on | Card / PhaseAction / ChoiceOption |
 | `phase_goto` | `PhaseGotoInstanceDefinition` | Phase GOTO | always on | PhaseAction / ChoiceOption |
 | `session_goto` | `SessionGotoInstanceDefinition` | Session GOTO | always on | SessionDecisionOption |
 | `return` | `ReturnInstanceDefinition` | Return | always on | all |

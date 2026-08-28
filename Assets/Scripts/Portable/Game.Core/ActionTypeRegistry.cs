@@ -81,6 +81,7 @@ namespace TruthCardGame.Core
             if (instance is ModifyTemperatureInstanceDefinition) return ActionTypeKeys.ModifyTemperature;
             if (instance is CutsceneInstanceDefinition) return ActionTypeKeys.Cutscene;
             if (instance is PromptChoiceInstanceDefinition) return ActionTypeKeys.PromptChoice;
+            if (instance is WaitForContinueInstanceDefinition) return ActionTypeKeys.WaitForContinue;
             if (instance is PhaseGotoInstanceDefinition) return ActionTypeKeys.PhaseGoto;
             if (instance is SessionGotoInstanceDefinition) return ActionTypeKeys.SessionGoto;
             if (instance is ReturnInstanceDefinition) return ActionTypeKeys.Return;
@@ -173,12 +174,29 @@ namespace TruthCardGame.Core
             {
                 TypeKey = ActionTypeKeys.PhaseGoto,
                 DisplayLabel = "Phase GOTO",
-                LegalScopes = ActionOwnerScope.PhaseActionSequence | ActionOwnerScope.ChoiceOptionSequence,
+                // A Card may transfer to another Phase and later resume its
+                // own remainder after RETURN; the Session VM carries the Card
+                // identity and continuation frame across that transfer.
+                LegalScopes = ActionOwnerScope.CardSequence
+                            | ActionOwnerScope.PhaseActionSequence
+                            | ActionOwnerScope.ChoiceOptionSequence,
                 IsAlwaysBlocking = true,
                 BlockingConfigurable = false,
                 DefaultBlocking = true,
                 EditorDiscriminator = "PhaseGoto",
                 DefaultInstance = () => new PhaseGotoInstanceDefinition { Id = "", PhaseExitId = "", IsBlocking = true },
+            });
+
+            Add(new ActionTypeInfo
+            {
+                TypeKey = ActionTypeKeys.WaitForContinue,
+                DisplayLabel = "Wait For Continue",
+                LegalScopes = ActionOwnerScope.All,
+                IsAlwaysBlocking = true,
+                BlockingConfigurable = false,
+                DefaultBlocking = true,
+                EditorDiscriminator = "WaitForContinue",
+                DefaultInstance = () => new WaitForContinueInstanceDefinition { Id = "", IsBlocking = true },
             });
 
             Add(new ActionTypeInfo

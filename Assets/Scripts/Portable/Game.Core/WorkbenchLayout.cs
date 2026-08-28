@@ -3,8 +3,9 @@ using System;
 namespace TruthCardGame.Core
 {
     /// <summary>
-    /// Pure four-pane layout model (ticket 12): the four horizontal pane widths
-    /// as fractions of the window, plus the minimum pixel widths. Ratios are
+    /// Pure four-pane layout model (ticket 12): the four logical pane widths
+    /// as fractions of the window, with Session and Phase stacked in the WPF
+    /// center column, plus the minimum pixel widths. Ratios are
     /// always normalized to sum to 1.0; widths are derived from a window width
     /// with per-pane minimums enforced. No WPF or JSON dependency — portable,
     /// so the geometry is unit-testable from the .NET suite and the Unity thin

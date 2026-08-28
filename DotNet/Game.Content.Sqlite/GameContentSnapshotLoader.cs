@@ -25,10 +25,23 @@ namespace TruthCardGame.Content.Sqlite
     {
         public static GameContentDefinition Load(DbConnection connection)
         {
+            return Load(connection, ensureSchema: true);
+        }
+
+        /// <summary>
+        /// Loads a snapshot without mutating the database. Use this for a
+        /// read-only canonical or exported DB; normal authoring connections
+        /// should use <see cref="Load(DbConnection)"/> so migrations run.
+        /// </summary>
+        public static GameContentDefinition Load(DbConnection connection, bool ensureSchema)
+        {
             if (connection == null) throw new ArgumentNullException(nameof(connection));
 
-            ConnectionInitializer.Initialize(connection);
-            CoreMigrator.EnsureSchema(connection);
+            if (ensureSchema)
+            {
+                ConnectionInitializer.Initialize(connection);
+                CoreMigrator.EnsureSchema(connection);
+            }
 
             var content = new GameContentDefinition();
             var sequences = new SequenceCache(connection);
@@ -789,13 +802,19 @@ namespace TruthCardGame.Content.Sqlite
                         return choice;
                     }
 
+                    case ActionType.WaitForContinueV2:
+                        return new WaitForContinueInstanceDefinition
+                        {
+                            Id = instanceId,
+                            IsBlocking = true,
+                        };
+
                     case ActionType.PhaseGotoV2:
                     {
                         string exitId = null;
                         QueryOne(_connection, "SELECT phase_exit_id FROM action_instance_phase_goto WHERE action_instance_id = @i;",
-                            reader => exitId = reader.GetString(0),
+                            reader => exitId = reader.IsDBNull(0) ? null : reader.GetString(0),
                             Param("i", instanceId));
-                        RequireSubtypeRow(exitId != null, sequenceId, instanceId, type);
                         return new PhaseGotoInstanceDefinition
                         {
                             Id = instanceId,

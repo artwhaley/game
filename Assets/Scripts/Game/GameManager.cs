@@ -10,8 +10,8 @@ namespace TruthCardGame
 {
     /// <summary>
     /// Thin Unity host around the portable GameSessionEngine. Converts the
-    /// selected session/deck once, builds host services, forwards Draw Next to
-    /// AdvanceOneCardAsync (plus the automatic first advance at start), and
+    /// selected session/deck once, builds host services, forwards Continue to
+    /// RunUntilYieldAsync (plus the automatic first run at start), and
     /// owns presentation-only behavior: the 1.6 s completion beat and menu
     /// return. No game rules live here — Core owns progression, eligibility,
     /// action sequencing, and completion.
@@ -25,6 +25,7 @@ namespace TruthCardGame
         private CutsceneBindingRegistry _cutsceneRegistry;
         private GameSessionEngine _engine;
         private CancellationTokenSource _lifetimeCts;
+        private bool _waitingForContinue;
 
         private void Awake()
         {
@@ -69,11 +70,13 @@ namespace TruthCardGame
 
         private void Start()
         {
-            // Baseline parity: the first card draws automatically at session start.
+            // The first run starts automatically; authored WaitForContinue
+            // instances are the only player-paced boundary.
+            _waitingForContinue = false;
             RunAdvance();
         }
 
-        /// <summary>User-triggered Draw Next; forwarded to Core orchestration.</summary>
+        /// <summary>User-triggered Continue; forwarded to Core orchestration.</summary>
         public void DrawNextCard()
         {
             RunAdvance();
@@ -85,9 +88,17 @@ namespace TruthCardGame
 
             try
             {
-                var result = await _engine.AdvanceOneCardAsync(_lifetimeCts.Token);
-                if (result.Kind == AdvanceResultKind.SessionCompleted)
+                var result = _waitingForContinue
+                    ? await _engine.ContinueAsync(_lifetimeCts.Token)
+                    : await _engine.RunUntilYieldAsync(_lifetimeCts.Token);
+                _waitingForContinue = result.Kind == AdvanceResultKind.WaitForContinue;
+                if (result.Kind == AdvanceResultKind.WaitForContinue)
                 {
+                    panel.ShowWaitingForContinue("Continue");
+                }
+                else if (result.Kind == AdvanceResultKind.SessionCompleted)
+                {
+                    _waitingForContinue = false;
                     CompleteSession();
                 }
             }

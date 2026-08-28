@@ -326,8 +326,9 @@ namespace TruthCardGame.Core.Tests
                 new[] { "n-start", "n-ref-warmup", "n-ref-main", "n-end" }, sessionTrace,
                 "exact session node trace");
 
-            // One card per advance, plus the final transfer advance completing the session.
-            Assert.AreEqual(19, results.Count, "19 advances: 18 card-executes + 1 session-complete");
+            // No authored waits exist in this graph, so the complete session is
+            // traversed in one continuous run.
+            Assert.AreEqual(1, results.Count, "one run-until-yield reaches SessionEnd");
             Assert.AreEqual(SessionAdvanceOutcome.SessionCompleted, results[^1].Outcome);
         }
 
@@ -548,16 +549,14 @@ namespace TruthCardGame.Core.Tests
 
             var vm = Session(session, p1, p2);
 
+            var cardsStarted = 0;
+            vm.CardStarted += _ => cardsStarted++;
             var context = Context();
             var first = await vm.AdvanceAsync(context, CancellationToken.None);
 
-            // P1 ran its GOTO (no card) and P2's first card executed in the SAME advance.
-            Assert.AreEqual(SessionAdvanceOutcome.CardExecuted, first.Outcome);
-            Assert.IsNotNull(first.Card, "a card executed in the same advance as the transfer");
-            Assert.AreEqual(1, vm.ContinuationDepth, "P1's frame is suspended while P2 runs");
-
-            var results = await RunToCompletion(vm);
-            Assert.AreEqual(SessionAdvanceOutcome.SessionCompleted, results[^1].Outcome);
+            // P1 ran its GOTO and P2's complete card loop in the SAME run.
+            Assert.AreEqual(SessionAdvanceOutcome.SessionCompleted, first.Outcome);
+            Assert.AreEqual(10, cardsStarted, "P2 completed before SessionEnd");
             Assert.AreEqual(0, vm.ContinuationDepth);
         }
 

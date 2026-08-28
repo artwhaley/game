@@ -11,17 +11,17 @@ namespace TruthCardGame.Core
     /// until it yields at a card boundary, transfers flow, completes, or errors.
     ///
     /// Structural validation at construction: exactly one PhaseEntry, node/port/edge
-    /// dictionaries built once. Execution: Entry→normal; CardExecutor→one-card
-    /// budget semantics (phase tag filters + the run's own Card RNG); VariableCheck→
+    /// dictionaries built once. Execution: Entry→normal; CardExecutor→continuous
+    /// card selection/execution until an authored yield or transfer; VariableCheck→
     /// True/False from live state; ActionNode→sequence then normal; PhaseDecision→
-    /// prompt + selected option sequence then common normal; ReturnNode→Return
-    /// semantics placeholder (wired by Ticket 08). A deterministic node-step ceiling
-    /// per Advance catches non-yield cycles with a loud, identifiable error.
+    /// prompt + selected option sequence then common normal; ReturnNode→Return.
+    /// A deterministic node/action ceiling per RunUntilYield catches non-yield
+    /// cycles with a loud, identifiable error.
     /// </summary>
     public sealed class PhaseGraphVm
     {
-        /// <summary>Deterministic ceiling per Advance; non-yield cycles trip it.</summary>
-        public const int MaxStepsPerAdvance = 100000;
+        /// <summary>Default shared safety ceiling per RunUntilYield call.</summary>
+        public const int DefaultExecutionBudget = 10000;
 
         private readonly ContentCatalog _catalog;
         private readonly CoreServices _services;
@@ -29,6 +29,7 @@ namespace TruthCardGame.Core
         private readonly ActionExecutor _executor;
         private readonly CardSelector _cardSelector;
         private readonly PhaseDefinition _phase;
+        private readonly int _executionBudget;
 
         private readonly Dictionary<string, GraphNodeDefinition> _nodesById;
         private readonly Dictionary<string, GraphOutputDefinition> _outputsById;
@@ -41,7 +42,8 @@ namespace TruthCardGame.Core
         public event Action<VariableCheckNodeDefinition, float, bool> VariableCheckEvaluated;
         public event Action<string> RuntimeError;      // message
 
-        public PhaseGraphVm(GameContentDefinition content, PhaseDefinition phase, CoreServices services, BackgroundActionTracker tracker)
+        public PhaseGraphVm(GameContentDefinition content, PhaseDefinition phase, CoreServices services,
+            BackgroundActionTracker tracker, int executionBudget = DefaultExecutionBudget)
         {
             _catalog = new ContentCatalog(content);
             _services = services ?? throw new ArgumentNullException(nameof(services));
@@ -49,6 +51,8 @@ namespace TruthCardGame.Core
             _executor = new ActionExecutor(_tracker);
             _cardSelector = new CardSelector(content.Deck, _catalog);
             _phase = phase ?? throw new ArgumentNullException(nameof(phase));
+            if (executionBudget <= 0) throw new ArgumentOutOfRangeException(nameof(executionBudget));
+            _executionBudget = executionBudget;
 
             if (phase.Graph == null) throw new InvalidOperationException($"Phase '{phase.Id}' has no graph.");
 
@@ -98,11 +102,18 @@ namespace TruthCardGame.Core
         }
 
         /// <summary>
-        /// Steps the run's graph until yield/transfer/complete/error. At most one
-        /// Card is executed per call (the Advance budget); post-card automatic
-        /// work continues until the next CardExecutor boundary.
+        /// Runs the graph until an authored yield/transfer, completion, or error.
+        /// CardFinished is not a pause boundary; ordinary cards continue until
+        /// their action sequences explicitly yield or the graph transfers.
         /// </summary>
-        public async Task<PhaseAdvanceResult> AdvanceAsync(PhaseRun run, ActionExecutionContext context, CancellationToken cancellationToken)
+        public Task<PhaseAdvanceResult> AdvanceAsync(PhaseRun run, ActionExecutionContext context, CancellationToken cancellationToken)
+        {
+            return RunUntilYieldAsync(run, context, cancellationToken);
+        }
+
+        /// <summary>Runs continuously until an authored wait, transfer, completion, or error.</summary>
+        public async Task<PhaseAdvanceResult> RunUntilYieldAsync(PhaseRun run, ActionExecutionContext context,
+            CancellationToken cancellationToken, GraphExecutionBudget budget = null)
         {
             if (run == null) throw new ArgumentNullException(nameof(run));
             if (run.PhaseId != _phase.Id)
@@ -112,7 +123,17 @@ namespace TruthCardGame.Core
 
             try
             {
-                return await StepLoopAsync(run, context, cancellationToken, run.CurrentNode, freshEntry: run.CurrentNode == null, executedCard: null);
+                budget = budget ?? new GraphExecutionBudget(_executionBudget);
+                if (run.SuspendedCard != null)
+                {
+                    return await ResumeCardAsync(run, context, cancellationToken, budget);
+                }
+                if (run.SuspendedActionLocus != null)
+                {
+                    return await ResumeActionAsync(run, context, cancellationToken, budget);
+                }
+                return await StepLoopAsync(run, context, cancellationToken, budget,
+                    run.CurrentNode, freshEntry: run.CurrentNode == null);
             }
             catch (InvalidOperationException ex)
             {
@@ -131,21 +152,34 @@ namespace TruthCardGame.Core
         /// </summary>
         public async Task<PhaseAdvanceResult> ResumeFromContinuationAsync(
             PhaseRun run, GraphNodeDefinition locus, IReadOnlyList<ContinuationPoint> chain,
-            ActionExecutionContext context, CancellationToken cancellationToken)
+            ActionExecutionContext context, CancellationToken cancellationToken,
+            GraphExecutionBudget budget = null, CardDefinition interruptedCard = null)
         {
             if (run == null) throw new ArgumentNullException(nameof(run));
             if (locus == null) throw new ArgumentNullException(nameof(locus));
 
             try
             {
+                budget = budget ?? new GraphExecutionBudget(_executionBudget);
                 run.CurrentNode = locus;
                 PhaseNodeChanged?.Invoke(locus.Id);
+
+                if (interruptedCard != null)
+                {
+                    return await ResumeCardChainAsync(run, locus, interruptedCard, chain, context, cancellationToken, budget);
+                }
 
                 if (chain != null && chain.Count > 0)
                 {
                     var scope = ScopeForLocus(locus);
                     var resumeContext = ContextFor(context, run, scope);
-                    var resumeResult = await _executor.ResumeChainAsync(chain, resumeContext, cancellationToken);
+                    var resumeResult = await _executor.ResumeChainAsync(chain, resumeContext, cancellationToken, budget);
+                    if (resumeResult.Transfer == ActionTransfer.WaitForContinue)
+                    {
+                        run.SuspendedActionLocus = locus;
+                        run.SuspendedActionChain = resumeResult.Continuation;
+                        return PhaseAdvanceResult.YieldedForContinue;
+                    }
                     if (resumeResult.Transfer != ActionTransfer.None)
                     {
                         run.CurrentNode = locus;
@@ -154,7 +188,7 @@ namespace TruthCardGame.Core
                 }
 
                 var next = FollowNormal(run, locus);
-                return await StepLoopAsync(run, context, cancellationToken, next, freshEntry: false, executedCard: null);
+                return await StepLoopAsync(run, context, cancellationToken, budget, next, freshEntry: false);
             }
             catch (InvalidOperationException ex)
             {
@@ -170,9 +204,8 @@ namespace TruthCardGame.Core
 
         private async Task<PhaseAdvanceResult> StepLoopAsync(
             PhaseRun run, ActionExecutionContext context, CancellationToken cancellationToken,
-            GraphNodeDefinition initialNode, bool freshEntry, CardDefinition executedCard)
+            GraphExecutionBudget budget, GraphNodeDefinition initialNode, bool freshEntry)
         {
-            var cardBudget = 1;
             var node = initialNode;
 
             // Fresh run: enter the Entry node.
@@ -185,14 +218,9 @@ namespace TruthCardGame.Core
                 node = FollowNormal(run, node);
             }
 
-            var steps = 0;
             while (true)
             {
-                if (++steps > MaxStepsPerAdvance)
-                {
-                    return Fail(run, $"loop guard: exceeded {MaxStepsPerAdvance} node steps in one Advance " +
-                                    $"(phase '{_phase.Id}', node '{node?.Id}', step {steps}). No silent gameplay loop.");
-                }
+                budget.Consume("phase node", phaseId: _phase.Id, nodeId: node?.Id);
 
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -200,16 +228,6 @@ namespace TruthCardGame.Core
                 {
                     case CardExecutorNodeDefinition cardExecutor:
                     {
-                        if (cardBudget == 0)
-                        {
-                            // The card budget is spent; park at this executor. If a
-                            // card ran this Advance, that is the user-paced result.
-                            run.CurrentNode = cardExecutor;
-                            return executedCard != null
-                                ? PhaseAdvanceResult.CardExecuted(executedCard)
-                                : PhaseAdvanceResult.YieldedForCard;
-                        }
-
                         var selected = DrawCard(run);
                         if (selected == null)
                         {
@@ -218,17 +236,24 @@ namespace TruthCardGame.Core
 
                         CardStarted?.Invoke(selected);
                         var cardContext = ContextFor(context, run, ActionOwnerScope.CardSequence);
-                        var cardResult = await _executor.ExecuteSequenceAsync(selected.Sequence, cardContext, cancellationToken);
-                        CardFinished?.Invoke(selected);
-                        executedCard = selected;
+                        var cardResult = await _executor.ExecuteSequenceAsync(selected.Sequence, cardContext, cancellationToken, budget);
+
+                        if (cardResult.Transfer == ActionTransfer.WaitForContinue)
+                        {
+                            run.CurrentNode = cardExecutor;
+                            run.SuspendedCard = selected;
+                            run.SuspendedCardChain = cardResult.Continuation;
+                            return PhaseAdvanceResult.YieldedForContinue;
+                        }
 
                         if (cardResult.Transfer != ActionTransfer.None)
                         {
                             run.CurrentNode = cardExecutor;
+                            cardResult.InterruptedCard = selected;
                             return PhaseAdvanceResult.Transferred(cardResult);
                         }
 
-                        cardBudget--;
+                        CardFinished?.Invoke(selected);
                         node = FollowNormal(run, cardExecutor);
                         break;
                     }
@@ -244,7 +269,14 @@ namespace TruthCardGame.Core
                     case ActionNodeDefinition action:
                     {
                         var actionContext = ContextFor(context, run, ActionOwnerScope.PhaseActionSequence);
-                        var actionResult = await _executor.ExecuteSequenceAsync(action.Sequence, actionContext, cancellationToken);
+                        var actionResult = await _executor.ExecuteSequenceAsync(action.Sequence, actionContext, cancellationToken, budget);
+                        if (actionResult.Transfer == ActionTransfer.WaitForContinue)
+                        {
+                            run.CurrentNode = action;
+                            run.SuspendedActionLocus = action;
+                            run.SuspendedActionChain = actionResult.Continuation;
+                            return PhaseAdvanceResult.YieldedForContinue;
+                        }
                         if (actionResult.Transfer != ActionTransfer.None)
                         {
                             run.CurrentNode = action;
@@ -260,7 +292,14 @@ namespace TruthCardGame.Core
                         if (selectedOption != null)
                         {
                             var optionContext = ContextFor(context, run, ActionOwnerScope.PhaseActionSequence);
-                            var optionResult = await _executor.ExecuteSequenceAsync(selectedOption.Sequence, optionContext, cancellationToken);
+                            var optionResult = await _executor.ExecuteSequenceAsync(selectedOption.Sequence, optionContext, cancellationToken, budget);
+                            if (optionResult.Transfer == ActionTransfer.WaitForContinue)
+                            {
+                                run.CurrentNode = decision;
+                                run.SuspendedActionLocus = decision;
+                                run.SuspendedActionChain = optionResult.Continuation;
+                                return PhaseAdvanceResult.YieldedForContinue;
+                            }
                             if (optionResult.Transfer != ActionTransfer.None)
                             {
                                 run.CurrentNode = decision;
@@ -283,6 +322,78 @@ namespace TruthCardGame.Core
                         return Fail(run, $"unknown phase node type '{node.GetType().Name}' at '{node.Id}'.");
                 }
             }
+        }
+
+        private Task<PhaseAdvanceResult> ResumeCardAsync(PhaseRun run, ActionExecutionContext context,
+            CancellationToken cancellationToken, GraphExecutionBudget budget)
+        {
+            var card = run.SuspendedCard;
+            var chain = run.SuspendedCardChain;
+            run.SuspendedCard = null;
+            run.SuspendedCardChain = null;
+            return ResumeCardChainAsync(run, run.CurrentNode, card, chain, context, cancellationToken, budget);
+        }
+
+        private async Task<PhaseAdvanceResult> ResumeCardChainAsync(PhaseRun run, GraphNodeDefinition locus,
+            CardDefinition card, IReadOnlyList<ContinuationPoint> chain, ActionExecutionContext context,
+            CancellationToken cancellationToken, GraphExecutionBudget budget)
+        {
+            if (!(locus is CardExecutorNodeDefinition))
+            {
+                throw new InvalidOperationException(
+                    $"Phase '{_phase.Id}' cannot resume Card '{card?.Id}' from non-CardExecutor locus '{locus?.Id}'.");
+            }
+
+            var cardContext = ContextFor(context, run, ActionOwnerScope.CardSequence);
+            var result = await _executor.ResumeChainAsync(
+                chain ?? Array.Empty<ContinuationPoint>(), cardContext, cancellationToken, budget);
+            if (result.Transfer == ActionTransfer.WaitForContinue)
+            {
+                run.CurrentNode = locus;
+                run.SuspendedCard = card;
+                run.SuspendedCardChain = result.Continuation;
+                return PhaseAdvanceResult.YieldedForContinue;
+            }
+            if (result.Transfer != ActionTransfer.None)
+            {
+                run.CurrentNode = locus;
+                result.InterruptedCard = card;
+                return PhaseAdvanceResult.Transferred(result);
+            }
+
+            run.SuspendedCard = null;
+            run.SuspendedCardChain = null;
+            CardFinished?.Invoke(card);
+            var next = FollowNormal(run, locus);
+            return await StepLoopAsync(run, context, cancellationToken, budget, next, freshEntry: false);
+        }
+
+        private async Task<PhaseAdvanceResult> ResumeActionAsync(PhaseRun run, ActionExecutionContext context,
+            CancellationToken cancellationToken, GraphExecutionBudget budget)
+        {
+            var locus = run.SuspendedActionLocus;
+            var chain = run.SuspendedActionChain;
+            run.SuspendedActionLocus = null;
+            run.SuspendedActionChain = null;
+
+            var actionContext = ContextFor(context, run, ScopeForLocus(locus));
+            var result = await _executor.ResumeChainAsync(
+                chain ?? Array.Empty<ContinuationPoint>(), actionContext, cancellationToken, budget);
+            if (result.Transfer == ActionTransfer.WaitForContinue)
+            {
+                run.CurrentNode = locus;
+                run.SuspendedActionLocus = locus;
+                run.SuspendedActionChain = result.Continuation;
+                return PhaseAdvanceResult.YieldedForContinue;
+            }
+            if (result.Transfer != ActionTransfer.None)
+            {
+                run.CurrentNode = locus;
+                return PhaseAdvanceResult.Transferred(result);
+            }
+
+            var next = FollowNormal(run, locus);
+            return await StepLoopAsync(run, context, cancellationToken, budget, next, freshEntry: false);
         }
 
         // ---------- node following ----------
