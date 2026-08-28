@@ -44,6 +44,7 @@ are never overridden by a packet.
 9. **Flag missing dependencies.** If something required is missing (an install, a package, a tool), flag it — but assume it may be on its way and continue where possible.
 10. **Fail noisy.** Never invent fallback behavior that masks a problem. If something breaks, let it break loudly and report exactly what failed and why. Silent recovery is worse than a crash.
 11. **Report verification honestly.** If a change couldn't be verified (editor closed, headless limits, whatever the reason), say so plainly — never report "done" for an unverified change.
+12. **Run the program after every change.** After any code or XAML edit, build and launch the WPF host (`DotNet/Game.ReferenceHost.Wpf`) or Unity editor — don't assume the change is safe because the build succeeded. A clean build does not prove the app still works. Watch the log for exceptions, spot-check the affected feature, and kill the process before committing. This is non-negotiable for GUI work.
 
 ## Unity-specific essentials
 
