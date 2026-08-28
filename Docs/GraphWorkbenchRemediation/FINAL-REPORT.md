@@ -11,6 +11,7 @@ The orchestration prompt was followed in ticket order, `00` through `15`, on top
 - Starting repository SHA: `42d834f`
 - Baseline documentation commits already present: `fe138d8`, `c7a1e3c`
 - Final implementation SHA: `8892684`
+- Follow-up layout-binding fix SHA: `bab0376`
 - Final report commit: documentation-only commit after the implementation commit
 
 At the remediation handoff, the pre-existing dirty `Content/GameContent.db` was deliberately not staged or committed because it predated the ticket run. During validation it was restored to its pre-task semantic/version state: core migrations through v3, zero WPF layout rows, `PRAGMA integrity_check` reported `ok`, and `PRAGMA foreign_key_check` returned no rows. Migration v4 and the new behavior were tested on temporary database copies. Because SQLite rewrote pages during the validation/restore cycle, byte-for-byte identity is not claimed.
@@ -45,6 +46,11 @@ After that handoff, the user explicitly authorized protecting the authored datab
 - Added explicit typed Action Instance editing, reorder/delete controls, Phase GOTO Unassigned state, and the red warning indicator.
 - Added structural New Session/New Phase creation, drag/drop phase placement, Show Sessions filtering, Make Unique flow, and command-based undo/redo across graph selection changes.
 - Preserved shared Phase topology and blocks deletion of structural Start/Entry nodes.
+- Follow-up fix binds Nodify's draggable `ItemContainer.Location` and selection
+  state two-way to the graph view models in both editors. This closes the gap
+  where visual dragging did not update `NodeMoved` or SQLite, and adds two WPF
+  regression tests covering container/view-model synchronization and both editor
+  style assignments.
 
 ### Documentation
 
@@ -62,10 +68,11 @@ Result:
 
 - `Game.Core.Tests`: 105 passed, 0 failed.
 - `Game.Content.Sqlite.Tests`: 109 passed, 1 skipped, 0 failed.
-- Total: 214 passed, 1 skipped, 0 failed.
+- `Game.ReferenceHost.Wpf.Tests`: 2 passed, 0 failed.
+- Total: 216 passed, 1 skipped, 0 failed.
 - The one skip is the canonical-database playback guard, because the preserved user database contains a pre-existing unconnected projected PhaseExit; the test documents and ignores that exact preserved condition.
 
-The WPF host was built with `dotnet build` using `--no-restore`: 0 errors and 12 pre-existing CS0067 unused-event warnings in legacy view-model plumbing. A smoke launch responded and stopped cleanly with the expected `TruthCard Game — Graph Workbench` window title. The first smoke launch was against the canonical database and caused the normal migration/layout writes; those writes were removed and the canonical database was restored as described above. No later GUI validation was run against the canonical file.
+The WPF host was built with `dotnet build` using `--no-restore`: 0 errors and 12 pre-existing CS0067 unused-event warnings in legacy view-model plumbing. After the layout-binding fix, the host was rebuilt and launched visibly; process PID `25488` remained alive after startup with the expected `TruthCard Game — Graph Workbench` title. The first earlier smoke launch was against the canonical database and caused normal migration/layout writes; those writes were intentionally checkpointed according to the content versioning policy. Interactive drag/switch/restart acceptance remains a human gate.
 
 Unity 6000.5.9f1 was invoked in batch mode for both EditMode and PlayMode using `-runTests`, `-testResults`, and `-logFile`. Unity imported and compiled the project and exited with code 0, but did not start the Test Runner or emit either requested XML result file in this environment. Therefore Unity EditMode and PlayMode are **not reported as passed**. Exact unavailable reason: the headless batch invocation completed asset refresh/script compilation and exited without producing Test Runner output. Logs:
 

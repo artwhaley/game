@@ -24,11 +24,11 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
 - Unity 6000.5.9f1 is pinned. Current remediation verification is recorded in
   [`Docs/GraphWorkbenchRemediation/FINAL-REPORT.md`](Docs/GraphWorkbenchRemediation/FINAL-REPORT.md);
   do not infer Unity or human acceptance from older milestone reports.
-- Current automated .NET gates: **105 Core tests passed** and **109 SQLite
-  tests passed, 1 skipped** (the skip preserves the pre-existing dirty
-  canonical DB's unconnected projected PhaseExit). The WPF host builds and
-  launches as a smoke check; interactive WPF and Unity gates remain
-  human/not-run unless the final report says otherwise.
+- Current automated .NET gates: **105 Core tests passed**, **109 SQLite tests
+  passed, 1 skipped**, and **2 WPF layout-binding regression tests passed** (the
+  SQLite skip preserves the canonical DB's unconnected projected PhaseExit).
+  The WPF host builds and launches as a smoke check; interactive WPF and Unity
+  gates remain human/not-run unless the final report says otherwise.
 - Development rules: [`agents.md`](agents.md) · Unity CLI notes: [`unity-cli.md`](unity-cli.md)
 
 ## Graph Workbench milestone (0.3)
@@ -55,6 +55,8 @@ human, and not-run gates are separated in
   Inspector. Authoring persists immediately to SQLite (continuous
   persistence — the DB is always the source of truth): node/edge create,
   drag-drop Phase placement with live exit-socket projection, inline
+  two-way Nodify ItemContainer location binding for durable Session and Phase
+  node positions,
   VariableCheck/GOTO/decision editors, exits strip, Copy Session /
   Duplicate Phase / Make Unique with the shared-port lock, and semantic
   undo/redo (Ctrl+Z / Ctrl+Y) over every edit, including typed Action Instance
