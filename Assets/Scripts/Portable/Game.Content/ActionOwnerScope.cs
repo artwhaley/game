@@ -28,6 +28,26 @@ namespace TruthCardGame.Content
         /// <summary>Sequence owned by a SessionDecision option (session-level; no active PhaseRun required).</summary>
         SessionDecisionOptionSequence = 1 << 3,
 
-        All = CardSequence | PhaseActionSequence | ChoiceOptionSequence | SessionDecisionOptionSequence,
+        /// <summary>
+        /// Sequence nested inside a PromptChoice that is itself nested below a
+        /// SessionDecision option. It inherits session-safe actions but is not a
+        /// direct SessionDecision option, so SessionGoto is deliberately absent.
+        /// </summary>
+        SessionDecisionPromptChoiceSequence = 1 << 4,
+
+        All = CardSequence | PhaseActionSequence | ChoiceOptionSequence
+            | SessionDecisionOptionSequence | SessionDecisionPromptChoiceSequence,
+    }
+
+    /// <summary>Centralizes the ownership rule for recursively nested PromptChoice sequences.</summary>
+    public static class ActionOwnerScopes
+    {
+        public static ActionOwnerScope NestedPromptChoice(ActionOwnerScope enclosing)
+        {
+            return enclosing == ActionOwnerScope.SessionDecisionOptionSequence
+                || enclosing == ActionOwnerScope.SessionDecisionPromptChoiceSequence
+                ? ActionOwnerScope.SessionDecisionPromptChoiceSequence
+                : enclosing;
+        }
     }
 }

@@ -33,6 +33,9 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   Graph node palette inserts now refresh both live canvases from SQLite,
   center new nodes in the current viewport, repair legacy duplicate positions,
   and render nested PromptChoice action sequences without terminating the host.
+  Session GOTO is restricted to direct SessionDecision option sequences;
+  nested PromptChoice sequences inherit session-safe actions without borrowing
+  the containing decision's projected socket ownership.
   See [`Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md`](Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md).
 - Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core` +
   `Game.Profile`, .NET Standard 2.1) that both Unity and the WPF hosts run —

@@ -119,6 +119,45 @@ namespace TruthCardGame.Core.Tests
             var progress = new IncrementProgressInstanceDefinition { Id = "p1" };
             Assert.Throws<System.InvalidOperationException>(
                 () => ActionTypeRegistry.ValidateScope(progress, ActionOwnerScope.SessionDecisionOptionSequence));
+
+            Assert.Throws<System.InvalidOperationException>(
+                () => ActionTypeRegistry.ValidateScope(sessionGoto, ActionOwnerScope.SessionDecisionPromptChoiceSequence));
+
+            Assert.DoesNotThrow(() => ActionTypeRegistry.ValidateScope(
+                new StatIncreaseInstanceDefinition { Id = "nested-stat" },
+                ActionOwnerScope.SessionDecisionPromptChoiceSequence));
+        }
+
+        [Test]
+        public void NestedPromptChoiceUnderSessionDecision_RejectsSessionGoto()
+        {
+            var prompts = new FakePromptService(0);
+            _services = new CoreServices(new FakeDelayService(), _log, prompts);
+            var context = Context(ActionOwnerScope.SessionDecisionOptionSequence, withPhaseRun: false);
+            var prompt = new PromptChoiceInstanceDefinition
+            {
+                Id = "prompt",
+                Prompt = "Nested?",
+                Options =
+                {
+                    new PromptChoiceOptionDefinition
+                    {
+                        Id = "option",
+                        Label = "Go",
+                        Sequence = new ActionSequenceDefinition
+                        {
+                            Id = "nested-sequence",
+                            Instances =
+                            {
+                                new SessionGotoInstanceDefinition { Id = "nested-goto", Label = "illegal" },
+                            },
+                        },
+                    },
+                },
+            };
+
+            Assert.ThrowsAsync<System.InvalidOperationException>(
+                async () => await Run(_executor, context, prompt));
         }
 
         [Test]

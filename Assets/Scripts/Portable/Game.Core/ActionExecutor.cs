@@ -233,8 +233,20 @@ namespace TruthCardGame.Core
                 return ActionExecutionResult.Continue;
             }
 
-            // The option sequence inherits the enclosing execution context and scope.
-            return await ExecuteSequenceAsync(selected.Sequence, context, cancellationToken, budget);
+            // PromptChoice owns a nested sequence. It inherits the enclosing
+            // runtime state, but a SessionDecision option's nested sequence is
+            // not itself a direct SessionDecision option: SessionGoto must be
+            // rejected at every nested depth instead of gaining the containing
+            // decision's projected socket ownership.
+            var nestedScope = ActionOwnerScopes.NestedPromptChoice(context.ActiveScope);
+            var nestedContext = new ActionExecutionContext(
+                context.Player,
+                context.Services,
+                context.Catalog,
+                context.Temperatures,
+                context.PhaseProgress,
+                nestedScope);
+            return await ExecuteSequenceAsync(selected.Sequence, nestedContext, cancellationToken, budget);
         }
 
         private static ActionExecutionResult ReduceFlow(ActionInstanceDefinition instance, string typeKey)

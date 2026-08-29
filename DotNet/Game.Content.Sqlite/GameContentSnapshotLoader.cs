@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data.Common;
 using TruthCardGame.Content;
+using TruthCardGame.Core;
 
 namespace TruthCardGame.Content.Sqlite
 {
@@ -68,6 +69,11 @@ namespace TruthCardGame.Content.Sqlite
             content.Cards.AddRange(LoadCards(connection, sequences));
             content.Phases.AddRange(LoadPhases(connection, sequences));
             content.Sessions.AddRange(LoadSessions(connection, sequences));
+
+            // Validate recursively-owned action scopes after the complete
+            // snapshot exists. This catches malformed legacy/dev rows before a
+            // host can project a nested SessionGoto onto the wrong Session node.
+            ActionSequenceScopeValidator.Validate(content);
 
             return content;
         }

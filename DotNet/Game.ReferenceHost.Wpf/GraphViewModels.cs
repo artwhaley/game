@@ -1327,7 +1327,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     (option);
                     optionRow.Parent = row;
                     optionRow.ActionSequence = new ActionSequenceEditorViewModel(owner, option.Sequence?.Id,
-                        sequence.OwnerScope,
+                        ActionOwnerScopes.NestedPromptChoice(sequence.OwnerScope),
                         option.Sequence?.Instances,
                         sequence.TemperatureOptions,
                         sequence.ResourceOptions,

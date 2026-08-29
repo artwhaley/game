@@ -101,6 +101,10 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             Assert.That(sessionChoices.Any(choice => choice.TypeKey == ActionTypeKeys.SessionGoto), Is.True);
             Assert.That(sessionChoices.Any(choice => choice.TypeKey == ActionTypeKeys.PhaseGoto), Is.False);
 
+            var nestedSessionChoices = ActionEditorRegistry.PickerChoices(ActionOwnerScope.SessionDecisionPromptChoiceSequence).ToList();
+            Assert.That(nestedSessionChoices.Any(choice => choice.TypeKey == ActionTypeKeys.SessionGoto), Is.False);
+            Assert.That(nestedSessionChoices.Any(choice => choice.TypeKey == ActionTypeKeys.StatIncrease), Is.True);
+
             var phaseChoices = ActionEditorRegistry.PickerChoices(ActionOwnerScope.ChoiceOptionSequence).ToList();
             Assert.That(phaseChoices.Any(choice => choice.TypeKey == ActionTypeKeys.PhaseGoto), Is.True);
             Assert.That(phaseChoices.Any(choice => choice.TypeKey == ActionTypeKeys.SessionGoto), Is.False);
@@ -119,6 +123,13 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             var prompt = sequence.CreateDefaultInstance(ActionTypeKeys.PromptChoice, "prompt-test");
             Assert.That(prompt, Is.TypeOf<PromptChoiceInstanceDefinition>());
             Assert.That(((PromptChoiceInstanceDefinition)prompt).Options, Has.Count.EqualTo(2));
+
+            var sessionSequence = new ActionSequenceEditorViewModel(
+                new GraphNodeViewModel { Id = "session-decision" }, "session-sequence",
+                ActionOwnerScope.SessionDecisionOptionSequence,
+                new[] { prompt }, null, null, null);
+            Assert.That(sessionSequence.Rows[0].PromptOptions[0].ActionSequence.OwnerScope,
+                Is.EqualTo(ActionOwnerScope.SessionDecisionPromptChoiceSequence));
         }
 
         [Test]

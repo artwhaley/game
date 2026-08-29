@@ -107,6 +107,80 @@ namespace TruthCardGame.Content.Sqlite.Tests
         }
 
         [Test]
+        public void Load_FailsLoudly_OnNestedSessionGotoWithoutDirectDecisionOwnership()
+        {
+            var content = new GameContentDefinition();
+            content.SessionTypes.Add(new SessionTypeDefinition { Id = "type", Title = "Type" });
+
+            var start = new SessionStartNodeDefinition { Id = "start" };
+            start.Outputs.Add(new GraphOutputDefinition { Id = "start-out", Kind = GraphPortKind.Normal });
+            var decision = new SessionDecisionNodeDefinition { Id = "decision", Prompt = "Choose" };
+            decision.Outputs.Add(new GraphOutputDefinition { Id = "decision-out", Kind = GraphPortKind.Normal });
+            decision.Options.Add(new SessionDecisionOptionDefinition
+            {
+                Id = "decision-option",
+                Label = "Nested",
+                Sequence = new ActionSequenceDefinition
+                {
+                    Id = "decision-sequence",
+                    Instances =
+                    {
+                        new PromptChoiceInstanceDefinition
+                        {
+                            Id = "prompt",
+                            Prompt = "Nested choice",
+                            Options =
+                            {
+                                new PromptChoiceOptionDefinition
+                                {
+                                    Id = "prompt-option",
+                                    Label = "Illegal goto",
+                                    Sequence = new ActionSequenceDefinition
+                                    {
+                                        Id = "prompt-sequence",
+                                        Instances =
+                                        {
+                                            new SessionGotoInstanceDefinition
+                                            {
+                                                Id = "nested-goto",
+                                                Label = "Must be rejected",
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+            var end = new SessionEndNodeDefinition { Id = "end" };
+            content.Sessions.Add(new SessionDefinition
+            {
+                Id = "session",
+                Title = "Session",
+                SessionTypeId = "type",
+                Graph = new SessionGraphDefinition
+                {
+                    Nodes = { start, decision, end },
+                    Edges =
+                    {
+                        new GraphEdgeDefinition { Id = "edge-start", SourceOutputId = "start-out", TargetNodeId = "decision" },
+                        new GraphEdgeDefinition { Id = "edge-end", SourceOutputId = "decision-out", TargetNodeId = "end" },
+                    },
+                },
+            });
+
+            using (var connection = Open())
+            {
+                DatabaseInitializer.InitializeEmptyDatabaseFromSnapshot(connection, content);
+                var exception = Assert.Throws<System.InvalidOperationException>(
+                    () => GameContentSnapshotLoader.Load(connection));
+                StringAssert.Contains("SessionDecision option", exception.Message);
+                StringAssert.Contains("nested-goto", exception.ToString());
+            }
+        }
+
+        [Test]
         public void SharedSequenceReferencedTwice_LoadsAsOneInstance()
         {
             using (var connection = Open())
