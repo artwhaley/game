@@ -100,6 +100,10 @@ Workbench. Contracts and per-ticket records:
   session → profile-driven selection). All runner surfaces expose a visible
   integer seed; Session selection and PhaseRun/Card selection use separate
   deterministic domains, and the exact seed is logged for replay.
+- ActionSequence authoring saves use recursive stable-ID diffs. Surviving
+  Action Instances, PromptChoice options, and nested sequences retain their
+  rows and IDs; removed objects alone are deleted, with extension-table
+  cascade safety covered by SQLite tests.
 - **Deferred by design**: anti-repeat/recent-card penalties, decks without
   replacement, rarity/manual multipliers, boolean eligibility expressions,
   kink intensity scales, Unity Timeline/Action binding, Buttplug/DG-Lab/

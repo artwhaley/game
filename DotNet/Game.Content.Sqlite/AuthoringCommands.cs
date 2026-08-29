@@ -1081,8 +1081,7 @@ namespace TruthCardGame.Content.Sqlite
             {
                 try
                 {
-                    ActionSequenceWriter.ClearContents(connection, transaction, sequence.Id);
-                    ActionSequenceWriter.Write(connection, transaction, sequence);
+                    ActionSequenceWriter.Sync(connection, transaction, sequence);
                     transaction.Commit();
                 }
                 catch
@@ -1983,8 +1982,7 @@ namespace TruthCardGame.Content.Sqlite
             {
                 try
                 {
-                    ActionSequenceWriter.Delete(connection, transaction, sequence.Id);
-                    ActionSequenceWriter.Write(connection, transaction, sequence);
+                    ActionSequenceWriter.Sync(connection, transaction, sequence);
                     transaction.Commit();
                 }
                 catch

@@ -318,14 +318,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private static ActionSequenceDefinition CloneSequence(ActionSequenceDefinition source, string id)
         {
-            var clone = new ActionSequenceDefinition { Id = id };
-            if (source == null) return clone;
-            for (var i = 0; i < source.Instances.Count; i++)
-            {
-                // Ids are PRESERVED so Save writes back id-stable rows; new
-                // buffer rows minted fresh ids in AddAction.
-                clone.Instances.Add(ActionInstanceCloneUtility.Clone(source.Instances[i], source.Instances[i].Id));
-            }
+            if (source == null) return new ActionSequenceDefinition { Id = id };
+            var clone = SequenceSnapshotUtility.Clone(source);
+            clone.Id = id;
             return clone;
         }
     }

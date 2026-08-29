@@ -20,7 +20,7 @@ namespace TruthCardGame.Content.Sqlite
             {
                 try
                 {
-                    ActionSequenceWriter.Write(connection, transaction, sequence);
+                    ActionSequenceWriter.Sync(connection, transaction, sequence);
                     transaction.Commit();
                 }
                 catch

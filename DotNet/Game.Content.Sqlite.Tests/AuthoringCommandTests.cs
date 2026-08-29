@@ -566,6 +566,100 @@ namespace TruthCardGame.Content.Sqlite.Tests
             Assert.AreEqual(2, Count("phase_exit WHERE phase_id='p1'"), "shared exits remain untouched");
         }
 
+        [Test]
+        public void StableCardSequenceDiff_PreservesExtensionRowsAcrossEdits()
+        {
+            var nested = new DebugInstanceDefinition
+            {
+                Id = "nested-debug",
+                Message = "nested before",
+            };
+            var originalChoice = new PromptChoiceInstanceDefinition
+            {
+                Id = "choice",
+                Prompt = "Choose",
+            };
+            originalChoice.Options.Add(new PromptChoiceOptionDefinition
+            {
+                Id = "choice-option",
+                Label = "First",
+                Sequence = new ActionSequenceDefinition
+                {
+                    Id = "choice-sequence",
+                    Instances = { nested },
+                },
+            });
+            var original = new ActionSequenceDefinition
+            {
+                Id = "card-sequence",
+                Instances =
+                {
+                    new DebugInstanceDefinition { Id = "root-debug", Message = "root before" },
+                    originalChoice,
+                },
+            };
+            CardRepository.Create(_connection, new CardDefinition
+            {
+                Id = "stable-card",
+                Title = "Stable",
+                BodyText = "before",
+                Sequence = original,
+            });
+
+            ExecuteSql("CREATE TABLE unity_test_action_binding (action_instance_id TEXT PRIMARY KEY, " +
+                "binding TEXT NOT NULL, FOREIGN KEY (action_instance_id) REFERENCES action_instance(id) ON DELETE CASCADE);");
+            ExecuteSql("INSERT INTO unity_test_action_binding (action_instance_id, binding) VALUES " +
+                "('root-debug', 'root'), ('choice', 'choice'), ('nested-debug', 'nested');");
+
+            // Card fields and relations are edited separately from the sequence;
+            // neither path is allowed to delete action rows.
+            CardRepository.SetBody(_connection, "stable-card", "after");
+            CardRepository.ReplaceRelations(_connection, new CardDefinition { Id = "stable-card" });
+
+            var desiredNested = new DebugInstanceDefinition
+            {
+                Id = "nested-debug",
+                Message = "nested after",
+            };
+            var desiredChoice = new PromptChoiceInstanceDefinition
+            {
+                Id = "choice",
+                Prompt = "Choose again",
+            };
+            desiredChoice.Options.Add(new PromptChoiceOptionDefinition
+            {
+                Id = "choice-option",
+                Label = "Renamed option",
+                Sequence = new ActionSequenceDefinition
+                {
+                    Id = "choice-sequence",
+                    Instances = { desiredNested },
+                },
+            });
+            var desired = new ActionSequenceDefinition
+            {
+                Id = "card-sequence",
+                Instances =
+                {
+                    desiredChoice,
+                    new DebugInstanceDefinition { Id = "root-debug", Message = "root after" },
+                },
+            };
+
+            var command = new ReplaceCardSequenceCommand(Conn, "stable-card", original, desired);
+            command.Execute();
+            Assert.AreEqual(3, Count("unity_test_action_binding"), "surviving actions keep extension rows");
+            Assert.AreEqual("root after", Scalar("SELECT message FROM action_instance_debug WHERE action_instance_id='root-debug'").ToString());
+            Assert.AreEqual("Renamed option", Scalar("SELECT label FROM action_instance_choice_option WHERE id='choice-option'").ToString());
+            Assert.AreEqual("nested after", Scalar("SELECT message FROM action_instance_debug WHERE action_instance_id='nested-debug'").ToString());
+            Assert.AreEqual("choice", Scalar("SELECT id FROM action_instance WHERE action_sequence_id='card-sequence' ORDER BY ordinal LIMIT 1").ToString());
+
+            command.Undo();
+            Assert.AreEqual(3, Count("unity_test_action_binding"), "undo preserves extension rows too");
+            command.Execute();
+            Assert.AreEqual(3, Count("unity_test_action_binding"), "redo preserves extension rows too");
+        }
+
         // ---------- helpers ----------
 
         private SessionDefinition BuildPlacementSession()
@@ -593,6 +687,15 @@ namespace TruthCardGame.Content.Sqlite.Tests
             return Convert.ToInt64(Scalar("SELECT COUNT(*) " +
                 (fromClause.TrimStart().StartsWith("FROM", StringComparison.OrdinalIgnoreCase)
                     ? fromClause : "FROM " + fromClause)));
+        }
+
+        private void ExecuteSql(string sql)
+        {
+            using (var command = _connection.CreateCommand())
+            {
+                command.CommandText = sql;
+                command.ExecuteNonQuery();
+            }
         }
     }
 }
