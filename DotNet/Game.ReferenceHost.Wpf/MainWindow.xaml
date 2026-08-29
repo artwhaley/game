@@ -40,8 +40,6 @@
                         </ComboBox>
                         <Button Content="+ Action" Click="OnAddActionInstance" Padding="5,1" Margin="3,0,0,0"
                                 Style="{StaticResource DarkButton}" ToolTip="Append the selected Action Type"/>
-                        <Button Content="Target Browser" Click="OnFocusActionSequence" Padding="5,1" Margin="3,0,0,0"
-                                Style="{StaticResource DarkButton}" ToolTip="Make this sequence the destination for the bottom-right Action Browser"/>
                         </StackPanel>
                     </Border>
                     <ItemsControl ItemsSource="{Binding Rows}" Margin="0,3,0,0">
@@ -751,14 +749,11 @@
                         BorderBrush="#FF3A3A3E" BorderThickness="0,1,0,0" Padding="6,5">
                     <StackPanel>
                         <TextBlock Text="Action Browser" FontWeight="SemiBold" Foreground="#FFDDDDDD"/>
-                        <TextBlock x:Name="ActionBrowserTargetText" Text="No focused sequence" FontSize="9"
-                                   Foreground="#FFB0B0B0" Margin="0,2,0,3" TextTrimming="CharacterEllipsis"/>
                         <TextBox x:Name="ActionBrowserSearchBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
                                  TextChanged="OnActionBrowserSearchChanged" ToolTip="Search actions by name or keyword"/>
                         <ListBox x:Name="ActionBrowserList" Height="180" Margin="0,4,0,0"
                                  Style="{StaticResource DarkListBox}" ItemContainerStyle="{StaticResource DarkListBoxItem}"
                                  DisplayMemberPath="DisplayLabel" MouseLeftButtonDown="OnActionDragStart"
-                                 MouseDoubleClick="OnActionBrowserDoubleClick"
                                  PreviewMouseMove="OnActionBrowserMouseMove"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                             <ListBox.ItemsPanel>

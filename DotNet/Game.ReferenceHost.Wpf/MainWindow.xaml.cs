@@ -67,7 +67,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private bool _loadingPlacementPhase;
         private bool _suppressDisconnectCommands;
         private readonly ObservableCollection<ActionTypeChoice> _actionBrowserChoices = new ObservableCollection<ActionTypeChoice>();
-        private ActionSequenceEditorViewModel _focusedActionSequence;
         private Point _actionDragStart;
         private bool _actionDragInProgress;
 
@@ -77,6 +76,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             _vm = new WorkbenchViewModel();
             DataContext = _vm;
             ActionBrowserList.ItemsSource = _actionBrowserChoices;
+            RefreshActionBrowser();
 
             NodeDoubleClickCommand = new DelegateCommand<GraphNodeViewModel>(OnNodeDoubleClicked);
 
@@ -586,21 +586,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
             StatusText.Text = "Duplicated " + row.DisplayLabel + " action.";
         }
 
-        private void FocusActionSequence(ActionSequenceEditorViewModel sequence)
-        {
-            _focusedActionSequence = sequence;
-            ActionBrowserTargetText.Text = sequence == null
-                ? "No focused sequence"
-                : $"{sequence.ScopeLabel} · {sequence.SequenceId}";
-            RefreshActionBrowser();
-        }
-
         private void RefreshActionBrowser()
         {
             _actionBrowserChoices.Clear();
-            if (_focusedActionSequence == null) return;
             var query = (ActionBrowserSearchBox?.Text ?? "").Trim();
-            foreach (var choice in ActionEditorRegistry.PickerChoices(_focusedActionSequence.OwnerScope))
+            foreach (var choice in ActionEditorRegistry.PickerChoices(ActionOwnerScope.All))
             {
                 if (query.Length == 0 || choice.SearchText.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
                     _actionBrowserChoices.Add(choice);
@@ -657,12 +647,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void OnActionDragStart(object sender, MouseButtonEventArgs e)
         {
             _actionDragStart = e.GetPosition(sender as IInputElement);
-        }
-
-        private void OnActionBrowserDoubleClick(object sender, MouseButtonEventArgs e)
-        {
-            if (ActionBrowserList.SelectedItem is ActionTypeChoice choice)
-                AppendBrowserAction(choice, _focusedActionSequence, _focusedActionSequence?.Rows.Count ?? 0);
         }
 
         private void OnActionBrowserMouseMove(object sender, MouseEventArgs e)
@@ -731,6 +715,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void AppendBrowserAction(ActionTypeChoice choice, ActionSequenceEditorViewModel sequence, int ordinal)
         {
             if (choice == null || sequence == null || sequence.OwnerNode == null) return;
+            if (sequence.IsPromptChoiceDescendant && choice.TypeKey == ActionTypeKeys.WaitForAll)
+            {
+                StatusText.Text = "Action rejected: Wait For All is not allowed inside Prompt Choice descendants.";
+                return;
+            }
             if (choice.TypeKey == ActionTypeKeys.ToyActivity && sequence.ToyCapabilityOptions.Count == 0)
             {
                 StatusText.Text = "Add a Smart Toy Capability before authoring Toy Activity.";
@@ -791,6 +780,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var copy = ActionInstanceCloneUtility.Clone(source.Definition, newId);
             try
             {
+                if (target.IsPromptChoiceDescendant && copy is WaitForAllInstanceDefinition)
+                {
+                    StatusText.Text = "Copy rejected: Wait For All is not allowed inside Prompt Choice descendants.";
+                    return;
+                }
                 ActionTypeRegistry.ValidateScope(copy, target.OwnerScope);
                 if (target.OwnerScope == ActionOwnerScope.CardSequence)
                 {
@@ -813,14 +807,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
             catch (Exception ex)
             {
                 StatusText.Text = "Copy rejected: " + ex.Message;
-            }
-        }
-
-        private void OnFocusActionSequence(object sender, RoutedEventArgs e)
-        {
-            if (sender is FrameworkElement element && element.DataContext is ActionSequenceEditorViewModel sequence)
-            {
-                FocusActionSequence(sequence);
             }
         }
 
@@ -1055,9 +1041,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 ? "id: " + node.Id
                 : "id: " + node.Id + "\nref: " + node.RefId;
             InspKind.Text = node.Kind + (string.IsNullOrEmpty(node.Subtitle) ? "" : "\n" + node.Subtitle);
-            if (node.ActionSequence != null)
-                FocusActionSequence(node.ActionSequence);
-
             // Selecting the Start node exposes the Session metadata (title + type + weighting).
             SessionMetaPanel.Visibility = node.Kind == "start" ? Visibility.Visible : Visibility.Collapsed;
             SessionWeightingPanel.Visibility = node.Kind == "start" ? Visibility.Visible : Visibility.Collapsed;

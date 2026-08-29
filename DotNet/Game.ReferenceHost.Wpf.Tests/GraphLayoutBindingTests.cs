@@ -153,6 +153,9 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
                 var template = (DataTemplate)window.Resources["ActionSequenceTemplate"];
                 Assert.That(template, Is.Not.Null);
                 Assert.That(window.FindName("ActionBrowserSearchBox"), Is.Not.Null);
+                Assert.That(window.FindName("ActionBrowserTargetText"), Is.Null);
+                Assert.That(typeof(MainWindow).GetMethod("OnActionBrowserDoubleClick",
+                    BindingFlags.Instance | BindingFlags.NonPublic), Is.Null);
             }
             finally
             {

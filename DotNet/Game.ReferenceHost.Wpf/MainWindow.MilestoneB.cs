@@ -795,7 +795,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var sequenceEditor = CardEditorSequenceHost.Build(_cardBuffer.Sequence, card.Id, _cardBuffer.Title, _vm.Content);
             SubscribeBufferedRows(sequenceEditor);
             CardActionSequenceHost.Content = sequenceEditor;
-            FocusActionSequence(sequenceEditor);
         }
 
         private void SubscribeBufferedRows(ActionSequenceEditorViewModel sequence)
