@@ -440,6 +440,33 @@ namespace TruthCardGame.Content.Sqlite
             return result;
         }
 
+        /// <summary>Captures the exact persisted Session edge leaving one socket.</summary>
+        public static GraphEdgeDefinition SessionEdgeFromSource(DbConnection connection, string sourceOutputId)
+        {
+            return EdgeFromSource(connection, "session_graph_edge", sourceOutputId);
+        }
+
+        /// <summary>Captures the exact persisted Phase edge leaving one socket.</summary>
+        public static GraphEdgeDefinition PhaseEdgeFromSource(DbConnection connection, string sourceOutputId)
+        {
+            return EdgeFromSource(connection, "phase_graph_edge", sourceOutputId);
+        }
+
+        private static GraphEdgeDefinition EdgeFromSource(DbConnection connection, string edgeTable, string sourceOutputId)
+        {
+            GraphEdgeDefinition result = null;
+            Sql.QueryAll(connection,
+                $"SELECT id, source_port_id, target_node_id FROM {edgeTable} WHERE source_port_id = @source;",
+                reader => result = new GraphEdgeDefinition
+                {
+                    Id = reader.GetString(0),
+                    SourceOutputId = reader.GetString(1),
+                    TargetNodeId = reader.GetString(2),
+                },
+                ("source", sourceOutputId));
+            return result;
+        }
+
         /// <summary>Edges wired from the projected sockets of one exit (restore on exit-delete undo).</summary>
         public static List<ProjectedEdgeSnapshot> ExitProjectedEdges(DbConnection connection, string exitId)
         {

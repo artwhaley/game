@@ -126,10 +126,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 if (_vm.SelectedSession == null || source?.Owner == null || target?.Owner == null) return;
                 var replaced = WithConnectionResult(connection =>
-                {
-                    var edges = AuthoringUndo.EdgesFromSource(connection, source.Id);
-                    return edges.Count > 0 ? edges[0].TargetNodeId : null;
-                });
+                    AuthoringUndo.SessionEdgeFromSource(connection, source.Id));
                 PushCommand(new ConnectSessionCommand(OpenConnection, _vm.SelectedSession.Id,
                     source.Id, target.Owner.Id, replaced));
             };
@@ -138,8 +135,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 if (_suppressDisconnectCommands) return;
                 if (_vm.SelectedSession == null || connection?.Source?.Owner == null || connection?.Target?.Owner == null) return;
+                var edge = WithConnectionResult(db =>
+                    AuthoringUndo.SessionEdgeFromSource(db, connection.Source.Id));
                 PushCommand(new DisconnectSessionCommand(OpenConnection, _vm.SelectedSession.Id,
-                    connection.Source.Id, connection.Target.Owner.Id));
+                    connection.Source.Id, edge));
             };
 
             _vm.SessionGraph.NodeDeleted += node =>
@@ -173,10 +172,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 if (_vm.SelectedPhase == null || source?.Owner == null || target?.Owner == null) return;
                 var replaced = WithConnectionResult(connection =>
-                {
-                    var edges = AuthoringUndo.EdgesFromSource(connection, source.Id);
-                    return edges.Count > 0 ? edges[0].TargetNodeId : null;
-                });
+                    AuthoringUndo.PhaseEdgeFromSource(connection, source.Id));
                 PushCommand(new ConnectPhaseCommand(OpenConnection, _vm.SelectedPhase.Id,
                     source.Id, target.Owner.Id, replaced));
             };
@@ -185,8 +181,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 if (_suppressDisconnectCommands) return;
                 if (_vm.SelectedPhase == null || connection?.Source?.Owner == null || connection?.Target?.Owner == null) return;
+                var edge = WithConnectionResult(db =>
+                    AuthoringUndo.PhaseEdgeFromSource(db, connection.Source.Id));
                 PushCommand(new DisconnectPhaseCommand(OpenConnection, _vm.SelectedPhase.Id,
-                    connection.Source.Id, connection.Target.Owner.Id));
+                    connection.Source.Id, edge));
             };
 
             _vm.PhaseGraph.NodeDeleted += node =>

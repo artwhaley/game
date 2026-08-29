@@ -104,6 +104,9 @@ Workbench. Contracts and per-ticket records:
   Action Instances, PromptChoice options, and nested sequences retain their
   rows and IDs; removed objects alone are deleted, with extension-table
   cascade safety covered by SQLite tests.
+- Graph Undo/Redo restores captured edge IDs and endpoints across Session and
+  Phase disconnects, replacements, node deletion, projected sockets, and
+  compound PhaseExit paths.
 - **Deferred by design**: anti-repeat/recent-card penalties, decks without
   replacement, rarity/manual multipliers, boolean eligibility expressions,
   kink intensity scales, Unity Timeline/Action binding, Buttplug/DG-Lab/

@@ -233,6 +233,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
             stack.Undo();
             Assert.AreEqual(1, Count("session_graph_node WHERE id='s1-end'"));
             Assert.AreEqual(1, Count("session_graph_edge WHERE source_port_id='s1-start-out'"));
+            Assert.AreEqual("e1", Scalar("SELECT id FROM session_graph_edge WHERE source_port_id='s1-start-out'").ToString());
             Assert.AreEqual(1, Count("wpf_session_node_layout WHERE node_id='s1-end'"));
 
             stack.Redo();
@@ -264,9 +265,19 @@ namespace TruthCardGame.Content.Sqlite.Tests
             stack.Undo();
             Assert.AreEqual("s1-a", Scalar("SELECT target_node_id FROM session_graph_edge WHERE source_port_id='s1-start-out'"),
                 "the replaced edge is restored");
+            var restoredId = Scalar("SELECT id FROM session_graph_edge WHERE source_port_id='s1-start-out'").ToString();
+            Assert.AreEqual("e1", restoredId, "the replaced edge id is restored exactly");
 
             stack.Redo();
             Assert.AreEqual("s1-b", Scalar("SELECT target_node_id FROM session_graph_edge WHERE source_port_id='s1-start-out'"));
+            var createdId = Scalar("SELECT id FROM session_graph_edge WHERE source_port_id='s1-start-out'").ToString();
+            Assert.AreNotEqual("e1", createdId, "the new authored edge has its own identity");
+
+            stack.Undo();
+            Assert.AreEqual("e1", Scalar("SELECT id FROM session_graph_edge WHERE source_port_id='s1-start-out'").ToString());
+            stack.Redo();
+            Assert.AreEqual(createdId, Scalar("SELECT id FROM session_graph_edge WHERE source_port_id='s1-start-out'").ToString(),
+                "redo restores the authored replacement edge identity");
         }
 
         [Test]
@@ -289,6 +300,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
 
             stack.Undo();
             Assert.AreEqual(1, Count("session_graph_edge WHERE source_port_id='s1-start-out'"));
+            Assert.AreEqual("e1", Scalar("SELECT id FROM session_graph_edge WHERE source_port_id='s1-start-out'").ToString());
         }
 
         // ---------- action instances ----------
@@ -425,6 +437,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
             Assert.AreEqual(1, Count("session_node_output WHERE phase_exit_id='px-c'"));
             Assert.AreEqual(1, Count("session_graph_edge WHERE source_port_id='" + socketId + "' AND target_node_id='s1-start'"),
                 "the edge wired from the projected socket is restored");
+            Assert.AreEqual("e1", Scalar("SELECT id FROM session_graph_edge WHERE source_port_id='" + socketId + "'").ToString());
         }
 
         // ---------- decision options ----------

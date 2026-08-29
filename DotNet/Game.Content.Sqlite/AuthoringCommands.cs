@@ -239,7 +239,7 @@ namespace TruthCardGame.Content.Sqlite
 
     /// <summary>
     /// Deletes a session node; undo restores the node, its edges and its
-    /// layout position as one semantic edit (edge ids are regenerated).
+    /// layout position as one semantic edit, including exact edge identities.
     /// </summary>
     public sealed class DeleteSessionNodeCommand : AuthoringCommandBase
     {
@@ -270,7 +270,7 @@ namespace TruthCardGame.Content.Sqlite
             {
                 SessionGraphRepository.AddEdge(connection, _sessionId, new GraphEdgeDefinition
                 {
-                    Id = "se-" + Guid.NewGuid().ToString("N"),
+                    Id = edge.Id,
                     SourceOutputId = edge.SourceOutputId,
                     TargetNodeId = edge.TargetNodeId,
                 });
@@ -310,7 +310,7 @@ namespace TruthCardGame.Content.Sqlite
             {
                 PhaseGraphRepository.AddEdge(connection, _phaseId, new GraphEdgeDefinition
                 {
-                    Id = "pe-" + Guid.NewGuid().ToString("N"),
+                    Id = edge.Id,
                     SourceOutputId = edge.SourceOutputId,
                     TargetNodeId = edge.TargetNodeId,
                 });
@@ -326,39 +326,61 @@ namespace TruthCardGame.Content.Sqlite
         private readonly string _sessionId;
         private readonly string _sourceOutputId;
         private readonly string _targetNodeId;
-        private readonly string _replacedTarget;
+        private GraphEdgeDefinition _replacedEdge;
+        private readonly GraphEdgeDefinition _createdEdge;
 
-        public ConnectSessionCommand(Func<DbConnection> conn, string sessionId, string sourceOutputId, string targetNodeId, string replacedTarget)
+        public ConnectSessionCommand(Func<DbConnection> conn, string sessionId, string sourceOutputId,
+            string targetNodeId, GraphEdgeDefinition replacedEdge)
             : base(conn)
         {
-            _sessionId = sessionId; _sourceOutputId = sourceOutputId; _targetNodeId = targetNodeId; _replacedTarget = replacedTarget;
+            _sessionId = sessionId; _sourceOutputId = sourceOutputId; _targetNodeId = targetNodeId;
+            _replacedEdge = CopyEdge(replacedEdge);
+            _createdEdge = new GraphEdgeDefinition
+            {
+                Id = "se-" + Guid.NewGuid().ToString("N"),
+                SourceOutputId = sourceOutputId,
+                TargetNodeId = targetNodeId,
+            };
+        }
+
+        // Compatibility overload for callers that only have the old target
+        // argument. Execute captures the actual persisted edge before removal.
+        public ConnectSessionCommand(Func<DbConnection> conn, string sessionId, string sourceOutputId,
+            string targetNodeId, string replacedTarget)
+            : this(conn, sessionId, sourceOutputId, targetNodeId,
+                string.IsNullOrEmpty(replacedTarget)
+                    ? null
+                    : new GraphEdgeDefinition { SourceOutputId = sourceOutputId, TargetNodeId = replacedTarget })
+        {
         }
 
         public override string Name => "Connect";
 
         protected override void ExecuteCore(DbConnection connection)
         {
+            if (_replacedEdge != null && string.IsNullOrEmpty(_replacedEdge.Id))
+                _replacedEdge = AuthoringUndo.SessionEdgeFromSource(connection, _sourceOutputId);
             SessionGraphRepository.RemoveEdgesFromSource(connection, _sourceOutputId);
-            SessionGraphRepository.AddEdge(connection, _sessionId, new GraphEdgeDefinition
-            {
-                Id = "se-" + Guid.NewGuid().ToString("N"),
-                SourceOutputId = _sourceOutputId,
-                TargetNodeId = _targetNodeId,
-            });
+            SessionGraphRepository.AddEdge(connection, _sessionId, _createdEdge);
         }
 
         protected override void UndoCore(DbConnection connection)
         {
             SessionGraphRepository.RemoveEdgesFromSource(connection, _sourceOutputId);
-            if (!string.IsNullOrEmpty(_replacedTarget))
+            if (_replacedEdge != null && !string.IsNullOrEmpty(_replacedEdge.Id))
             {
-                SessionGraphRepository.AddEdge(connection, _sessionId, new GraphEdgeDefinition
-                {
-                    Id = "se-" + Guid.NewGuid().ToString("N"),
-                    SourceOutputId = _sourceOutputId,
-                    TargetNodeId = _replacedTarget,
-                });
+                SessionGraphRepository.AddEdge(connection, _sessionId, _replacedEdge);
             }
+        }
+
+        private static GraphEdgeDefinition CopyEdge(GraphEdgeDefinition edge)
+        {
+            return edge == null ? null : new GraphEdgeDefinition
+            {
+                Id = edge.Id,
+                SourceOutputId = edge.SourceOutputId,
+                TargetNodeId = edge.TargetNodeId,
+            };
         }
     }
 
@@ -367,38 +389,53 @@ namespace TruthCardGame.Content.Sqlite
         private readonly string _phaseId;
         private readonly string _sourceOutputId;
         private readonly string _targetNodeId;
-        private readonly string _replacedTarget;
+        private GraphEdgeDefinition _replacedEdge;
+        private readonly GraphEdgeDefinition _createdEdge;
 
-        public ConnectPhaseCommand(Func<DbConnection> conn, string phaseId, string sourceOutputId, string targetNodeId, string replacedTarget)
+        public ConnectPhaseCommand(Func<DbConnection> conn, string phaseId, string sourceOutputId,
+            string targetNodeId, GraphEdgeDefinition replacedEdge)
             : base(conn)
         {
-            _phaseId = phaseId; _sourceOutputId = sourceOutputId; _targetNodeId = targetNodeId; _replacedTarget = replacedTarget;
+            _phaseId = phaseId; _sourceOutputId = sourceOutputId; _targetNodeId = targetNodeId;
+            _replacedEdge = replacedEdge == null ? null : new GraphEdgeDefinition
+            {
+                Id = replacedEdge.Id,
+                SourceOutputId = replacedEdge.SourceOutputId,
+                TargetNodeId = replacedEdge.TargetNodeId,
+            };
+            _createdEdge = new GraphEdgeDefinition
+            {
+                Id = "pe-" + Guid.NewGuid().ToString("N"),
+                SourceOutputId = sourceOutputId,
+                TargetNodeId = targetNodeId,
+            };
+        }
+
+        public ConnectPhaseCommand(Func<DbConnection> conn, string phaseId, string sourceOutputId,
+            string targetNodeId, string replacedTarget)
+            : this(conn, phaseId, sourceOutputId, targetNodeId,
+                string.IsNullOrEmpty(replacedTarget)
+                    ? null
+                    : new GraphEdgeDefinition { SourceOutputId = sourceOutputId, TargetNodeId = replacedTarget })
+        {
         }
 
         public override string Name => "Connect";
 
         protected override void ExecuteCore(DbConnection connection)
         {
+            if (_replacedEdge != null && string.IsNullOrEmpty(_replacedEdge.Id))
+                _replacedEdge = AuthoringUndo.PhaseEdgeFromSource(connection, _sourceOutputId);
             PhaseGraphRepository.RemoveEdgesFromSource(connection, _sourceOutputId);
-            PhaseGraphRepository.AddEdge(connection, _phaseId, new GraphEdgeDefinition
-            {
-                Id = "pe-" + Guid.NewGuid().ToString("N"),
-                SourceOutputId = _sourceOutputId,
-                TargetNodeId = _targetNodeId,
-            });
+            PhaseGraphRepository.AddEdge(connection, _phaseId, _createdEdge);
         }
 
         protected override void UndoCore(DbConnection connection)
         {
             PhaseGraphRepository.RemoveEdgesFromSource(connection, _sourceOutputId);
-            if (!string.IsNullOrEmpty(_replacedTarget))
+            if (_replacedEdge != null && !string.IsNullOrEmpty(_replacedEdge.Id))
             {
-                PhaseGraphRepository.AddEdge(connection, _phaseId, new GraphEdgeDefinition
-                {
-                    Id = "pe-" + Guid.NewGuid().ToString("N"),
-                    SourceOutputId = _sourceOutputId,
-                    TargetNodeId = _replacedTarget,
-                });
+                PhaseGraphRepository.AddEdge(connection, _phaseId, _replacedEdge);
             }
         }
     }
@@ -408,26 +445,42 @@ namespace TruthCardGame.Content.Sqlite
     {
         private readonly string _sessionId;
         private readonly string _sourceOutputId;
-        private readonly string _targetNodeId;
+        private GraphEdgeDefinition _edge;
 
-        public DisconnectSessionCommand(Func<DbConnection> conn, string sessionId, string sourceOutputId, string targetNodeId)
-            : base(conn) { _sessionId = sessionId; _sourceOutputId = sourceOutputId; _targetNodeId = targetNodeId; }
+        public DisconnectSessionCommand(Func<DbConnection> conn, string sessionId, string sourceOutputId,
+            GraphEdgeDefinition edge) : base(conn)
+        {
+            _sessionId = sessionId; _sourceOutputId = sourceOutputId;
+            _edge = edge == null ? null : new GraphEdgeDefinition
+            {
+                Id = edge.Id,
+                SourceOutputId = edge.SourceOutputId,
+                TargetNodeId = edge.TargetNodeId,
+            };
+        }
+
+        public DisconnectSessionCommand(Func<DbConnection> conn, string sessionId, string sourceOutputId,
+            string targetNodeId)
+            : this(conn, sessionId, sourceOutputId,
+                string.IsNullOrEmpty(targetNodeId)
+                    ? null
+                    : new GraphEdgeDefinition { SourceOutputId = sourceOutputId, TargetNodeId = targetNodeId })
+        {
+        }
 
         public override string Name => "Disconnect";
 
         protected override void ExecuteCore(DbConnection connection)
         {
+            if (_edge != null && string.IsNullOrEmpty(_edge.Id))
+                _edge = AuthoringUndo.SessionEdgeFromSource(connection, _sourceOutputId);
             SessionGraphRepository.RemoveEdgesFromSource(connection, _sourceOutputId);
         }
 
         protected override void UndoCore(DbConnection connection)
         {
-            SessionGraphRepository.AddEdge(connection, _sessionId, new GraphEdgeDefinition
-            {
-                Id = "se-" + Guid.NewGuid().ToString("N"),
-                SourceOutputId = _sourceOutputId,
-                TargetNodeId = _targetNodeId,
-            });
+            if (_edge != null && !string.IsNullOrEmpty(_edge.Id))
+                SessionGraphRepository.AddEdge(connection, _sessionId, _edge);
         }
     }
 
@@ -435,26 +488,42 @@ namespace TruthCardGame.Content.Sqlite
     {
         private readonly string _phaseId;
         private readonly string _sourceOutputId;
-        private readonly string _targetNodeId;
+        private GraphEdgeDefinition _edge;
 
-        public DisconnectPhaseCommand(Func<DbConnection> conn, string phaseId, string sourceOutputId, string targetNodeId)
-            : base(conn) { _phaseId = phaseId; _sourceOutputId = sourceOutputId; _targetNodeId = targetNodeId; }
+        public DisconnectPhaseCommand(Func<DbConnection> conn, string phaseId, string sourceOutputId,
+            GraphEdgeDefinition edge) : base(conn)
+        {
+            _phaseId = phaseId; _sourceOutputId = sourceOutputId;
+            _edge = edge == null ? null : new GraphEdgeDefinition
+            {
+                Id = edge.Id,
+                SourceOutputId = edge.SourceOutputId,
+                TargetNodeId = edge.TargetNodeId,
+            };
+        }
+
+        public DisconnectPhaseCommand(Func<DbConnection> conn, string phaseId, string sourceOutputId,
+            string targetNodeId)
+            : this(conn, phaseId, sourceOutputId,
+                string.IsNullOrEmpty(targetNodeId)
+                    ? null
+                    : new GraphEdgeDefinition { SourceOutputId = sourceOutputId, TargetNodeId = targetNodeId })
+        {
+        }
 
         public override string Name => "Disconnect";
 
         protected override void ExecuteCore(DbConnection connection)
         {
+            if (_edge != null && string.IsNullOrEmpty(_edge.Id))
+                _edge = AuthoringUndo.PhaseEdgeFromSource(connection, _sourceOutputId);
             PhaseGraphRepository.RemoveEdgesFromSource(connection, _sourceOutputId);
         }
 
         protected override void UndoCore(DbConnection connection)
         {
-            PhaseGraphRepository.AddEdge(connection, _phaseId, new GraphEdgeDefinition
-            {
-                Id = "pe-" + Guid.NewGuid().ToString("N"),
-                SourceOutputId = _sourceOutputId,
-                TargetNodeId = _targetNodeId,
-            });
+            if (_edge != null && !string.IsNullOrEmpty(_edge.Id))
+                PhaseGraphRepository.AddEdge(connection, _phaseId, _edge);
         }
     }
 
