@@ -906,7 +906,17 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void OnPreviewEligibleCards(object sender, RoutedEventArgs e)
         {
             if (_vm.SelectedPhase == null) return;
-            var lines = EvaluateSelectionLines(_vm.SelectedPhase, null);
+            List<string> lines;
+            try
+            {
+                lines = EvaluateSelectionLines(_vm.SelectedPhase, null);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Selection diagnostics blocked: " + ex.Message,
+                    "Selection diagnostics", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
             MessageBox.Show(this, string.Join("\n", lines), "Eligible Cards — " + _vm.SelectedPhase.Title,
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -916,21 +926,29 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (_vm.SelectedPhase == null) return;
             // Weighting context: prefer the session that's placing this phase,
             // else the selected session, else defaults.
-            var weighting = _vm.SelectedSession?.CardWeighting;
-            var window = new SelectionDiagnosticsWindow(_vm.Content, _vm.SelectedPhase, LoadProfileSnapshot(), weighting);
-            window.Owner = this;
-            window.Show();
+            try
+            {
+                var weighting = _vm.SelectedSession?.CardWeighting;
+                var window = new SelectionDiagnosticsWindow(_vm.Content, _vm.SelectedPhase, LoadProfileSnapshot(), weighting);
+                window.Owner = this;
+                window.Show();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Selection diagnostics blocked: " + ex.Message,
+                    "Selection diagnostics", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private List<string> EvaluateSelectionLines(PhaseDefinition phase, float? happinessOverride)
         {
             var profile = CardSelectionProfile.FromProfile(LoadProfileSnapshot());
             var happiness = happinessOverride ?? 50f;
-            var allTitles = phase.MustHaveAllCardTags.Select(id => TitleOf(_vm.Content.CardTagDefinitions, id)).ToList();
-            var anyTitles = phase.MustHaveAnyCardTags.Select(id => TitleOf(_vm.Content.CardTagDefinitions, id)).ToList();
+            var allTitles = phase.MustHaveAllCardTags.Select(id => SelectionDiagnosticsFormatter.CardTag(_vm.Content, id)).ToList();
+            var anyTitles = phase.MustHaveAnyCardTags.Select(id => SelectionDiagnosticsFormatter.CardTag(_vm.Content, id)).ToList();
             var lines = new List<string>
             {
-                $"Phase: {phase.Title}  ·  Happiness: {happiness:0.#}",
+                $"Phase: {SelectionDiagnosticsFormatter.Phase(phase)}  ·  Happiness: {happiness:0.#}",
                 $"Query: ALL [{string.Join(", ", allTitles)}]  ANY [{string.Join(", ", anyTitles)}]",
                 "",
             };
@@ -941,11 +959,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 {
                     var weight = CardWeightCalculator.ComputeWeight(card, profile,
                         _vm.SelectedSession?.CardWeighting ?? new SessionCardWeightingDefinition(), happiness);
-                    lines.Add($"✓ {card.Title}  (weight {weight:0.###})");
+                    lines.Add($"✓ {SelectionDiagnosticsFormatter.Card(card)}  (weight {weight:0.###})");
                 }
                 else
                 {
-                    lines.Add($"× {card.Title}  — {string.Join("; ", eligibility.Reasons.Select(r => r.Describe()))}");
+                    lines.Add($"× {SelectionDiagnosticsFormatter.Card(card)}  — {string.Join("; ", eligibility.Reasons.Select(r => SelectionDiagnosticsFormatter.Rejection(_vm.Content, r)))}");
                 }
             }
             return lines;
@@ -953,22 +971,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private UserProfileSnapshot LoadProfileSnapshot()
         {
-            try
-            {
-                var path = UserProfilePaths.ProfileDatabasePath();
-                if (!System.IO.File.Exists(path)) return new UserProfileSnapshot();
-                using (var connection = new SqliteConnection("Data Source=" + path))
-                {
-                    connection.Open();
-                    ProfileStore.EnsureSchema(connection);
-                    return ProfileStore.Load(connection).ToSnapshot();
-                }
-            }
-            catch (Exception)
-            {
-                // A broken profile must not crash authoring; diagnostics show the empty profile.
-                return new UserProfileSnapshot();
-            }
+            return UserProfileSelectionLoader.LoadSnapshot();
         }
 
         // ---------- Ticket 16: consumer-style session start ----------
@@ -977,7 +980,19 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             var content = _vm.Content;
             var catalog = new ContentCatalog(content);
-            var profile = CardSelectionProfile.FromProfile(LoadProfileSnapshot());
+            UserProfileSnapshot profileSnapshot;
+            try
+            {
+                profileSnapshot = LoadProfileSnapshot();
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "Session start blocked: profile error";
+                MessageBox.Show(this, "Session start blocked because the existing UserProfile database could not be read:\n\n" + ex.Message,
+                    "User profile error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            var profile = CardSelectionProfile.FromProfile(profileSnapshot);
             var eligibility = new SessionTypeEligibility(catalog);
 
             var lines = new List<string>();
@@ -988,12 +1003,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 if (result.IsEligible)
                 {
                     var count = content.Sessions.Count(s => s.SessionTypeId == type.Id);
-                    lines.Add($"{type.Title} — {count} session(s)");
+                    lines.Add($"{SelectionDiagnosticsFormatter.SessionType(type)} — {count} session(s)");
                     if (count > 0) validTypes.Add(type);
                 }
                 else
                 {
-                    lines.Add($"{type.Title} — ineligible (missing: {string.Join(", ", result.MissingCapabilityIds)})");
+                    lines.Add($"{SelectionDiagnosticsFormatter.SessionType(type)} — ineligible (missing: {SelectionDiagnosticsFormatter.Capabilities(content, result.MissingCapabilityIds)})");
                 }
             }
 
@@ -1025,7 +1040,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 player.RunSession(session.Id);
                 player.Show();
-                StatusText.Text = $"Playing '{session.Title}' (type '{selectedType.Title}') — spawned with Happiness 50.";
+                StatusText.Text = $"Playing '{SelectionDiagnosticsFormatter.Session(session)}' (type '{SelectionDiagnosticsFormatter.SessionType(selectedType)}') — spawned with Happiness 50.";
             }
             catch (Exception ex)
             {

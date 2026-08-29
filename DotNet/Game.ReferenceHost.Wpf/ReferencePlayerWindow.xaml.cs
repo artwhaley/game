@@ -84,14 +84,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// </summary>
         private static CardSelectionProfile LoadSelectionProfile()
         {
-            var path = UserProfilePaths.ProfileDatabasePath();
-            if (!File.Exists(path)) return new CardSelectionProfile();
-            using (var connection = new SqliteConnection("Data Source=" + path))
-            {
-                connection.Open();
-                TruthCardGame.Profile.Sqlite.ProfileStore.EnsureSchema(connection);
-                return TruthCardGame.Profile.Sqlite.ProfileStore.Load(connection).ToSelectionProfile();
-            }
+            return CardSelectionProfile.FromProfile(UserProfileSelectionLoader.LoadSnapshot());
         }
 
         /// <summary>
@@ -173,7 +166,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 TemperaturesText.Text = RefreshTemperatures();
                 SetStatus("Starting…");
                 DrawNextButton.IsEnabled = false;
-                Log($"Session started: {selected.Title}");
+                Log($"Session started: {SelectionDiagnosticsFormatter.Session(selected)}");
 
                 await AdvanceAsync();
             }
@@ -412,12 +405,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 {
                     if (candidate.Reasons.Count > 0)
                         Log($"candidate rejected: {candidate.Card.Title} [{candidate.Card.Id}] — " +
-                            string.Join("; ", candidate.Reasons.Select(reason => reason.Describe())));
+                            string.Join("; ", candidate.Reasons.Select(reason => SelectionDiagnosticsFormatter.Rejection(_content, reason))));
                     else
-                        Log($"candidate eligible: {candidate.Card.Title} [{candidate.Card.Id}] weight={candidate.Weight:0.###}");
+                        Log($"candidate eligible: {SelectionDiagnosticsFormatter.Card(candidate.Card)} weight={candidate.Weight:0.###}");
                 }
                 if (evaluation.Selected != null)
-                    Log($"card selected: {evaluation.Selected.Title} [{evaluation.Selected.Id}]");
+                    Log($"card selected: {SelectionDiagnosticsFormatter.Card(evaluation.Selected)}");
             };
         }
 
@@ -429,7 +422,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void LogCardStarted(CardDefinition card)
         {
-            Log("CARD START\nTitle: " + (card?.Title ?? "") + "\nBody:\n" + (card?.BodyText ?? ""));
+            Log("CARD START\nTitle: " + SelectionDiagnosticsFormatter.Card(card) + "\nBody:\n" + (card?.BodyText ?? ""));
         }
 
         private void OnCopyLog(object sender, RoutedEventArgs e)

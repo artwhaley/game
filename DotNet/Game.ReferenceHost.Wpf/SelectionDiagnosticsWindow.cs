@@ -30,20 +30,14 @@ namespace TruthCardGame.ReferenceHost.Wpf
             _profile = CardSelectionProfile.FromProfile(profileSnapshot);
             _weighting = weighting ?? new SessionCardWeightingDefinition();
 
-            Title = "Selection Diagnostics — " + phase.Title;
-            var allTitles = phase.MustHaveAllCardTags.Select(id => TitleOf(content.CardTagDefinitions, id)).ToList();
-            var anyTitles = phase.MustHaveAnyCardTags.Select(id => TitleOf(content.CardTagDefinitions, id)).ToList();
-            PhaseText.Text = $"Phase '{phase.Title}' · ALL [{string.Join(", ", allTitles)}] · ANY [{string.Join(", ", anyTitles)}]";
+            Title = "Selection Diagnostics — " + SelectionDiagnosticsFormatter.Phase(phase);
+            var allTitles = phase.MustHaveAllCardTags.Select(id => SelectionDiagnosticsFormatter.CardTag(content, id)).ToList();
+            var anyTitles = phase.MustHaveAnyCardTags.Select(id => SelectionDiagnosticsFormatter.CardTag(content, id)).ToList();
+            PhaseText.Text = $"Phase '{SelectionDiagnosticsFormatter.Phase(phase)}' · ALL [{string.Join(", ", allTitles)}] · ANY [{string.Join(", ", anyTitles)}]";
             HappinessSlider.Value = 50;
             HappinessSlider.ValueChanged += (_, _) => Refresh();
             SearchBox.TextChanged += (_, _) => Refresh();
             Refresh();
-        }
-
-        private static string TitleOf(List<TruthCardGame.Content.CardTagDefinition> definitions, string id)
-        {
-            var match = definitions.FirstOrDefault(t => t.Id == id);
-            return match?.Title ?? id;
         }
 
         private void Refresh()
@@ -65,10 +59,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     : (float?)null;
                 rows.Add(new DiagnosticRow
                 {
-                    Title = card.Title,
+                    Title = SelectionDiagnosticsFormatter.Card(card),
                     Status = eligibility.IsEligible ? "Eligible" : "Rejected",
                     Weight = weight,
-                    Reasons = string.Join("; ", eligibility.Reasons.Select(r => r.Describe())),
+                    Reasons = string.Join("; ", eligibility.Reasons.Select(r => SelectionDiagnosticsFormatter.Rejection(_content, r))),
                 });
             }
 

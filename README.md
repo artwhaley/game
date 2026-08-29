@@ -38,7 +38,9 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   the containing decision's projected socket ownership.
   The Reference Player and live Preview retain 10,000 diagnostic lines and
   support Copy Log, UTF-8 Save Log, and log-only Clear Log; Card Started entries
-  include the full card body.
+  include the full card body. Selection diagnostics resolve catalog names while
+  retaining stable IDs, and an existing unreadable UserProfile.db blocks runs
+  with an explicit error.
   See [`Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md`](Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md).
 - Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core` +
   `Game.Profile`, .NET Standard 2.1) that both Unity and the WPF hosts run —
