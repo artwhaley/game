@@ -265,5 +265,37 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
                 window.Close();
             }
         }
+
+        [Test]
+        public void CatalogSearch_IsInsideCatalogDrawer_NotHiddenSessionDrawer()
+        {
+            EnsureApplication();
+            var window = new MainWindow();
+            try
+            {
+                var search = (FrameworkElement)window.FindName("CatalogSearchBox");
+                var catalogs = (FrameworkElement)window.FindName("CatalogsLibraryPanel");
+                var sessions = (FrameworkElement)window.FindName("SessionLibraryPanel");
+
+                Assert.That(IsVisualDescendant(search, catalogs), Is.True,
+                    "Catalog search must be hosted by the visible Catalogs drawer.");
+                Assert.That(IsVisualDescendant(search, sessions), Is.False,
+                    "Catalog search must not be hidden with the Sessions drawer.");
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+
+        private static bool IsVisualDescendant(DependencyObject child, DependencyObject ancestor)
+        {
+            for (var current = VisualTreeHelper.GetParent(child); current != null;
+                 current = VisualTreeHelper.GetParent(current))
+            {
+                if (ReferenceEquals(current, ancestor)) return true;
+            }
+            return false;
+        }
     }
 }
