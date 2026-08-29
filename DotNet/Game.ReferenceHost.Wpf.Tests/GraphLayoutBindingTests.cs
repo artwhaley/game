@@ -192,6 +192,33 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
         }
 
         [Test]
+        public void NewActionEditorsExposeDialogDelayAndToyFields()
+        {
+            var content = new GameContentDefinition();
+            content.SmartToyCapabilityDefinitions.Add(new SmartToyCapabilityDefinition
+                { Id = "vibrate", Title = "Vibration" });
+            var card = new CardDefinition { Id = "card", Title = "Card",
+                Sequence = new ActionSequenceDefinition { Id = "sequence" } };
+            card.Sequence.Instances.Add(new DialogInstanceDefinition { Id = "dialog", Text = "Hello" });
+            card.Sequence.Instances.Add(new DelayInstanceDefinition { Id = "delay", DurationSeconds = 2f });
+            card.Sequence.Instances.Add(new ToyActivityInstanceDefinition
+                { Id = "toy", CapabilityId = "vibrate", Intensity = .75f, DurationSeconds = 3f });
+
+            var sequence = CardEditorSequenceHost.Build(card, content);
+            var dialog = sequence.Rows.Single(row => row.TypeKey == ActionTypeKeys.Dialog);
+            var delay = sequence.Rows.Single(row => row.TypeKey == ActionTypeKeys.Delay);
+            var toy = sequence.Rows.Single(row => row.TypeKey == ActionTypeKeys.ToyActivity);
+
+            Assert.That(dialog.HasTextEditor, Is.True);
+            Assert.That(dialog.TextValue, Is.EqualTo("Hello"));
+            Assert.That(delay.NumberText, Is.EqualTo("2"));
+            Assert.That(toy.HasStrictChoiceEditor, Is.True);
+            Assert.That(toy.ChoiceOptions.Single().Id, Is.EqualTo("vibrate"));
+            Assert.That(toy.NumberText, Is.EqualTo("0.75"));
+            Assert.That(toy.SecondaryNumberText, Is.EqualTo("3"));
+        }
+
+        [Test]
         public void PromptChoiceNestedSequenceTemplateRenders()
         {
             EnsureApplication();

@@ -869,6 +869,39 @@ namespace TruthCardGame.Content.Sqlite
                         };
                     }
 
+                    case ActionType.DialogV6:
+                    {
+                        string text = null;
+                        QueryOne(_connection, "SELECT dialog_text FROM action_instance_dialog WHERE action_instance_id = @i;",
+                            reader => text = reader.GetString(0), Param("i", instanceId));
+                        RequireSubtypeRow(text != null, sequenceId, instanceId, type);
+                        return new DialogInstanceDefinition { Id = instanceId, IsBlocking = blocking, Text = text };
+                    }
+
+                    case ActionType.DelayV6:
+                    {
+                        double? duration = null;
+                        QueryOne(_connection, "SELECT duration_seconds FROM action_instance_delay WHERE action_instance_id = @i;",
+                            reader => duration = reader.GetDouble(0), Param("i", instanceId));
+                        RequireSubtypeRow(duration.HasValue, sequenceId, instanceId, type);
+                        return new DelayInstanceDefinition { Id = instanceId, IsBlocking = blocking,
+                            DurationSeconds = Convert.ToSingle(duration.Value) };
+                    }
+
+                    case ActionType.ToyActivityV6:
+                    {
+                        string capability = null;
+                        double intensity = 0, duration = 0;
+                        QueryOne(_connection,
+                            "SELECT capability_id, intensity, duration_seconds FROM action_instance_toy_activity WHERE action_instance_id = @i;",
+                            reader => { capability = reader.GetString(0); intensity = reader.GetDouble(1); duration = reader.GetDouble(2); },
+                            Param("i", instanceId));
+                        RequireSubtypeRow(capability != null, sequenceId, instanceId, type);
+                        return new ToyActivityInstanceDefinition { Id = instanceId, IsBlocking = blocking,
+                            CapabilityId = capability, Intensity = Convert.ToSingle(intensity),
+                            DurationSeconds = Convert.ToSingle(duration) };
+                    }
+
                     case ActionType.PromptChoiceV2:
                     {
                         string prompt = null;

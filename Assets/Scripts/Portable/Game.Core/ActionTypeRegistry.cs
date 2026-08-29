@@ -82,6 +82,9 @@ namespace TruthCardGame.Core
             if (instance is IncrementProgressInstanceDefinition) return ActionTypeKeys.IncrementProgress;
             if (instance is ModifyTemperatureInstanceDefinition) return ActionTypeKeys.ModifyTemperature;
             if (instance is CutsceneInstanceDefinition) return ActionTypeKeys.Cutscene;
+            if (instance is DialogInstanceDefinition) return ActionTypeKeys.Dialog;
+            if (instance is DelayInstanceDefinition) return ActionTypeKeys.Delay;
+            if (instance is ToyActivityInstanceDefinition) return ActionTypeKeys.ToyActivity;
             if (instance is PromptChoiceInstanceDefinition) return ActionTypeKeys.PromptChoice;
             if (instance is WaitForContinueInstanceDefinition) return ActionTypeKeys.WaitForContinue;
             if (instance is PhaseGotoInstanceDefinition) return ActionTypeKeys.PhaseGoto;
@@ -169,6 +172,46 @@ namespace TruthCardGame.Core
                 DefaultBlocking = true,
                 EditorDiscriminator = "Cutscene",
                 DefaultInstance = () => new CutsceneInstanceDefinition { Id = "", ResourceId = "", IsBlocking = true },
+            });
+
+            Add(new ActionTypeInfo
+            {
+                TypeKey = ActionTypeKeys.Dialog,
+                DisplayLabel = "Dialog",
+                AuthoringCategory = "Activity/Host",
+                SearchKeywords = "dialog dialogue text speech",
+                LegalScopes = ActionOwnerScope.All,
+                BlockingConfigurable = true,
+                DefaultBlocking = true,
+                EditorDiscriminator = "Dialog",
+                DefaultInstance = () => new DialogInstanceDefinition { Id = "", Text = "", IsBlocking = true },
+            });
+
+            Add(new ActionTypeInfo
+            {
+                TypeKey = ActionTypeKeys.Delay,
+                DisplayLabel = "Delay",
+                AuthoringCategory = "Pacing/Input",
+                SearchKeywords = "delay wait timer duration",
+                LegalScopes = ActionOwnerScope.All,
+                BlockingConfigurable = true,
+                DefaultBlocking = true,
+                EditorDiscriminator = "Delay",
+                DefaultInstance = () => new DelayInstanceDefinition { Id = "", DurationSeconds = 1f, IsBlocking = true },
+            });
+
+            Add(new ActionTypeInfo
+            {
+                TypeKey = ActionTypeKeys.ToyActivity,
+                DisplayLabel = "Toy Activity",
+                AuthoringCategory = "Activity/Host",
+                SearchKeywords = "toy smart capability intensity duration",
+                LegalScopes = ActionOwnerScope.All,
+                BlockingConfigurable = true,
+                DefaultBlocking = true,
+                EditorDiscriminator = "ToyActivity",
+                DefaultInstance = () => new ToyActivityInstanceDefinition
+                    { Id = "", CapabilityId = "", Intensity = 1f, DurationSeconds = 1f, IsBlocking = true },
             });
 
             Add(new ActionTypeInfo

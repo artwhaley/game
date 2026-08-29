@@ -41,7 +41,9 @@ namespace TruthCardGame.Content.Sqlite
                 LoadEmbeddedScript("SQLITE-SCHEMA-V4-PHASE-GOTO-NULL.sql")),
             new CoreMigration(5, "milestone-b-cards-profile-selection",
                 LoadEmbeddedScript("SQLITE-SCHEMA-V5-MILESTONE-B.sql"),
-                Migration5Transform.Transform)
+                Migration5Transform.Transform),
+            new CoreMigration(6, "dialog-delay-toy-actions",
+                LoadEmbeddedScript("SQLITE-SCHEMA-V6-ACTIONS.sql"))
         };
 
         private static string LoadEmbeddedScript(string resourceName)

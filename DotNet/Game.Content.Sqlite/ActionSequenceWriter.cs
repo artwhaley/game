@@ -242,6 +242,22 @@ namespace TruthCardGame.Content.Sqlite
                         "UPDATE action_instance_cutscene SET resource_id = @resource WHERE action_instance_id = @i;",
                         ("resource", cutscene.ResourceId ?? ""), ("i", instance.Id));
                     break;
+                case DialogInstanceDefinition dialog:
+                    Sql.Execute(connection, transaction,
+                        "UPDATE action_instance_dialog SET dialog_text = @text WHERE action_instance_id = @i;",
+                        ("text", dialog.Text ?? ""), ("i", instance.Id));
+                    break;
+                case DelayInstanceDefinition delay:
+                    Sql.Execute(connection, transaction,
+                        "UPDATE action_instance_delay SET duration_seconds = @duration WHERE action_instance_id = @i;",
+                        ("duration", (double)Math.Max(0f, delay.DurationSeconds)), ("i", instance.Id));
+                    break;
+                case ToyActivityInstanceDefinition toy:
+                    Sql.Execute(connection, transaction,
+                        "UPDATE action_instance_toy_activity SET capability_id = @capability, intensity = @intensity, duration_seconds = @duration WHERE action_instance_id = @i;",
+                        ("capability", toy.CapabilityId ?? ""), ("intensity", (double)toy.Intensity),
+                        ("duration", (double)Math.Max(0f, toy.DurationSeconds)), ("i", instance.Id));
+                    break;
                 case PromptChoiceInstanceDefinition choice:
                     Sql.Execute(connection, transaction,
                         "UPDATE action_instance_prompt_choice SET prompt = @prompt WHERE action_instance_id = @i;",
@@ -390,6 +406,25 @@ namespace TruthCardGame.Content.Sqlite
                         ("i", instance.Id), ("resource", cutscene.ResourceId));
                     break;
 
+                case DialogInstanceDefinition dialog:
+                    Sql.Execute(connection, transaction,
+                        "INSERT INTO action_instance_dialog (action_instance_id, dialog_text) VALUES (@i, @text);",
+                        ("i", instance.Id), ("text", dialog.Text ?? ""));
+                    break;
+
+                case DelayInstanceDefinition delay:
+                    Sql.Execute(connection, transaction,
+                        "INSERT INTO action_instance_delay (action_instance_id, duration_seconds) VALUES (@i, @duration);",
+                        ("i", instance.Id), ("duration", (double)Math.Max(0f, delay.DurationSeconds)));
+                    break;
+
+                case ToyActivityInstanceDefinition toy:
+                    Sql.Execute(connection, transaction,
+                        "INSERT INTO action_instance_toy_activity (action_instance_id, capability_id, intensity, duration_seconds) VALUES (@i, @capability, @intensity, @duration);",
+                        ("i", instance.Id), ("capability", toy.CapabilityId ?? ""),
+                        ("intensity", (double)toy.Intensity), ("duration", (double)Math.Max(0f, toy.DurationSeconds)));
+                    break;
+
                 case PromptChoiceInstanceDefinition choice:
                     Sql.Execute(connection, transaction,
                         "INSERT INTO action_instance_prompt_choice (action_instance_id, prompt) VALUES (@i, @prompt);",
@@ -473,6 +508,9 @@ namespace TruthCardGame.Content.Sqlite
             if (instance is IncrementProgressInstanceDefinition) return ActionType.IncrementProgressV2;
             if (instance is ModifyTemperatureInstanceDefinition) return ActionType.ModifyTemperatureV2;
             if (instance is CutsceneInstanceDefinition) return ActionType.Cutscene;
+            if (instance is DialogInstanceDefinition) return ActionType.DialogV6;
+            if (instance is DelayInstanceDefinition) return ActionType.DelayV6;
+            if (instance is ToyActivityInstanceDefinition) return ActionType.ToyActivityV6;
             if (instance is PromptChoiceInstanceDefinition) return ActionType.PromptChoiceV2;
             if (instance is WaitForContinueInstanceDefinition) return ActionType.WaitForContinueV2;
             if (instance is PhaseGotoInstanceDefinition) return ActionType.PhaseGotoV2;

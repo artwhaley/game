@@ -132,6 +132,20 @@
                                                     </Style>
                                                 </TextBox.Style>
                                             </TextBox>
+                                            <TextBox Padding="2,0" Width="48" Margin="2,0,2,0"
+                                                     Text="{Binding SecondaryNumberText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="Secondary numeric parameter">
+                                                <TextBox.Style>
+                                                    <Style TargetType="TextBox" BasedOn="{StaticResource DarkTextBox}">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasSecondaryNumberEditor}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBox.Style>
+                                            </TextBox>
                                             <Button Content="↑" Click="OnMoveActionUp" Padding="2,0" Style="{StaticResource DarkButton}" ToolTip="Move earlier"/>
                                             <Button Content="↓" Click="OnMoveActionDown" Padding="2,0" Style="{StaticResource DarkButton}" ToolTip="Move later"/>
                                             <Button Content="⧉" Click="OnDuplicateActionInstance" Padding="2,0" Style="{StaticResource DarkButton}" ToolTip="Duplicate this Action Instance"/>

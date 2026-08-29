@@ -27,6 +27,16 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case CutsceneInstanceDefinition cutscene:
                     clone = new CutsceneInstanceDefinition { ResourceId = cutscene.ResourceId };
                     break;
+                case DialogInstanceDefinition dialog:
+                    clone = new DialogInstanceDefinition { Text = dialog.Text };
+                    break;
+                case DelayInstanceDefinition delay:
+                    clone = new DelayInstanceDefinition { DurationSeconds = delay.DurationSeconds };
+                    break;
+                case ToyActivityInstanceDefinition toy:
+                    clone = new ToyActivityInstanceDefinition
+                        { CapabilityId = toy.CapabilityId, Intensity = toy.Intensity, DurationSeconds = toy.DurationSeconds };
+                    break;
                 case PromptChoiceInstanceDefinition choice:
                 {
                     var clonedChoice = new PromptChoiceInstanceDefinition { Prompt = choice.Prompt };

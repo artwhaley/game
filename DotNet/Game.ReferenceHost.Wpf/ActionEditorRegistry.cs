@@ -41,10 +41,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public string TypeKey { get; set; }
         public bool HasTextEditor { get; set; }
         public bool HasNumberEditor { get; set; }
+        public bool HasSecondaryNumberEditor { get; set; }
         public bool HasChoiceEditor { get; set; }
         public bool IsChoiceEditable { get; set; }
         public string TextLabel { get; set; }
         public string NumberLabel { get; set; }
+        public string SecondaryNumberLabel { get; set; }
         public string ChoiceLabel { get; set; }
         public bool IsReadOnlyDisplay { get; set; }
     }
@@ -97,6 +99,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     TypeKey = ActionTypeKeys.Cutscene, HasChoiceEditor = true,
                     ChoiceLabel = "Resource"
                 },
+                [ActionTypeKeys.Dialog] = new ActionEditorDescriptor
+                {
+                    TypeKey = ActionTypeKeys.Dialog, HasTextEditor = true, TextLabel = "Dialog"
+                },
+                [ActionTypeKeys.Delay] = new ActionEditorDescriptor
+                {
+                    TypeKey = ActionTypeKeys.Delay, HasNumberEditor = true, NumberLabel = "Duration"
+                },
+                [ActionTypeKeys.ToyActivity] = new ActionEditorDescriptor
+                {
+                    TypeKey = ActionTypeKeys.ToyActivity, HasChoiceEditor = true, ChoiceLabel = "Capability",
+                    HasNumberEditor = true, NumberLabel = "Intensity",
+                    HasSecondaryNumberEditor = true, SecondaryNumberLabel = "Duration"
+                },
                 [ActionTypeKeys.PromptChoice] = new ActionEditorDescriptor
                 {
                     TypeKey = ActionTypeKeys.PromptChoice, HasTextEditor = true,
@@ -145,7 +161,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             IEnumerable<ActionParameterOption> resourceOptions,
             IEnumerable<ExitOption> exitOptions,
             ObservableCollection<ActionRowData> rows = null,
-            IEnumerable<ActionParameterOption> statOptions = null)
+            IEnumerable<ActionParameterOption> statOptions = null,
+            IEnumerable<ActionParameterOption> toyCapabilityOptions = null)
         {
             OwnerNode = ownerNode;
             SequenceId = sequenceId ?? "";
@@ -153,6 +170,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             TemperatureOptions = new List<ActionParameterOption>(temperatureOptions ?? Enumerable.Empty<ActionParameterOption>());
             StatOptions = new List<ActionParameterOption>(statOptions ?? Enumerable.Empty<ActionParameterOption>());
             ResourceOptions = new List<ActionParameterOption>(resourceOptions ?? Enumerable.Empty<ActionParameterOption>());
+            ToyCapabilityOptions = new List<ActionParameterOption>(toyCapabilityOptions ?? Enumerable.Empty<ActionParameterOption>());
             ExitOptions = new List<ExitOption>(exitOptions ?? Enumerable.Empty<ExitOption>());
             Rows = rows ?? new ObservableCollection<ActionRowData>();
             foreach (var instance in instances ?? Enumerable.Empty<ActionInstanceDefinition>())
@@ -174,6 +192,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public List<ActionParameterOption> TemperatureOptions { get; }
         public List<ActionParameterOption> StatOptions { get; }
         public List<ActionParameterOption> ResourceOptions { get; }
+        public List<ActionParameterOption> ToyCapabilityOptions { get; }
         public List<ExitOption> ExitOptions { get; }
 
         public ICollectionView ActionTypePickerView { get; private set; }
@@ -214,6 +233,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 temperature.TemperatureId = TemperatureOptions[0].Id;
             if (instance is CutsceneInstanceDefinition cutscene && ResourceOptions.Count > 0)
                 cutscene.ResourceId = ResourceOptions[0].Id;
+            if (instance is ToyActivityInstanceDefinition toy && ToyCapabilityOptions.Count > 0)
+                toy.CapabilityId = ToyCapabilityOptions[0].Id;
             if (instance is PromptChoiceInstanceDefinition choice)
             {
                 for (var i = 0; i < 2; i++)

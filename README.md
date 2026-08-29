@@ -53,7 +53,12 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   dropdown of authored stat keys; Modify Temperature uses the configured
   Temperature definitions dropdown. Dual-field action rows initialize their
   numeric value before synchronizing the selected key, so rebuilding the Card
-  editor after Save cannot reset authored amounts to zero.
+  editor after Save cannot reset authored amounts to zero. Schema v6 adds
+  Dialog (text + blocking), Delay (duration + blocking), and Toy Activity
+  (configured Smart Toy Capability + intensity + duration + blocking, default
+  blocking). Dialog currently uses the same temporary host presentation as a
+  Cutscene. Card duplication recursively assigns fresh IDs to the owned action
+  sequence, every PromptChoice option sequence, and every nested action.
   See [`Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md`](Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md).
 - Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core` +
   `Game.Profile`, .NET Standard 2.1) that both Unity and the WPF hosts run —

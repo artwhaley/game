@@ -288,14 +288,28 @@ namespace TruthCardGame.Content.Sqlite
         private static ActionSequenceDefinition CloneSequence(DbConnection connection, string sourceSequenceId, string newSequenceId, string newCardId)
         {
             var source = GameContentSnapshotLoader.LoadSequence(connection, sourceSequenceId);
-            var clone = new ActionSequenceDefinition { Id = newSequenceId };
-            for (var i = 0; i < source.Instances.Count; i++)
+            ReidentifySequence(source, newSequenceId, "inst-" + newCardId);
+            return source;
+        }
+
+        private static void ReidentifySequence(ActionSequenceDefinition sequence, string sequenceId, string idPrefix)
+        {
+            sequence.Id = sequenceId;
+            for (var i = 0; i < sequence.Instances.Count; i++)
             {
-                var instance = source.Instances[i];
-                instance.Id = $"inst-{newCardId}-{i + 1}";
-                clone.Instances.Add(instance);
+                var instance = sequence.Instances[i];
+                instance.Id = $"{idPrefix}-{i + 1}";
+                if (instance is PromptChoiceInstanceDefinition choice)
+                {
+                    for (var optionIndex = 0; optionIndex < choice.Options.Count; optionIndex++)
+                    {
+                        var option = choice.Options[optionIndex];
+                        var optionPrefix = $"{instance.Id}-option-{optionIndex + 1}";
+                        option.Id = optionPrefix;
+                        ReidentifySequence(option.Sequence, optionPrefix + "-seq", optionPrefix + "-action");
+                    }
+                }
             }
-            return clone;
         }
     }
 }

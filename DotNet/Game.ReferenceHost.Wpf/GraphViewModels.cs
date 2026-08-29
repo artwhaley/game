@@ -191,6 +191,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
     {
         private string _textValue;
         private string _numberText;
+        private string _secondaryNumberText;
         private bool _isExpanded = true;
 
         public GraphNodeViewModel Owner { get; set; }
@@ -228,10 +229,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
         }
         public string PersistedTextValue { get; set; }
         public string PersistedNumberText { get; set; }
+        public string PersistedSecondaryNumberText { get; set; }
 
         public ActionEditorDescriptor Editor => ActionEditorRegistry.For(TypeKey);
         public bool HasTextEditor => Editor.HasTextEditor;
         public bool HasNumberEditor => Editor.HasNumberEditor;
+        public bool HasSecondaryNumberEditor => Editor.HasSecondaryNumberEditor;
         public bool HasChoiceEditor => Editor.HasChoiceEditor;
         public bool HasStrictChoiceEditor => Editor.HasChoiceEditor && !Editor.IsChoiceEditable;
         public bool HasEditableChoiceEditor => Editor.HasChoiceEditor && Editor.IsChoiceEditable;
@@ -244,6 +247,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 if (Editor.HasNumberEditor && !string.IsNullOrWhiteSpace(NumberText) &&
                     !float.TryParse(NumberText, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
                     return "Enter a number.";
+                if (Editor.HasSecondaryNumberEditor && !string.IsNullOrWhiteSpace(SecondaryNumberText) &&
+                    !float.TryParse(SecondaryNumberText, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+                    return "Enter a number.";
                 if (TypeKey == ActionTypeKeys.PhaseGoto && string.IsNullOrWhiteSpace(TextValue))
                     return "Assign a PhaseExit before playback.";
                 if (TypeKey == ActionTypeKeys.StatIncrease && string.IsNullOrWhiteSpace(TextValue))
@@ -253,6 +259,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 if (TypeKey == ActionTypeKeys.Cutscene &&
                     (string.IsNullOrWhiteSpace(TextValue) || !ParameterOptions.Any(option => option.Id == TextValue)))
                     return "Select an existing Resource.";
+                if (TypeKey == ActionTypeKeys.ToyActivity &&
+                    (string.IsNullOrWhiteSpace(TextValue) || !ParameterOptions.Any(option => option.Id == TextValue)))
+                    return "Select an existing Toy Capability.";
                 return null;
             }
         }
@@ -289,6 +298,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
         }
 
+        public string SecondaryNumberText
+        {
+            get => _secondaryNumberText;
+            set
+            {
+                if (_secondaryNumberText == value) return;
+                _secondaryNumberText = value;
+                SyncDefinition();
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SecondaryNumberText)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ValidationMessage)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDanger)));
+            }
+        }
+
         public event PropertyChangedEventHandler PropertyChanged;
 
         private void SyncDefinition()
@@ -313,6 +336,17 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     break;
                 case CutsceneInstanceDefinition cutscene:
                     cutscene.ResourceId = TextValue ?? "";
+                    break;
+                case DialogInstanceDefinition dialog:
+                    dialog.Text = TextValue ?? "";
+                    break;
+                case DelayInstanceDefinition delay:
+                    delay.DurationSeconds = Math.Max(0f, ParseNumber(NumberText));
+                    break;
+                case ToyActivityInstanceDefinition toy:
+                    toy.CapabilityId = TextValue ?? "";
+                    toy.Intensity = ParseNumber(NumberText);
+                    toy.DurationSeconds = Math.Max(0f, ParseNumber(SecondaryNumberText));
                     break;
                 case PromptChoiceInstanceDefinition choice:
                     choice.Prompt = TextValue ?? "";
@@ -580,6 +614,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public List<ActionParameterOption> TemperatureOptions { get; private set; } = new List<ActionParameterOption>();
         public List<ActionParameterOption> StatOptions { get; private set; } = new List<ActionParameterOption>();
         public List<ActionParameterOption> ResourceOptions { get; private set; } = new List<ActionParameterOption>();
+        public List<ActionParameterOption> ToyCapabilityOptions { get; private set; } = new List<ActionParameterOption>();
 
         public PendingConnectionViewModel PendingConnection { get; }
         public ICommand DisconnectConnectorCommand { get; }
@@ -675,6 +710,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
             ResourceOptions = (content?.Resources ?? new List<ResourceDefinition>())
                 .Where(item => string.Equals(item.Kind, "cutscene", StringComparison.OrdinalIgnoreCase))
                 .Select(item => new ActionParameterOption { Id = item.Id, Name = string.IsNullOrEmpty(item.Name) ? item.Id : item.Name })
+                .ToList();
+            ToyCapabilityOptions = (content?.SmartToyCapabilityDefinitions ?? new List<SmartToyCapabilityDefinition>())
+                .Select(item => new ActionParameterOption { Id = item.Id, Name = string.IsNullOrEmpty(item.Title) ? item.Id : item.Title })
+                .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
 
@@ -1007,6 +1046,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         StatOptions,
                         TemperatureOptions,
                         ResourceOptions,
+                        ToyCapabilityOptions,
                         _ => new List<ExitOption>());
                 }
                 var input = new ConnectorViewModel { Id = node.Id + "-input", Title = "" };
@@ -1229,7 +1269,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         ActionOwnerScope.PhaseActionSequence,
                         actionNode.Sequence?.Instances,
                         TemperatureOptions, ResourceOptions, ExitOptionsFor(phase), vm.ActionRows,
-                        StatOptions);
+                        StatOptions, ToyCapabilityOptions);
                 }
                 if (node is PhaseDecisionNodeDefinition phaseDecision)
                 {
@@ -1241,6 +1281,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         StatOptions,
                         TemperatureOptions,
                         ResourceOptions,
+                        ToyCapabilityOptions,
                         _ => ExitOptionsFor(phase));
                 }
                 var input = new ConnectorViewModel { Id = node.Id + "-input", Title = "" };
@@ -1297,6 +1338,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     : info.TypeKey == ActionTypeKeys.Cutscene ? sequence.ResourceOptions : new List<ActionParameterOption>(),
                 ExitOptions = sequence.ExitOptions,
             };
+            if (info.TypeKey == ActionTypeKeys.ToyActivity)
+                row.ParameterOptions = sequence.ToyCapabilityOptions;
             switch (instance)
             {
                 case DebugInstanceDefinition debug:
@@ -1317,6 +1360,19 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case CutsceneInstanceDefinition cutscene:
                     row.TextValue = cutscene.ResourceId;
                     break;
+                case DialogInstanceDefinition dialog:
+                    row.TextValue = dialog.Text;
+                    break;
+                case DelayInstanceDefinition delay:
+                    row.NumberText = delay.DurationSeconds.ToString("0.###", CultureInfo.InvariantCulture);
+                    break;
+                case ToyActivityInstanceDefinition toy:
+                    var toyIntensity = toy.Intensity.ToString("0.###", CultureInfo.InvariantCulture);
+                    var toyDuration = toy.DurationSeconds.ToString("0.###", CultureInfo.InvariantCulture);
+                    row.SecondaryNumberText = toyDuration;
+                    row.NumberText = toyIntensity;
+                    row.TextValue = toy.CapabilityId;
+                    break;
                 case PromptChoiceInstanceDefinition choice:
                     row.TextValue = choice.Prompt;
                     break;
@@ -1329,6 +1385,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
             row.PersistedTextValue = row.TextValue;
             row.PersistedNumberText = row.NumberText;
+            row.PersistedSecondaryNumberText = row.SecondaryNumberText;
             if (instance is PromptChoiceInstanceDefinition promptChoice)
             {
                 foreach (var option in promptChoice.Options)
@@ -1343,7 +1400,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         sequence.ResourceOptions,
                         sequence.ExitOptions,
                         new ObservableCollection<ActionRowData>(),
-                        sequence.StatOptions)
+                        sequence.StatOptions,
+                        sequence.ToyCapabilityOptions)
                     {
                         OptionId = option.Id,
                     };
@@ -1415,6 +1473,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             IEnumerable<ActionParameterOption> statOptions,
             IEnumerable<ActionParameterOption> temperatureOptions,
             IEnumerable<ActionParameterOption> resourceOptions,
+            IEnumerable<ActionParameterOption> toyCapabilityOptions,
             Func<string, List<ExitOption>> exitOptionsFor)
         {
             vm.DecisionScope = scope;
@@ -1437,7 +1496,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     resourceOptions,
                     exitOptionsFor(optionIdOf(option)),
                     row.ActionRows,
-                    statOptions)
+                    statOptions,
+                    toyCapabilityOptions)
                 {
                     OptionId = row.OptionId,
                 };

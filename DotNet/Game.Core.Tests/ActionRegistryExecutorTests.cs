@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -65,6 +67,9 @@ namespace TruthCardGame.Core.Tests
                 new IncrementProgressInstanceDefinition(),
                 new ModifyTemperatureInstanceDefinition(),
                 new CutsceneInstanceDefinition(),
+                new DialogInstanceDefinition(),
+                new DelayInstanceDefinition(),
+                new ToyActivityInstanceDefinition(),
                 new PromptChoiceInstanceDefinition(),
                 new WaitForContinueInstanceDefinition(),
                 new PhaseGotoInstanceDefinition(),
@@ -170,6 +175,26 @@ namespace TruthCardGame.Core.Tests
         }
 
         // ---------- general execution ----------
+
+        [Test]
+        public async Task DialogDelayAndToyActivity_UseConfiguredHostSemantics()
+        {
+            var delay = new FakeDelayService();
+            var cutscene = new FakeCutsceneService();
+            var toy = new FakeToyActivityService();
+            _services = new CoreServices(delay, _log, cutscene: cutscene, toyActivity: toy);
+            var context = Context(ActionOwnerScope.CardSequence);
+
+            await Run(_executor, context,
+                new DialogInstanceDefinition { Id = "dialog", Text = "Hello", IsBlocking = true },
+                new DelayInstanceDefinition { Id = "delay", DurationSeconds = 2f, IsBlocking = true },
+                new ToyActivityInstanceDefinition
+                    { Id = "toy", CapabilityId = "vibrate", Intensity = .75f, DurationSeconds = 3f, IsBlocking = true });
+
+            CollectionAssert.AreEqual(new[] { "Hello" }, cutscene.Started);
+            Assert.That(delay.LastDelayCount, Is.EqualTo(1));
+            Assert.That(toy.Started.Single(), Is.EqualTo(("vibrate", .75f, TimeSpan.FromSeconds(3))));
+        }
 
         [Test]
         public async Task StatIncrease_And_Debug_RunAgainstPlayerAndLog()

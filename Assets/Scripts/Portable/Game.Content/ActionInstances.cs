@@ -58,6 +58,26 @@ namespace TruthCardGame.Content
         public string ResourceId { get; set; } = "";
     }
 
+    /// <summary>Displays authored dialog through the temporary cutscene-style host fixture.</summary>
+    public sealed class DialogInstanceDefinition : ActionInstanceDefinition
+    {
+        public string Text { get; set; } = "";
+    }
+
+    /// <summary>Waits for an authored number of seconds through the host clock.</summary>
+    public sealed class DelayInstanceDefinition : ActionInstanceDefinition
+    {
+        public float DurationSeconds { get; set; }
+    }
+
+    /// <summary>Runs one configured smart-toy capability at an authored intensity and duration.</summary>
+    public sealed class ToyActivityInstanceDefinition : ActionInstanceDefinition
+    {
+        public string CapabilityId { get; set; } = "";
+        public float Intensity { get; set; }
+        public float DurationSeconds { get; set; }
+    }
+
     /// <summary>Prompts the user with labeled options; the selected option executes its own full nested Action sequence before normal completion.</summary>
     public sealed class PromptChoiceInstanceDefinition : ActionInstanceDefinition
     {

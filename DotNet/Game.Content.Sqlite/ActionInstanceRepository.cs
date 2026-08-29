@@ -86,7 +86,7 @@ namespace TruthCardGame.Content.Sqlite
         }
 
         public static void Update(DbConnection connection, string instanceId, string typeKey,
-            string textValue, float numberValue)
+            string textValue, float numberValue, float secondaryNumberValue = 0f)
         {
             switch (typeKey)
             {
@@ -114,6 +114,22 @@ namespace TruthCardGame.Content.Sqlite
                     Sql.Execute(connection, null,
                         "UPDATE action_instance_cutscene SET resource_id = @text WHERE action_instance_id = @id;",
                         ("text", textValue ?? ""), ("id", instanceId));
+                    break;
+                case ActionTypeKeys.Dialog:
+                    Sql.Execute(connection, null,
+                        "UPDATE action_instance_dialog SET dialog_text = @text WHERE action_instance_id = @id;",
+                        ("text", textValue ?? ""), ("id", instanceId));
+                    break;
+                case ActionTypeKeys.Delay:
+                    Sql.Execute(connection, null,
+                        "UPDATE action_instance_delay SET duration_seconds = @number WHERE action_instance_id = @id;",
+                        ("number", (double)Math.Max(0f, numberValue)), ("id", instanceId));
+                    break;
+                case ActionTypeKeys.ToyActivity:
+                    Sql.Execute(connection, null,
+                        "UPDATE action_instance_toy_activity SET capability_id = @text, intensity = @number, duration_seconds = @secondary WHERE action_instance_id = @id;",
+                        ("text", textValue ?? ""), ("number", (double)numberValue),
+                        ("secondary", (double)Math.Max(0f, secondaryNumberValue)), ("id", instanceId));
                     break;
                 case ActionTypeKeys.PromptChoice:
                     Sql.Execute(connection, null,

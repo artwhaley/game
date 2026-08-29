@@ -15,13 +15,16 @@ namespace TruthCardGame.Core
         public IGameLog Log { get; }
         public IPromptService Prompts { get; }
         public ICutsceneService Cutscene { get; }
+        public IToyActivityService ToyActivity { get; }
 
-        public CoreServices(IGameDelay delay, IGameLog log = null, IPromptService prompts = null, ICutsceneService cutscene = null)
+        public CoreServices(IGameDelay delay, IGameLog log = null, IPromptService prompts = null,
+            ICutsceneService cutscene = null, IToyActivityService toyActivity = null)
         {
             Delay = delay ?? throw new ArgumentNullException(nameof(delay));
             Log = log ?? new NullGameLog();
             Prompts = prompts;
             Cutscene = cutscene;
+            ToyActivity = toyActivity;
         }
     }
 }

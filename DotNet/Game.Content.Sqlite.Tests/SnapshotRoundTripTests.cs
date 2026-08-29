@@ -50,6 +50,67 @@ namespace TruthCardGame.Content.Sqlite.Tests
         // Canonical-database coverage lives in CanonicalDatabaseTests.
 
         [Test]
+        public void NewActionTypes_RoundTripEveryConfiguredField()
+        {
+            using (var connection = Open())
+            {
+                CoreMigrator.EnsureSchema(connection);
+                CatalogRepositories.CreateSmartToyCapability(connection,
+                    new SmartToyCapabilityDefinition { Id = "vibrate", Title = "Vibration" });
+                var card = new CardDefinition { Id = "card-actions", Title = "Actions",
+                    Sequence = new ActionSequenceDefinition { Id = "seq-actions" } };
+                card.Sequence.Instances.Add(new DialogInstanceDefinition
+                    { Id = "dialog", Text = "Hello", IsBlocking = false });
+                card.Sequence.Instances.Add(new DelayInstanceDefinition
+                    { Id = "delay", DurationSeconds = 2.5f, IsBlocking = true });
+                card.Sequence.Instances.Add(new ToyActivityInstanceDefinition
+                    { Id = "toy", CapabilityId = "vibrate", Intensity = .7f, DurationSeconds = 4f, IsBlocking = true });
+                CardRepository.Create(connection, card);
+
+                var loaded = GameContentSnapshotLoader.LoadSequence(connection, card.Sequence.Id);
+                Assert.That(((DialogInstanceDefinition)loaded.Instances[0]).Text, Is.EqualTo("Hello"));
+                Assert.That(loaded.Instances[0].IsBlocking, Is.False);
+                Assert.That(((DelayInstanceDefinition)loaded.Instances[1]).DurationSeconds, Is.EqualTo(2.5f));
+                var toy = (ToyActivityInstanceDefinition)loaded.Instances[2];
+                Assert.That(toy.CapabilityId, Is.EqualTo("vibrate"));
+                Assert.That(toy.Intensity, Is.EqualTo(.7f));
+                Assert.That(toy.DurationSeconds, Is.EqualTo(4f));
+                Assert.That(toy.IsBlocking, Is.True);
+            }
+        }
+
+        [Test]
+        public void DuplicateCard_DeepClonesPromptChoiceIdsAndSequences()
+        {
+            using (var connection = Open())
+            {
+                CoreMigrator.EnsureSchema(connection);
+                var nested = new ActionSequenceDefinition { Id = "source-option-seq" };
+                nested.Instances.Add(new DialogInstanceDefinition { Id = "source-dialog", Text = "Original" });
+                var prompt = new PromptChoiceInstanceDefinition { Id = "source-prompt", Prompt = "Choose" };
+                prompt.Options.Add(new PromptChoiceOptionDefinition
+                    { Id = "source-option", Label = "One", Sequence = nested });
+                var source = new CardDefinition { Id = "source", Title = "Source",
+                    Sequence = new ActionSequenceDefinition { Id = "source-seq" } };
+                source.Sequence.Instances.Add(prompt);
+                CardRepository.Create(connection, source);
+
+                var clone = CardRepository.Duplicate(connection, "source", "clone", "Clone");
+                var sourceReloaded = GameContentSnapshotLoader.LoadSequence(connection, "source-seq");
+                var sourceChoice = (PromptChoiceInstanceDefinition)sourceReloaded.Instances.Single();
+                var cloneChoice = (PromptChoiceInstanceDefinition)clone.Sequence.Instances.Single();
+
+                Assert.That(clone.Sequence.Id, Is.Not.EqualTo(sourceReloaded.Id));
+                Assert.That(cloneChoice.Id, Is.Not.EqualTo(sourceChoice.Id));
+                Assert.That(cloneChoice.Options.Single().Id, Is.Not.EqualTo(sourceChoice.Options.Single().Id));
+                Assert.That(cloneChoice.Options.Single().Sequence.Id,
+                    Is.Not.EqualTo(sourceChoice.Options.Single().Sequence.Id));
+                Assert.That(cloneChoice.Options.Single().Sequence.Instances.Single().Id,
+                    Is.Not.EqualTo(sourceChoice.Options.Single().Sequence.Instances.Single().Id));
+            }
+        }
+
+        [Test]
         public void ChoiceOptionSequences_NestCorrectly()
         {
             using (var connection = Open())

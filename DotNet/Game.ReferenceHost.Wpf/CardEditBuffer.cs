@@ -122,6 +122,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     var otherCutscene = b as CutsceneInstanceDefinition;
                     return otherCutscene != null &&
                         string.Equals(cutscene.ResourceId, otherCutscene.ResourceId, StringComparison.Ordinal);
+                case DialogInstanceDefinition dialog:
+                    return b is DialogInstanceDefinition otherDialog &&
+                        string.Equals(dialog.Text, otherDialog.Text, StringComparison.Ordinal);
+                case DelayInstanceDefinition delay:
+                    return b is DelayInstanceDefinition otherDelay && delay.DurationSeconds == otherDelay.DurationSeconds;
+                case ToyActivityInstanceDefinition toy:
+                    return b is ToyActivityInstanceDefinition otherToy &&
+                        string.Equals(toy.CapabilityId, otherToy.CapabilityId, StringComparison.Ordinal) &&
+                        toy.Intensity == otherToy.Intensity && toy.DurationSeconds == otherToy.DurationSeconds;
                 case PromptChoiceInstanceDefinition choice:
                     var otherChoice = b as PromptChoiceInstanceDefinition;
                     if (otherChoice == null ||
@@ -301,6 +310,16 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     break;
                 case CutsceneInstanceDefinition cutscene:
                     cutscene.ResourceId = textValue ?? "";
+                    break;
+                case DialogInstanceDefinition dialog:
+                    dialog.Text = textValue ?? "";
+                    break;
+                case DelayInstanceDefinition delay:
+                    if (numberValue.HasValue) delay.DurationSeconds = Math.Max(0f, numberValue.Value);
+                    break;
+                case ToyActivityInstanceDefinition toy:
+                    toy.CapabilityId = textValue ?? "";
+                    if (numberValue.HasValue) toy.Intensity = numberValue.Value;
                     break;
                 case PromptChoiceInstanceDefinition choice:
                     choice.Prompt = textValue ?? "";

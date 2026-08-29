@@ -168,6 +168,19 @@ namespace TruthCardGame.Core.Tests
         }
     }
 
+    public sealed class FakeToyActivityService : IToyActivityService
+    {
+        public readonly List<(string CapabilityId, float Intensity, TimeSpan Duration)> Started =
+            new List<(string CapabilityId, float Intensity, TimeSpan Duration)>();
+
+        public Task PlayAsync(string capabilityId, float intensity, TimeSpan duration,
+            CancellationToken cancellationToken)
+        {
+            Started.Add((capabilityId, intensity, duration));
+            return Task.CompletedTask;
+        }
+    }
+
     /// <summary>Bundles fakes into CoreServices and exposes the pieces.</summary>
     public static class TestServices
     {

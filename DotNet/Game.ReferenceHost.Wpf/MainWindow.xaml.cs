@@ -222,12 +222,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     CommitPromptChoiceChange(row, LoadSequenceSnapshot(row.SequenceId));
                     return;
                 }
-                if (field != nameof(ActionRowData.TextValue) && field != nameof(ActionRowData.NumberText)) return;
+                if (field != nameof(ActionRowData.TextValue) && field != nameof(ActionRowData.NumberText) &&
+                    field != nameof(ActionRowData.SecondaryNumberText)) return;
                 PushOrMerge(new UpdateActionInstanceCommand(OpenConnection, row.InstanceId, row.TypeKey,
                     row.PersistedTextValue, ParseFloat(row.PersistedNumberText),
-                    row.TextValue, ParseFloat(row.NumberText)));
+                    row.TextValue, ParseFloat(row.NumberText), ParseFloat(row.PersistedSecondaryNumberText),
+                    ParseFloat(row.SecondaryNumberText)));
                 row.PersistedTextValue = row.TextValue;
                 row.PersistedNumberText = row.NumberText;
+                row.PersistedSecondaryNumberText = row.SecondaryNumberText;
             };
 
             _vm.SessionGraph.ActionChanged += (node, row, field) =>
@@ -238,12 +241,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     CommitPromptChoiceChange(row, LoadSequenceSnapshot(row.SequenceId));
                     return;
                 }
-                if (field != nameof(ActionRowData.TextValue) && field != nameof(ActionRowData.NumberText)) return;
+                if (field != nameof(ActionRowData.TextValue) && field != nameof(ActionRowData.NumberText) &&
+                    field != nameof(ActionRowData.SecondaryNumberText)) return;
                 PushOrMerge(new UpdateActionInstanceCommand(OpenConnection, row.InstanceId, row.TypeKey,
                     row.PersistedTextValue, ParseFloat(row.PersistedNumberText),
-                    row.TextValue, ParseFloat(row.NumberText)));
+                    row.TextValue, ParseFloat(row.NumberText), ParseFloat(row.PersistedSecondaryNumberText),
+                    ParseFloat(row.SecondaryNumberText)));
                 row.PersistedTextValue = row.TextValue;
                 row.PersistedNumberText = row.NumberText;
+                row.PersistedSecondaryNumberText = row.SecondaryNumberText;
             };
 
             _vm.PhaseGraph.DecisionPromptChanged += node =>
@@ -467,6 +473,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 StatusText.Text = "Add a cutscene Resource before authoring Play Cutscene.";
                 return;
             }
+            if (typeKey == ActionTypeKeys.ToyActivity && sequence.ToyCapabilityOptions.Count == 0)
+            {
+                StatusText.Text = "Add a Smart Toy Capability before authoring Toy Activity.";
+                return;
+            }
 
             // Card editor rows edit the BUFFER only; Save Card applies them.
             if (sequence.OwnerScope == ActionOwnerScope.CardSequence)
@@ -675,6 +686,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void AppendBrowserAction(ActionTypeChoice choice, ActionSequenceEditorViewModel sequence, int ordinal)
         {
             if (choice == null || sequence == null || sequence.OwnerNode == null) return;
+            if (choice.TypeKey == ActionTypeKeys.ToyActivity && sequence.ToyCapabilityOptions.Count == 0)
+            {
+                StatusText.Text = "Add a Smart Toy Capability before authoring Toy Activity.";
+                return;
+            }
             var instanceId = sequence.IdentityPrefix + "-action-" + Guid.NewGuid().ToString("N").Substring(0, 8);
             var instance = sequence.CreateDefaultInstance(choice.TypeKey, instanceId);
             try

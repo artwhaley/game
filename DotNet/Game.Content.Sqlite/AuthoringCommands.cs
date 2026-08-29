@@ -1057,12 +1057,16 @@ namespace TruthCardGame.Content.Sqlite
         private readonly float _oldNumber;
         private string _newText;
         private float _newNumber;
+        private readonly float _oldSecondaryNumber;
+        private float _newSecondaryNumber;
 
         public UpdateActionInstanceCommand(Func<DbConnection> conn, string instanceId, string typeKey,
-            string oldText, float oldNumber, string newText, float newNumber) : base(conn)
+            string oldText, float oldNumber, string newText, float newNumber,
+            float oldSecondaryNumber = 0f, float newSecondaryNumber = 0f) : base(conn)
         {
             _instanceId = instanceId; _typeKey = typeKey; _oldText = oldText; _oldNumber = oldNumber;
             _newText = newText; _newNumber = newNumber;
+            _oldSecondaryNumber = oldSecondaryNumber; _newSecondaryNumber = newSecondaryNumber;
         }
 
         public override string Name => "Edit action";
@@ -1071,12 +1075,13 @@ namespace TruthCardGame.Content.Sqlite
         {
             if (incoming is UpdateActionInstanceCommand update && update._instanceId == _instanceId && update._typeKey == _typeKey)
             {
-                _newText = update._newText; _newNumber = update._newNumber; return true;
+                _newText = update._newText; _newNumber = update._newNumber;
+                _newSecondaryNumber = update._newSecondaryNumber; return true;
             }
             return false;
         }
-        protected override void ExecuteCore(DbConnection connection) => ActionInstanceRepository.Update(connection, _instanceId, _typeKey, _newText, _newNumber);
-        protected override void UndoCore(DbConnection connection) => ActionInstanceRepository.Update(connection, _instanceId, _typeKey, _oldText, _oldNumber);
+        protected override void ExecuteCore(DbConnection connection) => ActionInstanceRepository.Update(connection, _instanceId, _typeKey, _newText, _newNumber, _newSecondaryNumber);
+        protected override void UndoCore(DbConnection connection) => ActionInstanceRepository.Update(connection, _instanceId, _typeKey, _oldText, _oldNumber, _oldSecondaryNumber);
     }
 
     /// <summary>Swaps adjacent Action Instance ordinals.</summary>

@@ -1,6 +1,12 @@
 # Action Types — Registry and Instance Vocabulary
 
-Status: **current** (Ticket 05, Graph Workbench stack).
+Status: **current** (Ticket 05, Graph Workbench stack; schema v6 additions).
+
+Dialog, Delay, and Toy Activity extend the closed vocabulary. Dialog temporarily
+delegates to the cutscene-style host fixture; Delay uses the host clock; Toy
+Activity identifies a configured Smart Toy Capability and sends its intensity
+and duration to the host service. All three support instance-local blocking,
+with Toy Activity defaulting to blocking.
 
 ## One explicit vocabulary
 
@@ -14,6 +20,9 @@ Every Action the game can author or run is named by a stable key in
 | `increment_progress` | `IncrementProgressInstanceDefinition` | Increment Phase Progress | configurable (default off) | Card / PhaseAction / ChoiceOption |
 | `modify_temperature` | `ModifyTemperatureInstanceDefinition` | Modify Temperature | configurable (default off) | all |
 | `cutscene` | `CutsceneInstanceDefinition` | Cutscene | configurable (default on) | all |
+| `dialog` | `DialogInstanceDefinition` | Dialog | configurable (default on) | all |
+| `delay` | `DelayInstanceDefinition` | Delay | configurable (default on) | all |
+| `toy_activity` | `ToyActivityInstanceDefinition` | Toy Activity | configurable (default on) | all |
 | `prompt_choice` | `PromptChoiceInstanceDefinition` | Prompt Choice | always on (not configurable) | all |
 | `wait_for_continue` | `WaitForContinueInstanceDefinition` | Wait for Continue | always on | Card / PhaseAction / ChoiceOption |
 | `phase_goto` | `PhaseGotoInstanceDefinition` | Phase GOTO | always on | PhaseAction / ChoiceOption |

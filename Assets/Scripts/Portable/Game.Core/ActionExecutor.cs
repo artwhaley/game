@@ -198,6 +198,41 @@ namespace TruthCardGame.Core
                     await context.Services.Cutscene.PlayAsync(cutscene.ResourceId, cancellationToken);
                     return ActionExecutionResult.Continue;
 
+                case DialogInstanceDefinition dialog:
+                    if (context.Services.Cutscene == null)
+                    {
+                        context.Services.Log.Warning(
+                            $"Dialog action '{instance.Id}' has no cutscene-style host service; logging text only.");
+                        context.Services.Log.Info(dialog.Text);
+                        return ActionExecutionResult.Continue;
+                    }
+                    await context.Services.Cutscene.PlayAsync(dialog.Text, cancellationToken);
+                    return ActionExecutionResult.Continue;
+
+                case DelayInstanceDefinition delay:
+                    if (delay.DurationSeconds > 0f)
+                    {
+                        await context.Services.Delay.DelayAsync(
+                            TimeSpan.FromSeconds(delay.DurationSeconds), cancellationToken);
+                    }
+                    return ActionExecutionResult.Continue;
+
+                case ToyActivityInstanceDefinition toy:
+                    if (context.Services.ToyActivity == null)
+                    {
+                        context.Services.Log.Warning(
+                            $"ToyActivity action '{instance.Id}' has no toy activity service; delaying only.");
+                        if (toy.DurationSeconds > 0f)
+                        {
+                            await context.Services.Delay.DelayAsync(
+                                TimeSpan.FromSeconds(toy.DurationSeconds), cancellationToken);
+                        }
+                        return ActionExecutionResult.Continue;
+                    }
+                    await context.Services.ToyActivity.PlayAsync(toy.CapabilityId, toy.Intensity,
+                        TimeSpan.FromSeconds(Math.Max(0f, toy.DurationSeconds)), cancellationToken);
+                    return ActionExecutionResult.Continue;
+
                 case PromptChoiceInstanceDefinition choice:
                     return await ExecutePromptChoiceAsync(choice, context, cancellationToken, budget);
 

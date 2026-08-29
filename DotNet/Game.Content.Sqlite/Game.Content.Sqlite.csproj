@@ -19,6 +19,7 @@
     <EmbeddedResource Include="SQLITE-SCHEMA-V3-WPF-AUTHORING.sql" />
     <EmbeddedResource Include="SQLITE-SCHEMA-V4-PHASE-GOTO-NULL.sql" />
     <EmbeddedResource Include="SQLITE-SCHEMA-V5-MILESTONE-B.sql" />
+    <EmbeddedResource Include="SQLITE-SCHEMA-V6-ACTIONS.sql" />
   </ItemGroup>
 
 </Project>

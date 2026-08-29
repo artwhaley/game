@@ -1110,9 +1110,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var resources = content.Resources
                 .Select(r => new ActionParameterOption { Id = r.Id, Name = string.IsNullOrEmpty(r.Name) ? r.Id : r.Name })
                 .ToList();
+            var toyCapabilities = content.SmartToyCapabilityDefinitions
+                .Select(c => new ActionParameterOption { Id = c.Id, Name = string.IsNullOrEmpty(c.Title) ? c.Id : c.Title })
+                .ToList();
             node.ActionSequence = new ActionSequenceEditorViewModel(node, sequence?.Id,
                 ActionOwnerScope.CardSequence, sequence?.Instances,
-                temperatures, resources, new List<ExitOption>(), statOptions: stats);
+                temperatures, resources, new List<ExitOption>(), statOptions: stats,
+                toyCapabilityOptions: toyCapabilities);
             return node.ActionSequence;
         }
     }
