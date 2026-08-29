@@ -1879,9 +1879,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         /// <summary>
         /// Converts the visible center of a Nodify canvas to graph coordinates.
-        /// New nodes are centered in the current viewport; if that point is
-        /// already occupied, use the nearest clear spot so repeated clicks do
-        /// not create another pile.
+        /// Nodify exposes ViewportLocation as the viewport's graph-space
+        /// top-left, so the visible center is the top-left plus half the
+        /// viewport size. Deliberate overlap is acceptable: the user can move
+        /// newly inserted nodes apart after creating them.
         /// </summary>
         private static Point CenterGraphPosition(FrameworkElement editor, GraphEditorViewModel graph)
         {
@@ -1889,38 +1890,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var height = editor != null && editor.ActualHeight > 1 ? editor.ActualHeight : 300;
             var zoom = graph?.ViewportZoom > 0.0001 ? graph.ViewportZoom : 1.0;
             var viewport = graph?.ViewportLocation ?? new Point();
-            var center = new Point(
-                (width * 0.5 - viewport.X) / zoom - 105,
-                (height * 0.5 - viewport.Y) / zoom - 65);
-
-            if (graph == null || !graph.Nodes.Any(node => OverlapsNode(node.Location, center, zoom)))
-                return center;
-
-            var stepX = 230 / zoom;
-            var stepY = 160 / zoom;
-            var candidates = new[]
-            {
-                new Point(center.X + stepX, center.Y),
-                new Point(center.X - stepX, center.Y),
-                new Point(center.X, center.Y + stepY),
-                new Point(center.X, center.Y - stepY),
-                new Point(center.X + stepX, center.Y + stepY),
-                new Point(center.X - stepX, center.Y + stepY),
-                new Point(center.X + stepX, center.Y - stepY),
-                new Point(center.X - stepX, center.Y - stepY),
-            };
-            foreach (var candidate in candidates)
-            {
-                if (!graph.Nodes.Any(node => OverlapsNode(node.Location, candidate, zoom)))
-                    return candidate;
-            }
-            return center;
-        }
-
-        private static bool OverlapsNode(Point existing, Point candidate, double zoom)
-        {
-            return Math.Abs(existing.X - candidate.X) < 190 / zoom &&
-                   Math.Abs(existing.Y - candidate.Y) < 120 / zoom;
+            return new Point(
+                viewport.X + (width * 0.5 / zoom) - 105,
+                viewport.Y + (height * 0.5 / zoom) - 65);
         }
 
         // ---------- phase library CRUD + header ----------
