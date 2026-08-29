@@ -1171,6 +1171,99 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void OnShowPhaseLibrary(object sender, RoutedEventArgs e) => SetLibraryMode(false);
 
+        private void OnLibraryItemDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ChangedButton != MouseButton.Left || !(sender is ListBox list)) return;
+            var source = e.OriginalSource as DependencyObject ?? e.Source as DependencyObject;
+            if (source == null) return;
+            var container = ItemsControl.ContainerFromElement(list, source) as ListBoxItem;
+            if (container?.DataContext == null) return;
+            container.IsSelected = true;
+
+            if (container.DataContext is SessionDefinition session)
+            {
+                var newTitle = PromptForLibraryRename("Session", session.Title);
+                if (newTitle == null || string.Equals(newTitle, session.Title, StringComparison.Ordinal)) return;
+                PushOrMergeWithReload(new RenameSessionCommand(OpenConnection, session.Id, session.Title ?? "", newTitle), () =>
+                {
+                    session.Title = newTitle;
+                    BindSessionList();
+                    SessionList.SelectedItem = session;
+                    if (_vm.SelectedSession?.Id == session.Id)
+                    {
+                        SessionHeader.Text = "Session Graph — " + newTitle;
+                        SyncSessionMetaPanel();
+                    }
+                    StatusText.Text = "Renamed session to '" + newTitle + "'.";
+                });
+                return;
+            }
+
+            if (container.DataContext is PhaseDefinition phase)
+            {
+                var newTitle = PromptForLibraryRename("Phase", phase.Title);
+                if (newTitle == null || string.Equals(newTitle, phase.Title, StringComparison.Ordinal)) return;
+                PushOrMergeWithReload(new RenamePhaseCommand(OpenConnection, phase.Id, phase.Title ?? "", newTitle), () =>
+                {
+                    phase.Title = newTitle;
+                    BindPhaseList();
+                    PhaseList.SelectedItem = phase;
+                    if (_vm.SelectedPhase?.Id == phase.Id)
+                    {
+                        PhaseHeader.Text = "Phase Graph — " + newTitle;
+                        SyncPhaseMetaPanel();
+                    }
+                    StatusText.Text = "Renamed phase to '" + newTitle + "'.";
+                });
+                return;
+            }
+
+            if (container.DataContext is CardDefinition card)
+            {
+                var newTitle = PromptForLibraryRename("Card", card.Title);
+                if (newTitle == null || string.Equals(newTitle, card.Title, StringComparison.Ordinal)) return;
+                PushOrMergeWithReload(new RenameCardCommand(OpenConnection, card.Id, card.Title ?? "", newTitle), () =>
+                {
+                    card.Title = newTitle;
+                    if (_cardBuffer?.CardId == card.Id)
+                    {
+                        _cardBuffer.Title = newTitle;
+                        SyncCardEditorFromBuffer();
+                    }
+                    BindCardList();
+                    CardList.SelectedItem = card;
+                    StatusText.Text = "Renamed card to '" + newTitle + "'.";
+                });
+                return;
+            }
+
+            var oldCatalogValue = CaptureCatalogEdit(container.DataContext);
+            if (oldCatalogValue == null) return;
+            var catalogTitle = PromptForLibraryRename("Catalog Entry", oldCatalogValue.Title);
+            if (catalogTitle == null || string.Equals(catalogTitle, oldCatalogValue.Title, StringComparison.Ordinal)) return;
+            var newCatalogValue = CaptureCatalogEdit(container.DataContext);
+            newCatalogValue.Title = catalogTitle;
+            PushOrMergeWithReload(new UpdateCatalogEntryCommand(OpenConnection, oldCatalogValue, newCatalogValue), () =>
+            {
+                ApplyCatalogEdit(container.DataContext, newCatalogValue);
+                BindCatalogEntries();
+                SelectCatalogEntry(newCatalogValue.Id);
+                BindSessionTypeBox();
+                StatusText.Text = "Renamed catalog entry to '" + catalogTitle + "'.";
+            });
+        }
+
+        private string PromptForLibraryRename(string kind, string currentTitle)
+        {
+            var dialog = new TextInputDialog("Rename " + kind, "Title:", currentTitle ?? "") { Owner = this };
+            if (dialog.ShowDialog() != true) return null;
+            var title = dialog.InputText?.Trim();
+            if (!string.IsNullOrWhiteSpace(title)) return title;
+            MessageBox.Show(this, "A title is required.", "Rename " + kind,
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return null;
+        }
+
         private void OnLibraryItemRightClick(object sender, MouseButtonEventArgs e)
         {
             if (!(sender is ListBox list) || !(e.OriginalSource is DependencyObject source)) return;

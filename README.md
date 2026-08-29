@@ -44,8 +44,9 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   PhaseGoto exit references before cascading the phase graph, while phases
   placed in Sessions remain protected from deletion. Library reloads preserve
   the active Sessions/Phases/Cards/Catalogs drawer, every deletable Library
-  item has a right-click Delete action, and the Catalog kind/entry lists use
-  the full available width.
+  item has a right-click Delete action, double-click opens an undoable rename
+  dialog for Sessions, Phases, Cards, and Catalog entries, and the Catalog
+  kind/entry lists use the full available width.
   See [`Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md`](Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md).
 - Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core` +
   `Game.Profile`, .NET Standard 2.1) that both Unity and the WPF hosts run —
@@ -62,7 +63,7 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   [`Docs/PreMilestoneC/10-final-regression.md`](Docs/PreMilestoneC/10-final-regression.md)
   and do not infer human acceptance from older milestone reports.
 - Latest automated non-canonical .NET gates: **139 Core tests passed**, **122
-  SQLite tests passed**, **11 profile tests passed**, and **26 WPF tests
+  SQLite tests passed**, **11 profile tests passed**, and **27 WPF tests
   passed**. The canonical DB still passes integrity and foreign-key checks; its
   authored-content presence assertion is currently inapplicable because the
   active DB contains zero Sessions and zero Cards. The WPF host builds and

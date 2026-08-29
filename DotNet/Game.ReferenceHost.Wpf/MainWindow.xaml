@@ -404,6 +404,7 @@
                         <ListBox x:Name="SessionList" Style="{StaticResource DarkListBox}"
                                  ItemContainerStyle="{StaticResource DarkListBoxItem}"
                                  SelectionChanged="OnSessionListChanged"
+                                 MouseDoubleClick="OnLibraryItemDoubleClick"
                                  PreviewMouseRightButtonDown="OnLibraryItemRightClick"
                                  ContextMenuOpening="OnLibraryContextMenuOpening">
                             <ListBox.ContextMenu>
@@ -431,6 +432,7 @@
                         <ListBox x:Name="PhaseList" Style="{StaticResource DarkListBox}"
                                  ItemContainerStyle="{StaticResource DarkListBoxItem}"
                                  SelectionChanged="OnPhaseListChanged"
+                                 MouseDoubleClick="OnLibraryItemDoubleClick"
                                  PreviewMouseMove="OnPhaseListMouseMove"
                                  PreviewMouseRightButtonDown="OnLibraryItemRightClick"
                                  ContextMenuOpening="OnLibraryContextMenuOpening">
@@ -459,6 +461,7 @@
                         <ListBox x:Name="CardList" Style="{StaticResource DarkListBox}"
                                  ItemContainerStyle="{StaticResource DarkListBoxItem}"
                                  SelectionChanged="OnCardListChanged"
+                                 MouseDoubleClick="OnLibraryItemDoubleClick"
                                  PreviewMouseRightButtonDown="OnLibraryItemRightClick"
                                  ContextMenuOpening="OnLibraryContextMenuOpening">
                             <ListBox.ContextMenu>
@@ -511,6 +514,7 @@
                                      Style="{StaticResource DarkListBox}"
                                      ItemContainerStyle="{StaticResource DarkListBoxItem}"
                                      SelectionChanged="OnCatalogEntryChanged"
+                                     MouseDoubleClick="OnLibraryItemDoubleClick"
                                      PreviewMouseRightButtonDown="OnLibraryItemRightClick"
                                      ContextMenuOpening="OnLibraryContextMenuOpening">
                                 <ListBox.ContextMenu>

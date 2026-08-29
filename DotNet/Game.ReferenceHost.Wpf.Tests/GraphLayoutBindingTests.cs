@@ -5,7 +5,9 @@ using System.Reflection;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using NUnit.Framework;
 using Nodify;
 using TruthCardGame.Content;
@@ -364,6 +366,57 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
                     var menu = list.ContextMenu;
                     Assert.That(menu, Is.Not.Null);
                     Assert.That(((MenuItem)menu.Items[0]).Header, Is.EqualTo(pair.Header));
+                }
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+
+        [Test]
+        public void EveryRenameableLibraryList_OpensRenameDialogOnDoubleClick()
+        {
+            EnsureApplication();
+            var window = new MainWindow();
+            try
+            {
+                window.Show();
+                var renameHandler = typeof(MainWindow).GetMethod("OnLibraryItemDoubleClick",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.That(renameHandler, Is.Not.Null);
+                foreach (var target in new[]
+                {
+                    (Button: "SessionLibraryTabButton", List: "SessionList"),
+                    (Button: "PhaseLibraryTabButton", List: "PhaseList"),
+                    (Button: "CardsLibraryTabButton", List: "CardList"),
+                    (Button: "CatalogsLibraryTabButton", List: "CatalogEntryList"),
+                })
+                {
+                    ((Button)window.FindName(target.Button)).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    var list = (ListBox)window.FindName(target.List);
+                    list.ItemsSource = new[] { new PhaseDefinition { Id = "rename-test", Title = "Rename me" } };
+                    list.SelectedIndex = 0;
+                    list.UpdateLayout();
+                    var item = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(0);
+                    Assert.That(item, Is.Not.Null, target.List + " did not create an item container.");
+
+                    var dialogOpened = false;
+                    window.Dispatcher.BeginInvoke(DispatcherPriority.Background, new System.Action(() =>
+                    {
+                        var dialog = window.OwnedWindows.OfType<TextInputDialog>().FirstOrDefault();
+                        if (dialog == null) return;
+                        dialogOpened = true;
+                        dialog.Close();
+                    }));
+                    var doubleClick = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+                    {
+                        RoutedEvent = Control.MouseDoubleClickEvent,
+                        Source = item,
+                    };
+                    renameHandler.Invoke(window, new object[] { list, doubleClick });
+
+                    Assert.That(dialogOpened, Is.True, target.List + " did not open the rename dialog.");
                 }
             }
             finally

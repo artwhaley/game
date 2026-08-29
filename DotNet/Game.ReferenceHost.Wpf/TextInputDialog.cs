@@ -39,7 +39,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 Padding = new Thickness(3, 1, 3, 1),
             };
             _box.Style = FindResource("DarkTextBox") as Style;
-            _box.Focus();
+            Loaded += (_, _) =>
+            {
+                _box.Focus();
+                _box.SelectAll();
+            };
 
             var buttons = new StackPanel
             {
