@@ -50,7 +50,9 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   from the action label and is guarded against re-entry, preventing editor
   controls from initiating a fatal nested drag. Stat Increase uses an editable
   dropdown of authored stat keys; Modify Temperature uses the configured
-  Temperature definitions dropdown.
+  Temperature definitions dropdown. Dual-field action rows initialize their
+  numeric value before synchronizing the selected key, so rebuilding the Card
+  editor after Save cannot reset authored amounts to zero.
   See [`Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md`](Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md).
 - Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core` +
   `Game.Profile`, .NET Standard 2.1) that both Unity and the WPF hosts run —

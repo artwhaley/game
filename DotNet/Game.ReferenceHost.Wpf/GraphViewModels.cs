@@ -1300,19 +1300,19 @@ namespace TruthCardGame.ReferenceHost.Wpf
             switch (instance)
             {
                 case DebugInstanceDefinition debug:
-                    row.TextValue = debug.Message;
                     row.NumberText = debug.DelaySeconds.ToString("0.###", CultureInfo.InvariantCulture);
+                    row.TextValue = debug.Message;
                     break;
                 case StatIncreaseInstanceDefinition stat:
-                    row.TextValue = stat.StatKey;
                     row.NumberText = stat.Amount.ToString("0.###", CultureInfo.InvariantCulture);
+                    row.TextValue = stat.StatKey;
                     break;
                 case IncrementProgressInstanceDefinition progress:
                     row.NumberText = progress.Amount.ToString("0.###", CultureInfo.InvariantCulture);
                     break;
                 case ModifyTemperatureInstanceDefinition temperature:
-                    row.TextValue = temperature.TemperatureId;
                     row.NumberText = temperature.Amount.ToString("0.###", CultureInfo.InvariantCulture);
+                    row.TextValue = temperature.TemperatureId;
                     break;
                 case CutsceneInstanceDefinition cutscene:
                     row.TextValue = cutscene.ResourceId;

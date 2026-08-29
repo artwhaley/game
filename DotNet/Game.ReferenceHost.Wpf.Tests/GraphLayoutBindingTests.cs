@@ -174,6 +174,9 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             Assert.That(temperature.HasStrictChoiceEditor, Is.True);
             Assert.That(temperature.ChoiceOptions.Single().Id, Is.EqualTo("happiness"));
             Assert.That(temperature.ChoiceOptions.Single().Name, Is.EqualTo("Happiness"));
+            Assert.That(temperature.NumberText, Is.EqualTo("5"));
+            Assert.That(((ModifyTemperatureInstanceDefinition)temperature.Definition).Amount, Is.EqualTo(5),
+                "Constructing the editor row must not zero the persisted amount.");
 
             var newStat = (StatIncreaseInstanceDefinition)sequence.CreateDefaultInstance(
                 ActionTypeKeys.StatIncrease, "stat-new");
