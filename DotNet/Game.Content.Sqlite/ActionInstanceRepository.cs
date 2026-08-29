@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Data.Common;
 using TruthCardGame.Content;
 using TruthCardGame.Core;
@@ -161,6 +162,33 @@ namespace TruthCardGame.Content.Sqlite
                     Sql.Execute(connection, transaction,
                         "UPDATE action_instance SET ordinal = @ordinal WHERE id = @id;",
                         ("ordinal", second), ("id", instanceId));
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+
+        public static void MoveTo(DbConnection connection, string sequenceId, string instanceId, int ordinal)
+        {
+            var ids = new List<string>();
+            Sql.QueryAll(connection,
+                "SELECT id FROM action_instance WHERE action_sequence_id = @seq ORDER BY ordinal;",
+                reader => ids.Add(reader.GetString(0)), ("seq", sequenceId));
+            var current = ids.IndexOf(instanceId);
+            if (current < 0) throw new InvalidOperationException("Action instance reorder target not found.");
+            ids.RemoveAt(current);
+            ordinal = Math.Max(0, Math.Min(ordinal, ids.Count));
+            ids.Insert(ordinal, instanceId);
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    Sql.Reorder(connection, transaction, "action_instance", "action_sequence_id", sequenceId,
+                        "id", ids, ids.Count);
                     transaction.Commit();
                 }
                 catch

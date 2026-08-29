@@ -477,6 +477,34 @@ namespace TruthCardGame.ReferenceHost.Wpf
             PreviewInteractionArea.Children.Clear();
         }
 
+        private async Task ShowPreviewTimedCutsceneAsync(string resourceId, CancellationToken ct)
+        {
+            RunOnUi(() =>
+            {
+                ClearPreviewInteraction();
+                PreviewStatus("Cutscene...");
+                PreviewInteractionArea.Children.Add(new TextBlock
+                {
+                    Text = "CUTSCENE\n" + resourceId,
+                    FontWeight = FontWeights.Bold,
+                    TextWrapping = TextWrapping.Wrap,
+                });
+            });
+            PreviewLog("CUTSCENE START " + resourceId);
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), ct);
+                PreviewLog("CUTSCENE FINISHED " + resourceId);
+                RunOnUi(ClearPreviewInteraction);
+            }
+            catch
+            {
+                RunOnUi(ClearPreviewInteraction);
+                PreviewLog("CUTSCENE CANCELED " + resourceId);
+                throw;
+            }
+        }
+
         private void RunOnUi(Action action)
         {
             if (Dispatcher.CheckAccess()) action();
@@ -518,7 +546,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             public PreviewCutsceneService(MainWindow window) => _window = window;
 
             public Task PlayAsync(string resourceId, CancellationToken cancellationToken)
-                => _window.ShowPreviewCutsceneAsync(resourceId, cancellationToken);
+                => _window.ShowPreviewTimedCutsceneAsync(resourceId, cancellationToken);
         }
 
         private sealed class PreviewDelay : IGameDelay

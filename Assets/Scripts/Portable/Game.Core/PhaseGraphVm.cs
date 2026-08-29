@@ -462,9 +462,8 @@ namespace TruthCardGame.Core
             }
 
             var evaluation = _cardSelector.Evaluate(_phase, _selectionProfile, _sessionWeighting, happiness, _sessionId);
+            var selected = _cardSelector.Draw(evaluation, run.CardRng);
             CardSelectionEvaluated?.Invoke(evaluation);
-
-            var selected = _cardSelector.Draw(_phase, _selectionProfile, _sessionWeighting, happiness, _sessionId, run.CardRng);
             run.DrawHistory.Add(selected.Id);
             return selected;
         }

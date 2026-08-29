@@ -105,10 +105,9 @@ namespace TruthCardGame.Core.Tests
         [Test]
         public void OwnerScopeRules_RejectOnlyIllegalCombinations()
         {
-            // Card GOTO is legal: the session VM preserves the Card continuation
-            // while the target Phase runs and resumes it after RETURN.
+            // A Card is a content leaf; Phase GOTO belongs to the Phase graph.
             var gotoInstance = new PhaseGotoInstanceDefinition { Id = "g1", PhaseExitId = "px-x" };
-            Assert.DoesNotThrow(
+            Assert.Throws<System.InvalidOperationException>(
                 () => ActionTypeRegistry.ValidateScope(gotoInstance, ActionOwnerScope.CardSequence));
 
             // SessionGoto only in session decision options.

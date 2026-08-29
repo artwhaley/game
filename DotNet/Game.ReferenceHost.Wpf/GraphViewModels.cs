@@ -191,6 +191,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
     {
         private string _textValue;
         private string _numberText;
+        private bool _isExpanded = true;
 
         public GraphNodeViewModel Owner { get; set; }
         public ActionSequenceEditorViewModel Sequence { get; set; }
@@ -200,6 +201,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public string InstanceId => Definition?.Id;
         public string TypeKey { get; set; }
         public string DisplayLabel { get; set; }
+        public ObservableCollection<PromptChoiceOptionRowData> PromptOptions { get; } = new ObservableCollection<PromptChoiceOptionRowData>();
+        public bool IsPromptChoice => Definition is PromptChoiceInstanceDefinition;
+        public bool IsExpanded
+        {
+            get => _isExpanded;
+            set
+            {
+                if (_isExpanded == value) return;
+                _isExpanded = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExpanded)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ExpandLabel)));
+            }
+        }
+        public string ExpandLabel => IsExpanded ? "Collapse" : "Expand";
         public List<ExitOption> ExitOptions { get; set; } = new List<ExitOption>();
         public List<ActionParameterOption> ParameterOptions { get; set; } = new List<ActionParameterOption>();
         public IEnumerable<ActionParameterOption> ChoiceOptions
@@ -311,6 +326,38 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             return float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) ? number : 0f;
         }
+    }
+
+    /// <summary>One editable PromptChoice option and its recursively-owned sequence.</summary>
+    public sealed class PromptChoiceOptionRowData : INotifyPropertyChanged
+    {
+        private string _label;
+
+        public PromptChoiceOptionRowData(PromptChoiceOptionDefinition definition)
+        {
+            Definition = definition ?? throw new ArgumentNullException(nameof(definition));
+            _label = definition.Label ?? "";
+        }
+
+        public ActionRowData Parent { get; set; }
+        public PromptChoiceOptionDefinition Definition { get; }
+        public string OptionId => Definition?.Id;
+        public ActionSequenceEditorViewModel ActionSequence { get; set; }
+
+        public string Label
+        {
+            get => _label;
+            set
+            {
+                value = value ?? "";
+                if (_label == value) return;
+                _label = value;
+                if (Definition != null) Definition.Label = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Label)));
+            }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
     }
 
     /// <summary>One option row of a decision node (label + owned ordered ActionSequence).</summary>
@@ -676,7 +723,14 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             if (sequence == null) return;
             foreach (var row in sequence.Rows)
+            {
                 row.PropertyChanged += (_, args) => ActionChanged?.Invoke(node, row, args.PropertyName);
+                foreach (var option in row.PromptOptions)
+                {
+                    option.PropertyChanged += (_, args) => ActionChanged?.Invoke(node, row, args.PropertyName);
+                    SubscribeActionSequence(node, option.ActionSequence);
+                }
+            }
         }
 
         private void OnNodePropertyChanged(object sender, PropertyChangedEventArgs e)
@@ -1248,6 +1302,26 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
             row.PersistedTextValue = row.TextValue;
             row.PersistedNumberText = row.NumberText;
+            if (instance is PromptChoiceInstanceDefinition promptChoice)
+            {
+                foreach (var option in promptChoice.Options)
+                {
+                    var optionRow = new PromptChoiceOptionRowData
+                    (option);
+                    optionRow.Parent = row;
+                    optionRow.ActionSequence = new ActionSequenceEditorViewModel(owner, option.Sequence?.Id,
+                        sequence.OwnerScope,
+                        option.Sequence?.Instances,
+                        sequence.TemperatureOptions,
+                        sequence.ResourceOptions,
+                        sequence.ExitOptions,
+                        new ObservableCollection<ActionRowData>())
+                    {
+                        OptionId = option.Id,
+                    };
+                    row.PromptOptions.Add(optionRow);
+                }
+            }
             return row;
         }
 

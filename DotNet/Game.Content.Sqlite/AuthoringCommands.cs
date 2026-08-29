@@ -1025,6 +1025,75 @@ namespace TruthCardGame.Content.Sqlite
         protected override void UndoCore(DbConnection connection) => ActionInstanceRepository.Move(connection, _sequenceId, _otherInstanceId, _instanceId);
     }
 
+    /// <summary>Moves an action directly to an ordinal; one drag is one undo step.</summary>
+    public sealed class MoveActionInstanceToOrdinalCommand : AuthoringCommandBase
+    {
+        private readonly string _sequenceId;
+        private readonly string _instanceId;
+        private readonly int _oldOrdinal;
+        private readonly int _newOrdinal;
+
+        public MoveActionInstanceToOrdinalCommand(Func<DbConnection> conn, string sequenceId,
+            string instanceId, int oldOrdinal, int newOrdinal) : base(conn)
+        {
+            _sequenceId = sequenceId; _instanceId = instanceId;
+            _oldOrdinal = oldOrdinal; _newOrdinal = newOrdinal;
+        }
+
+        public override string Name => "Reorder action";
+        protected override void ExecuteCore(DbConnection connection) => ActionInstanceRepository.MoveTo(connection, _sequenceId, _instanceId, _newOrdinal);
+        protected override void UndoCore(DbConnection connection) => ActionInstanceRepository.MoveTo(connection, _sequenceId, _instanceId, _oldOrdinal);
+    }
+
+    /// <summary>Replaces one owned sequence atomically, preserving its root ID.</summary>
+    public sealed class ReplaceActionSequenceContentsCommand : AuthoringCommandBase
+    {
+        private readonly ActionSequenceDefinition _oldSequence;
+        private ActionSequenceDefinition _newSequence;
+
+        public ReplaceActionSequenceContentsCommand(Func<DbConnection> conn,
+            ActionSequenceDefinition oldSequence, ActionSequenceDefinition newSequence) : base(conn)
+        {
+            _oldSequence = oldSequence ?? throw new ArgumentNullException(nameof(oldSequence));
+            _newSequence = newSequence ?? throw new ArgumentNullException(nameof(newSequence));
+        }
+
+        public override string Name => "Edit nested actions";
+        public override string MergeKey => "sequence:" + _oldSequence.Id;
+
+        public override bool Merge(IAuthoringCommand incoming)
+        {
+            if (incoming is ReplaceActionSequenceContentsCommand replace && replace._oldSequence.Id == _oldSequence.Id)
+            {
+                _newSequence = replace._newSequence;
+                return true;
+            }
+            return false;
+        }
+
+        protected override void ExecuteCore(DbConnection connection) => Replace(connection, _newSequence);
+
+        protected override void UndoCore(DbConnection connection) => Replace(connection, _oldSequence);
+
+        private static void Replace(DbConnection connection, ActionSequenceDefinition sequence)
+        {
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    ActionSequenceWriter.ClearContents(connection, transaction, sequence.Id);
+                    ActionSequenceWriter.Write(connection, transaction, sequence);
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+    }
+
     /// <summary>Appends a PhaseGoto to an Action node's sequence; undo removes it (deterministic instance id).</summary>
     public sealed class AddPhaseGotoCommand : AuthoringCommandBase
     {
@@ -1556,6 +1625,75 @@ namespace TruthCardGame.Content.Sqlite
                 case CatalogKinds.SmartToyCapability: Sql.Execute(connection, null, "UPDATE smart_toy_capability_definition SET title = @t WHERE id = @id;", ("t", (object)title ?? DBNull.Value), ("id", _id)); break;
             }
         }
+    }
+
+    /// <summary>Atomically edits the fields of one stable-ID catalog row.</summary>
+    public sealed class UpdateCatalogEntryCommand : AuthoringCommandBase
+    {
+        private readonly CatalogEntryEdit _oldValue;
+        private readonly CatalogEntryEdit _newValue;
+
+        public UpdateCatalogEntryCommand(Func<DbConnection> conn, CatalogEntryEdit oldValue, CatalogEntryEdit newValue)
+            : base(conn)
+        {
+            _oldValue = oldValue ?? throw new ArgumentNullException(nameof(oldValue));
+            _newValue = newValue ?? throw new ArgumentNullException(nameof(newValue));
+        }
+
+        public override string Name => "Edit catalog entry";
+
+        protected override void ExecuteCore(DbConnection connection) => Apply(connection, _newValue);
+
+        protected override void UndoCore(DbConnection connection) => Apply(connection, _oldValue);
+
+        private static void Apply(DbConnection connection, CatalogEntryEdit value)
+        {
+            switch (value.Kind)
+            {
+                case CatalogKinds.SessionType:
+                    CatalogRepositories.UpdateSessionType(connection, new SessionTypeDefinition
+                    {
+                        Id = value.Id, Title = value.Title, SortOrder = value.SortOrder,
+                        RequiredCapabilityIds = new List<string>(value.RequiredCapabilityIds ?? new List<string>())
+                    });
+                    break;
+                case CatalogKinds.CardTag:
+                    CatalogRepositories.RenameCardTag(connection, value.Id, value.Title);
+                    break;
+                case CatalogKinds.Kink:
+                    CatalogRepositories.UpdateKink(connection, new KinkDefinition
+                    {
+                        Id = value.Id, Title = value.Title, Description = value.Description, SortOrder = value.SortOrder
+                    });
+                    break;
+                case CatalogKinds.Equipment:
+                    CatalogRepositories.UpdateEquipment(connection, new EquipmentDefinition
+                    {
+                        Id = value.Id, Title = value.Title, Category = value.Category, SortOrder = value.SortOrder
+                    });
+                    break;
+                case CatalogKinds.SmartToyCapability:
+                    CatalogRepositories.UpdateSmartToyCapability(connection, new SmartToyCapabilityDefinition
+                    {
+                        Id = value.Id, Title = value.Title, Category = value.Category, SortOrder = value.SortOrder
+                    });
+                    break;
+                default:
+                    throw new InvalidOperationException("Unknown catalog kind '" + value.Kind + "'.");
+            }
+        }
+    }
+
+    /// <summary>Database-neutral snapshot used by the catalog editor command.</summary>
+    public sealed class CatalogEntryEdit
+    {
+        public string Kind { get; set; }
+        public string Id { get; set; }
+        public string Title { get; set; }
+        public string Description { get; set; }
+        public string Category { get; set; }
+        public int SortOrder { get; set; }
+        public List<string> RequiredCapabilityIds { get; set; } = new List<string>();
     }
 
     /// <summary>Creates a Card with the default owned sequence (WaitForContinue + IncrementProgress +10).</summary>

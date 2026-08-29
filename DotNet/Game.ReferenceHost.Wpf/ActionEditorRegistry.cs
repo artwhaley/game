@@ -21,6 +21,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public string TypeKey => Info.TypeKey;
         public string DisplayLabel => Info.DisplayLabel;
         public string Category => string.IsNullOrEmpty(Info.AuthoringCategory) ? "Other" : Info.AuthoringCategory;
+        public string BrowserDisplayLabel => Category + " / " + DisplayLabel;
         public string SearchText => (Info.DisplayLabel + " " + Info.TypeKey + " " + Info.SearchKeywords).Trim();
     }
 
@@ -163,9 +164,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public ActionOwnerScope OwnerScope { get; }
         public string ScopeLabel => OwnerScope == ActionOwnerScope.SessionDecisionOptionSequence ? "Session option actions" : "Actions";
         public bool IsSessionDecisionOption => OwnerScope == ActionOwnerScope.SessionDecisionOptionSequence;
-        public string IdentityPrefix => IsSessionDecisionOption
-            ? OwnerNode?.Id + "-" + (OptionId ?? "option")
-            : OwnerNode?.Id;
+        public string IdentityPrefix => string.IsNullOrEmpty(OptionId)
+            ? OwnerNode?.Id
+            : OwnerNode?.Id + "-" + OptionId;
         public string OptionId { get; set; }
 
         public ObservableCollection<ActionRowData> Rows { get; }
@@ -209,6 +210,19 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 temperature.TemperatureId = TemperatureOptions[0].Id;
             if (instance is CutsceneInstanceDefinition cutscene && ResourceOptions.Count > 0)
                 cutscene.ResourceId = ResourceOptions[0].Id;
+            if (instance is PromptChoiceInstanceDefinition choice)
+            {
+                for (var i = 0; i < 2; i++)
+                {
+                    var optionId = instanceId + "-option-" + (i + 1);
+                    choice.Options.Add(new PromptChoiceOptionDefinition
+                    {
+                        Id = optionId,
+                        Label = "Option " + (i + 1),
+                        Sequence = new ActionSequenceDefinition { Id = optionId + "-sequence" },
+                    });
+                }
+            }
             return instance;
         }
 

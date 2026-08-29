@@ -98,6 +98,15 @@ namespace TruthCardGame.Core
         {
             var evaluation = Evaluate(phase, profile, weighting, happiness, sessionId);
 
+            return Draw(evaluation, cardRng);
+        }
+
+        /// <summary>Draws from an already published evaluation so diagnostics and selection agree.</summary>
+        public CardDefinition Draw(SelectionResult evaluation, IRandomSource cardRng)
+        {
+            if (evaluation == null) throw new ArgumentNullException(nameof(evaluation));
+            if (cardRng == null) throw new ArgumentNullException(nameof(cardRng));
+
             var eligible = new List<Candidate>();
             var totalWeight = 0f;
             for (var i = 0; i < evaluation.Candidates.Count; i++)
@@ -111,7 +120,8 @@ namespace TruthCardGame.Core
 
             if (eligible.Count == 0 || totalWeight <= 0f)
             {
-                throw new NoEligibleCardException(BuildFailureMessage(phase, sessionId, evaluation));
+                throw new NoEligibleCardException(BuildFailureMessage(evaluation.Phase, evaluation.SessionId, evaluation),
+                    evaluation.SessionId, evaluation.Phase?.Id);
             }
 
             var ticket = cardRng.NextFloat(0f, totalWeight);

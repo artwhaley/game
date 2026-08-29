@@ -50,6 +50,30 @@ namespace TruthCardGame.Content.Sqlite
                 ("id", sequenceId));
         }
 
+        /// <summary>
+        /// Removes all instances owned by a sequence, including recursively
+        /// owned PromptChoice option sequences, while keeping the root sequence
+        /// identity row. Used by semantic sequence replacement/undo.
+        /// </summary>
+        internal static void ClearContents(DbConnection connection, DbTransaction transaction, string sequenceId)
+        {
+            var childSequences = new List<string>();
+            Sql.QueryAll(connection, transaction,
+                "SELECT action_sequence_id FROM action_instance_choice_option " +
+                "WHERE action_instance_id IN (SELECT id FROM action_instance WHERE action_sequence_id = @seq);",
+                reader => childSequences.Add(reader.GetString(0)), ("seq", sequenceId));
+
+            foreach (var childSequenceId in childSequences)
+            {
+                ClearContents(connection, transaction, childSequenceId);
+                Delete(connection, transaction, childSequenceId);
+            }
+
+            Sql.Execute(connection, transaction,
+                "DELETE FROM action_instance WHERE action_sequence_id = @seq;",
+                ("seq", sequenceId));
+        }
+
         internal static void WriteSingleAt(DbConnection connection, DbTransaction transaction,
             string sequenceId, ActionInstanceDefinition instance, int ordinal)
         {

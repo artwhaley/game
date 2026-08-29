@@ -190,11 +190,10 @@ namespace TruthCardGame.Core
                 DisplayLabel = "Phase GOTO",
                 AuthoringCategory = "Flow",
                 SearchKeywords = "goto phase exit transfer",
-                // A Card may transfer to another Phase and later resume its
-                // own remainder after RETURN; the Session VM carries the Card
-                // identity and continuation frame across that transfer.
-                LegalScopes = ActionOwnerScope.CardSequence
-                            | ActionOwnerScope.PhaseActionSequence
+                // Cards are content leaves. Phase transfer is owned by the
+                // Phase graph (or an inherited PromptChoice inside it), never
+                // by a Card's own action sequence.
+                LegalScopes = ActionOwnerScope.PhaseActionSequence
                             | ActionOwnerScope.ChoiceOptionSequence,
                 IsAlwaysBlocking = true,
                 BlockingConfigurable = false,

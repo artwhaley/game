@@ -17,6 +17,8 @@
                     ToolTip="Run automatically until an authored wait or session completion"/>
             <Button x:Name="DrawNextButton" Content="Continue" Width="110" Height="24" Margin="8,0,0,0"
                     Style="{StaticResource DarkButton}" IsEnabled="False" Click="OnDrawNext"/>
+            <Button x:Name="HaltButton" Content="Halt / Close" Width="100" Height="24" Margin="8,0,0,0"
+                    Style="{StaticResource DarkButton}" Click="OnHalt" ToolTip="Cancel the run and close the runner"/>
         </StackPanel>
 
         <Grid Background="#FF1B1B1C">
@@ -37,6 +39,10 @@
                     <TextBlock x:Name="ProgressText" Text="—" FontFamily="Consolas" FontWeight="SemiBold" Foreground="#FFDDDDDD"/>
                     <TextBlock Text="Card:" Margin="0,6,0,0" Foreground="#FFBBBBBB"/>
                     <TextBlock x:Name="CardTitle" Text="—" Foreground="#FFDDDDDD"/>
+                    <TextBlock Text="Body:" Margin="0,6,0,0" Foreground="#FFBBBBBB"/>
+                    <ScrollViewer Height="86" VerticalScrollBarVisibility="Auto" Background="#FF1B1B1C">
+                        <TextBlock x:Name="CardBodyText" Text="—" TextWrapping="Wrap" Foreground="#FFDDDDDD"/>
+                    </ScrollViewer>
                     <TextBlock Text="Temperatures:" Margin="0,6,0,0" Foreground="#FFBBBBBB"/>
                     <TextBlock x:Name="TemperaturesText" Text="—" FontFamily="Consolas" TextWrapping="Wrap" Foreground="#FFDDDDDD"/>
                     <TextBlock Text="Status:" Margin="0,6,0,0" Foreground="#FFBBBBBB"/>

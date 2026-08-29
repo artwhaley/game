@@ -43,6 +43,26 @@ namespace TruthCardGame.Content.Sqlite
             }
         }
 
+        public static void QueryAll(DbConnection connection, DbTransaction transaction, string sql, Action<DbDataReader> visit, params (string Name, object Value)[] parameters)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = sql;
+                foreach (var parameter in parameters)
+                {
+                    var dbParameter = command.CreateParameter();
+                    dbParameter.ParameterName = parameter.Name;
+                    dbParameter.Value = parameter.Value ?? DBNull.Value;
+                    command.Parameters.Add(dbParameter);
+                }
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read()) visit(reader);
+                }
+            }
+        }
+
         /// <summary>
         /// Reassigns ordinals of a (parent, ordinal)-keyed ordered table
         /// without violating the unique constraint midway: shift every row by

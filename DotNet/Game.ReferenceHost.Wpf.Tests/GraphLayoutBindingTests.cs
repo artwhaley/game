@@ -104,6 +104,9 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             Assert.That(phaseChoices.Any(choice => choice.TypeKey == ActionTypeKeys.PhaseGoto), Is.True);
             Assert.That(phaseChoices.Any(choice => choice.TypeKey == ActionTypeKeys.SessionGoto), Is.False);
 
+            var cardChoices = ActionEditorRegistry.PickerChoices(ActionOwnerScope.CardSequence).ToList();
+            Assert.That(cardChoices.Any(choice => choice.TypeKey == ActionTypeKeys.PhaseGoto), Is.False);
+
             var sequence = new ActionSequenceEditorViewModel(
                 new GraphNodeViewModel { Id = "action-test" }, "sequence-test",
                 ActionOwnerScope.PhaseActionSequence, null, null, null,
@@ -111,6 +114,23 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             sequence.SearchText = "temperature";
             Assert.That(sequence.ActionTypePickerView.Cast<ActionTypeChoice>().All(choice =>
                 choice.SearchText.IndexOf("temperature", System.StringComparison.OrdinalIgnoreCase) >= 0), Is.True);
+
+            var prompt = sequence.CreateDefaultInstance(ActionTypeKeys.PromptChoice, "prompt-test");
+            Assert.That(prompt, Is.TypeOf<PromptChoiceInstanceDefinition>());
+            Assert.That(((PromptChoiceInstanceDefinition)prompt).Options, Has.Count.EqualTo(2));
+        }
+
+        [Test]
+        public void RelationPickerPersistsStableIdsWhenTitlesDuplicate()
+        {
+            var picker = new RelationPickerControl();
+            picker.SetItems(new[]
+            {
+                new RelationChoice { Id = "tag-a", DisplayName = "Same title" },
+                new RelationChoice { Id = "tag-b", DisplayName = "Same title" },
+            }, new[] { "tag-b" });
+
+            CollectionAssert.AreEqual(new[] { "tag-b" }, picker.SelectedIds);
         }
 
         [Test]

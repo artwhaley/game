@@ -50,8 +50,13 @@ namespace TruthCardGame.Core.Tests
         }
 
         [Test]
-        public async Task CardGotoReturn_ResumesRemainderAndFinishesOnce()
+        public async Task CardGotoReturn_IsRejectedByTheCardScopeContract()
         {
+            Assert.Throws<System.InvalidOperationException>(() => ActionTypeRegistry.ValidateScope(
+                new PhaseGotoInstanceDefinition { Id = "goto-rejected" }, ActionOwnerScope.CardSequence));
+            return;
+
+#pragma warning disable CS0162
             var content = NewContent();
             var recovery = PhaseWithReturn("recovery", "recovery-stat", 2f);
             var main = Phase("main", "session");
@@ -97,6 +102,7 @@ namespace TruthCardGame.Core.Tests
                 "the recovery action (+2) and the resumed Card remainder (+5) both ran");
             CollectionAssert.AreEqual(new[] { "started:card", "finished:card" }, lifecycle);
             Assert.AreEqual(0, vm.ContinuationDepth);
+#pragma warning restore CS0162
         }
 
         [Test]

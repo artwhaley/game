@@ -25,7 +25,7 @@
              by the explicit registry category and filtered by owner scope. -->
         <DataTemplate x:Key="ActionSequenceTemplate">
             <Border Background="#FF26262A" BorderBrush="#FF3A3A3E" BorderThickness="1"
-                    CornerRadius="2" Margin="0,3,0,0" Padding="3">
+                    CornerRadius="2" Margin="0,3,0,0" Padding="3" AllowDrop="True" Drop="OnActionDrop">
                 <StackPanel>
                     <TextBlock Text="{Binding ScopeLabel}" FontSize="10" Foreground="#FFB0B0B0"/>
                     <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
@@ -48,11 +48,14 @@
                         </ComboBox>
                         <Button Content="+ Action" Click="OnAddActionInstance" Padding="5,1" Margin="3,0,0,0"
                                 Style="{StaticResource DarkButton}" ToolTip="Append the selected Action Type"/>
+                        <Button Content="Focus" Click="OnFocusActionSequence" Padding="5,1" Margin="3,0,0,0"
+                                Style="{StaticResource DarkButton}" ToolTip="Focus this sequence in the Action Browser"/>
                     </StackPanel>
                     <ItemsControl ItemsSource="{Binding Rows}" Margin="0,3,0,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border Padding="2" Margin="0,1,0,1">
+                                <Border Padding="2" Margin="0,1,0,1" AllowDrop="True" Drop="OnActionDrop"
+                                        PreviewMouseLeftButtonDown="OnActionDragStart" PreviewMouseMove="OnActionRowMouseMove">
                                     <Border.Style>
                                         <Style TargetType="Border">
                                             <Setter Property="Background" Value="#FF2B2B2F"/>
@@ -119,6 +122,35 @@
                                         </StackPanel>
                                         <TextBlock Text="{Binding ValidationMessage}" FontSize="9" Foreground="#FFFF8A8A"
                                                    Visibility="{Binding ValidationMessage, Converter={StaticResource NullToCollapsed}}"/>
+                                        <StackPanel Visibility="{Binding IsPromptChoice, Converter={StaticResource BoolToVisible}}" Margin="8,3,0,0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="PromptChoice options" FontSize="9" Foreground="#FFB0B0B0"
+                                                           VerticalAlignment="Center"/>
+                                                <Button Content="{Binding ExpandLabel}" Click="OnTogglePromptChoice" Padding="4,0" Margin="5,0,0,0"
+                                                        Style="{StaticResource DarkButton}"/>
+                                                <Button Content="+ Option" Click="OnAddPromptChoiceOption" Padding="4,0" Margin="4,0,0,0"
+                                                        Style="{StaticResource DarkButton}" ToolTip="Add a nested option (maximum 3)"/>
+                                            </StackPanel>
+                                            <ItemsControl ItemsSource="{Binding PromptOptions}" Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisible}}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Background="#FF222226" BorderBrush="#FF3A3A3E" BorderThickness="1" Padding="3" Margin="0,2,0,0">
+                                                            <StackPanel>
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <TextBox Style="{StaticResource DarkTextBox}" Padding="2,0" Width="100"
+                                                                             Text="{Binding Label, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                             ToolTip="Option label"/>
+                                                                    <Button Content="−" Click="OnRemovePromptChoiceOption" Padding="4,0" Margin="4,0,0,0"
+                                                                            Style="{StaticResource DarkButton}" ToolTip="Delete option"/>
+                                                                </StackPanel>
+                                                                <ContentControl Content="{Binding ActionSequence}"
+                                                                                ContentTemplate="{StaticResource ActionSequenceTemplate}"/>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
                                     </StackPanel>
                                 </Border>
                             </DataTemplate>
@@ -345,6 +377,8 @@
                     </StackPanel>
                     <DockPanel x:Name="SessionLibraryPanel" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,3,0">
                         <StackPanel DockPanel.Dock="Bottom" Margin="0,4,0,0">
+                            <TextBox x:Name="CatalogSearchBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
+                                     TextChanged="OnCatalogSearchChanged" ToolTip="Search catalog titles, categories, descriptions, or stable IDs"/>
                             <StackPanel Orientation="Horizontal">
                                 <Button Content="New" Click="OnNewSession" Padding="6,1" Margin="0,0,3,0"
                                         Style="{StaticResource DarkButton}" ToolTip="Create a new empty session"/>
@@ -421,6 +455,21 @@
                                      ItemContainerStyle="{StaticResource DarkListBoxItem}"
                                      SelectionChanged="OnCatalogEntryChanged"/>
                         </DockPanel>
+                        <StackPanel x:Name="CatalogEditorPanel" DockPanel.Dock="Bottom" Margin="0,6,0,0" Visibility="Collapsed">
+                            <TextBlock Text="Catalog entry" FontWeight="SemiBold" Foreground="#FFDDDDDD"/>
+                            <TextBox x:Name="CatalogTitleBox" Style="{StaticResource DarkTextBox}" Padding="3,1" Margin="0,3,0,0"
+                                     TextChanged="OnCatalogEditorChanged" ToolTip="Stable-ID catalog title"/>
+                            <TextBox x:Name="CatalogDescriptionBox" Style="{StaticResource DarkTextBox}" Padding="3,1" Margin="0,3,0,0"
+                                     Height="46" TextWrapping="Wrap" AcceptsReturn="True" TextChanged="OnCatalogEditorChanged"
+                                     ToolTip="Kink description"/>
+                            <TextBox x:Name="CatalogCategoryBox" Style="{StaticResource DarkTextBox}" Padding="3,1" Margin="0,3,0,0"
+                                     TextChanged="OnCatalogEditorChanged" ToolTip="Equipment or Smart Toy category"/>
+                            <vm:RelationPickerControl x:Name="CatalogCapabilityPicker" Margin="0,3,0,0"
+                                                      SelectionChanged="OnCatalogEditorChanged"
+                                                      ToolTip="Required Smart Toy capabilities for a Session Type"/>
+                            <Button Content="Save entry" Click="OnSaveCatalogEntry" Padding="6,1" Margin="0,4,0,0"
+                                    HorizontalAlignment="Left" Style="{StaticResource DarkButton}"/>
+                        </StackPanel>
                     </DockPanel>
                 </Grid>
             </DockPanel>
@@ -610,6 +659,23 @@
                         BorderBrush="#FF3A3A3E" BorderThickness="0,0,0,1">
                     <TextBlock Text="Inspector" FontWeight="Bold" Foreground="#FFDDDDDD"/>
                 </Border>
+                <Border DockPanel.Dock="Bottom" x:Name="ActionBrowserPanel" Height="250" Background="#FF1F1F22"
+                        BorderBrush="#FF3A3A3E" BorderThickness="0,1,0,0" Padding="6,5">
+                    <StackPanel>
+                        <TextBlock Text="Action Browser" FontWeight="SemiBold" Foreground="#FFDDDDDD"/>
+                        <TextBlock x:Name="ActionBrowserTargetText" Text="No focused sequence" FontSize="9"
+                                   Foreground="#FFB0B0B0" Margin="0,2,0,3" TextTrimming="CharacterEllipsis"/>
+                        <TextBox x:Name="ActionBrowserSearchBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
+                                 TextChanged="OnActionBrowserSearchChanged" ToolTip="Search actions by category, label, or keyword"/>
+                        <ListBox x:Name="ActionBrowserList" Height="180" Margin="0,4,0,0"
+                                 Style="{StaticResource DarkListBox}" ItemContainerStyle="{StaticResource DarkListBoxItem}"
+                                 DisplayMemberPath="BrowserDisplayLabel" MouseLeftButtonDown="OnActionDragStart"
+                                 MouseDoubleClick="OnActionBrowserDoubleClick"
+                                 PreviewMouseMove="OnActionBrowserMouseMove"/>
+                        <TextBlock Text="Double-click or drag an action into a sequence. Scope-invalid drops are rejected."
+                                   TextWrapping="Wrap" FontSize="9" Foreground="#FF808080" Margin="0,3,0,0"/>
+                    </StackPanel>
+                </Border>
                 <!-- ScrollViewer: the card editor stacks a lot vertically; the
                      pane itself keeps its width under user splitter control. -->
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -636,12 +702,12 @@
                         <TextBlock Text="Title" FontSize="10" Foreground="#FFB0B0B0" Margin="0,0,0,1"/>
                         <TextBox x:Name="PhaseTitleBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
                                  TextChanged="OnPhaseTitleChanged"/>
-                        <TextBlock Text="Must have ALL card tags (comma separated)" FontSize="10" Foreground="#FFB0B0B0" Margin="0,6,0,1"/>
-                        <TextBox x:Name="PhaseIncludeTagsBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
-                                 TextChanged="OnPhaseTagsChanged" ToolTip="Card must carry every listed tag"/>
-                        <TextBlock Text="Must have ANY card tags (comma separated)" FontSize="10" Foreground="#FFB0B0B0" Margin="0,6,0,1"/>
-                        <TextBox x:Name="PhaseExcludeTagsBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
-                                 TextChanged="OnPhaseTagsChanged" ToolTip="Card must carry at least one listed tag (empty = no restriction)"/>
+                        <TextBlock Text="Must have ALL card tags" FontSize="10" Foreground="#FFB0B0B0" Margin="0,6,0,1"/>
+                        <vm:RelationPickerControl x:Name="PhaseAllTagPicker" SelectionChanged="OnPhaseTagsChanged"
+                                                  ToolTip="Card must carry every listed tag"/>
+                        <TextBlock Text="Must have ANY card tags" FontSize="10" Foreground="#FFB0B0B0" Margin="0,6,0,1"/>
+                        <vm:RelationPickerControl x:Name="PhaseAnyTagPicker" SelectionChanged="OnPhaseTagsChanged"
+                                                  ToolTip="Card must carry at least one listed tag (empty = no restriction)"/>
                         <Button Content="Preview Eligible Cards" Click="OnPreviewEligibleCards" Padding="6,1" Margin="0,6,0,0"
                                 HorizontalAlignment="Left" Style="{StaticResource DarkButton}"
                                 ToolTip="Show which cards the current query selects (diagnostics)"/>
@@ -725,26 +791,23 @@
                                  TextChanged="OnCardBufferFieldChanged" ToolTip="Card body text shown when played"/>
 
                         <TextBlock Text="Card Tags" FontSize="10" Foreground="#FF9CCC65" Margin="0,8,0,1"/>
-                        <ListBox x:Name="CardTagPicker" Style="{StaticResource DarkListBox}" MinHeight="52" MaxHeight="110"
-                                 SelectionMode="Multiple" SelectionChanged="OnCardBufferRelationsChanged"
-                                 ToolTip="Card must carry these tags for phases that query them"/>
+                        <vm:RelationPickerControl x:Name="CardTagPicker" SelectionChanged="OnCardBufferRelationsChanged"
+                                                  ToolTip="Card must carry these tags for phases that query them"/>
                         <TextBlock Text="Kinks" FontSize="10" Foreground="#FF9CCC65" Margin="0,6,0,1"/>
-                        <ListBox x:Name="CardKinkPicker" Style="{StaticResource DarkListBox}" MinHeight="52" MaxHeight="110"
-                                 SelectionMode="Multiple" SelectionChanged="OnCardBufferRelationsChanged"
-                                 ToolTip="Kinks this card carries; user preferences gate eligibility"/>
+                        <vm:RelationPickerControl x:Name="CardKinkPicker" SelectionChanged="OnCardBufferRelationsChanged"
+                                                  ToolTip="Kinks this card carries; user preferences gate eligibility"/>
                         <TextBlock Text="Required Equipment" FontSize="10" Foreground="#FF9CCC65" Margin="0,6,0,1"/>
-                        <ListBox x:Name="CardEquipmentPicker" Style="{StaticResource DarkListBox}" MinHeight="52" MaxHeight="110"
-                                 SelectionMode="Multiple" SelectionChanged="OnCardBufferRelationsChanged"
-                                 ToolTip="Every listed item must be owned for the card to be eligible"/>
+                        <vm:RelationPickerControl x:Name="CardEquipmentPicker" SelectionChanged="OnCardBufferRelationsChanged"
+                                                  ToolTip="Every listed item must be owned for the card to be eligible"/>
                         <TextBlock Text="Required Smart Toys" FontSize="10" Foreground="#FF9CCC65" Margin="0,6,0,1"/>
-                        <ListBox x:Name="CardCapabilityPicker" Style="{StaticResource DarkListBox}" MinHeight="52" MaxHeight="110"
-                                 SelectionMode="Multiple" SelectionChanged="OnCardBufferRelationsChanged"
-                                 ToolTip="Every listed capability must be available for the card to be eligible"/>
+                        <vm:RelationPickerControl x:Name="CardCapabilityPicker" SelectionChanged="OnCardBufferRelationsChanged"
+                                                  ToolTip="Every listed capability must be available for the card to be eligible"/>
 
                         <TextBlock Text="Card Actions" FontSize="10" Foreground="#FF9CCC65" Margin="0,8,0,1"/>
                         <Border Background="#FF26262A" BorderBrush="#FF3A3A3E" BorderThickness="1"
                                 CornerRadius="2" Padding="3">
-                            <ContentControl x:Name="CardActionSequenceHost"/>
+                            <ContentControl x:Name="CardActionSequenceHost"
+                                            ContentTemplate="{StaticResource ActionSequenceTemplate}"/>
                         </Border>
 
                         <TextBlock x:Name="CardDirtyText" Text="" FontSize="10" Foreground="#FFFFB347" Margin="0,8,0,0"/>

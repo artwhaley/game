@@ -107,6 +107,7 @@ namespace TruthCardGame.Core
 
             var info = ActionTypeRegistry.ForInstance(instance);
             ActionTypeRegistry.ValidateScope(instance, context.ActiveScope);
+            context.Services.Log.Info($"ACTION START {info.DisplayLabel} [{instance.Id}]");
 
             if (info.IsAlwaysBlocking && !instance.IsBlocking)
             {
@@ -117,16 +118,43 @@ namespace TruthCardGame.Core
             if (info.IsAlwaysBlocking)
             {
                 // Transfer mechanics land with the graph VM; reduce to the request now.
-                return ReduceFlow(instance, info.TypeKey);
+                var flow = ReduceFlow(instance, info.TypeKey);
+                context.Services.Log.Info($"ACTION FINISHED {info.DisplayLabel} [{instance.Id}] -> {flow.Transfer}");
+                return flow;
             }
 
             if (!instance.IsBlocking)
             {
-                _background.Start(ExecuteAsync(instance, context, cancellationToken, budget));
+                _background.Start(ExecuteNonBlockingWithDiagnosticsAsync(instance, info, context, cancellationToken, budget));
                 return ActionExecutionResult.Continue;
             }
 
-            return await ExecuteAsync(instance, context, cancellationToken, budget);
+            try
+            {
+                var result = await ExecuteAsync(instance, context, cancellationToken, budget);
+                context.Services.Log.Info($"ACTION FINISHED {info.DisplayLabel} [{instance.Id}]");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                context.Services.Log.Error($"ACTION FAILED {info.DisplayLabel} [{instance.Id}]: {ex.Message}");
+                throw;
+            }
+        }
+
+        private async Task ExecuteNonBlockingWithDiagnosticsAsync(ActionInstanceDefinition instance, ActionTypeInfo info,
+            ActionExecutionContext context, CancellationToken cancellationToken, GraphExecutionBudget budget)
+        {
+            try
+            {
+                await ExecuteAsync(instance, context, cancellationToken, budget);
+                context.Services.Log.Info($"ACTION FINISHED {info.DisplayLabel} [{instance.Id}] (nonblocking)");
+            }
+            catch (Exception ex)
+            {
+                context.Services.Log.Error($"ACTION FAILED {info.DisplayLabel} [{instance.Id}]: {ex.Message}");
+                context.Services.Log.Error($"Background action faulted [{instance.Id}]: {ex.Message}");
+            }
         }
 
         private async Task<ActionExecutionResult> ExecuteAsync(ActionInstanceDefinition instance, ActionExecutionContext context,

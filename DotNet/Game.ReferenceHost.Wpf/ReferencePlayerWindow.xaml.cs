@@ -176,6 +176,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 SessionTitle.Text = selected.Title;
                 PhaseTitle.Text = "—";
                 CardTitle.Text = "—";
+                CardBodyText.Text = "—";
                 ProgressText.Text = "—";
                 TemperaturesText.Text = RefreshTemperatures();
                 SetStatus("Starting…");
@@ -199,6 +200,14 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private async void OnDrawNext(object sender, RoutedEventArgs e)
         {
             await AdvanceAsync();
+        }
+
+        private void OnHalt(object sender, RoutedEventArgs e)
+        {
+            Log("RUNNER HALT requested.");
+            StopAuto();
+            CancelSession();
+            Close();
         }
 
         /// <summary>Auto-run: advances repeatedly until the session completes or toggled off.</summary>
@@ -380,6 +389,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             _engine.CardStarted += card =>
             {
                 CardTitle.Text = card.Title;
+                CardBodyText.Text = card.BodyText ?? "";
                 SetStatus("Executing…");
                 Log($"card started: {card.Title}");
             };
@@ -398,6 +408,24 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 SetStatus("Complete");
                 ProgressText.Text = "complete";
+            };
+            _engine.SessionVm.VariableCheckEvaluated += (check, value, result) =>
+                Log($"check: {check.VariableKey ?? check.SourceKind.ToString()} value={value:0.###} => {result}");
+            _engine.SessionVm.RuntimeError += message => Log("runtime error: " + message);
+            _engine.SessionVm.SessionNodeChanged += nodeId => Log("session node: " + nodeId);
+            _engine.SessionVm.PhaseNodeChanged += nodeId => Log("phase node: " + nodeId);
+            _engine.CardSelectionEvaluated += evaluation =>
+            {
+                foreach (var candidate in evaluation.Candidates)
+                {
+                    if (candidate.Reasons.Count > 0)
+                        Log($"candidate rejected: {candidate.Card.Title} [{candidate.Card.Id}] — " +
+                            string.Join("; ", candidate.Reasons.Select(reason => reason.Describe())));
+                    else
+                        Log($"candidate eligible: {candidate.Card.Title} [{candidate.Card.Id}] weight={candidate.Weight:0.###}");
+                }
+                if (evaluation.Selected != null)
+                    Log($"card selected: {evaluation.Selected.Title} [{evaluation.Selected.Id}]");
             };
         }
 
@@ -508,6 +536,35 @@ namespace TruthCardGame.ReferenceHost.Wpf
             InteractionArea.Children.Clear();
         }
 
+        private async Task ShowTimedCutsceneAsync(string resourceId, CancellationToken ct)
+        {
+            RunOnUi(() =>
+            {
+                ClearInteractionArea();
+                SetStatus("Playing cutscene...");
+                InteractionArea.Children.Add(new TextBlock
+                {
+                    Text = "CUTSCENE\n" + resourceId,
+                    FontSize = 20,
+                    FontWeight = FontWeights.Bold,
+                    TextWrapping = TextWrapping.Wrap,
+                });
+            });
+            Log($"CUTSCENE START {resourceId}");
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), ct);
+                Log($"CUTSCENE FINISHED {resourceId}");
+                RunOnUi(ClearInteractionArea);
+            }
+            catch
+            {
+                RunOnUi(ClearInteractionArea);
+                Log($"CUTSCENE CANCELED {resourceId}");
+                throw;
+            }
+        }
+
         // ---------- helpers ----------
 
         private void RunOnUi(Action action)
@@ -568,7 +625,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             public UiCutsceneService(ReferencePlayerWindow window) => _window = window;
 
             public Task PlayAsync(string resourceId, CancellationToken cancellationToken)
-                => _window.ShowCutsceneAsync(resourceId, cancellationToken);
+                => _window.ShowTimedCutsceneAsync(resourceId, cancellationToken);
         }
 
         private sealed class WpfGameDelay : IGameDelay

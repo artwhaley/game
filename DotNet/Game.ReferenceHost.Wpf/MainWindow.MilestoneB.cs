@@ -31,7 +31,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
     {
         private bool _syncingCardEditor;
         private bool _syncingWeighting;
-        private bool _suppressCardRelationEvents;
+        private bool _syncingCatalogEditor;
         private UserProfileWindow _profileWindow;
         private CardEditBuffer _cardBuffer;
 
@@ -101,35 +101,157 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void OnCatalogKindChanged(object sender, SelectionChangedEventArgs e)
         {
             BindCatalogEntries();
+            SyncCatalogEditor();
         }
 
         private void BindCatalogEntries()
         {
             var kind = SelectedCatalogKind;
+            var selectedId = CatalogEntryId(CatalogEntryList.SelectedItem);
+            var query = (CatalogSearchBox?.Text ?? "").Trim();
             CatalogEntryList.DisplayMemberPath = nameof(CardTagDefinition.Title);
             switch (kind)
             {
                 case "Session Types":
-                    CatalogEntryList.ItemsSource = _vm.Content.SessionTypes.OrderBy(t => t.SortOrder).ToList();
+                    CatalogEntryList.ItemsSource = _vm.Content.SessionTypes.Where(t => MatchesCatalog(t.Id, t.Title, null, null, query)).OrderBy(t => t.SortOrder).ToList();
                     break;
                 case "Card Tags":
-                    CatalogEntryList.ItemsSource = _vm.Content.CardTagDefinitions.OrderBy(t => t.SortOrder).ToList();
+                    CatalogEntryList.ItemsSource = _vm.Content.CardTagDefinitions.Where(t => MatchesCatalog(t.Id, t.Title, null, null, query)).OrderBy(t => t.SortOrder).ToList();
                     break;
                 case "Kinks":
-                    CatalogEntryList.ItemsSource = _vm.Content.KinkDefinitions.OrderBy(t => t.SortOrder).ToList();
+                    CatalogEntryList.ItemsSource = _vm.Content.KinkDefinitions.Where(t => MatchesCatalog(t.Id, t.Title, t.Description, null, query)).OrderBy(t => t.SortOrder).ToList();
                     break;
                 case "Equipment":
-                    CatalogEntryList.ItemsSource = _vm.Content.EquipmentDefinitions.OrderBy(t => t.SortOrder).ToList();
+                    CatalogEntryList.ItemsSource = _vm.Content.EquipmentDefinitions.Where(t => MatchesCatalog(t.Id, t.Title, null, t.Category, query)).OrderBy(t => t.SortOrder).ToList();
                     break;
                 case "Smart Toys":
-                    CatalogEntryList.ItemsSource = _vm.Content.SmartToyCapabilityDefinitions.OrderBy(t => t.SortOrder).ToList();
+                    CatalogEntryList.ItemsSource = _vm.Content.SmartToyCapabilityDefinitions.Where(t => MatchesCatalog(t.Id, t.Title, null, t.Category, query)).OrderBy(t => t.SortOrder).ToList();
                     break;
             }
+            if (selectedId != null) SelectCatalogEntry(selectedId);
+        }
+
+        private void OnCatalogSearchChanged(object sender, TextChangedEventArgs e) => BindCatalogEntries();
+
+        private static bool MatchesCatalog(string id, string title, string description, string category, string query)
+        {
+            if (string.IsNullOrEmpty(query)) return true;
+            return (id + " " + title + " " + description + " " + category)
+                .IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static string CatalogEntryId(object entry)
+        {
+            if (entry is SessionTypeDefinition session) return session.Id;
+            if (entry is CardTagDefinition tag) return tag.Id;
+            if (entry is KinkDefinition kink) return kink.Id;
+            if (entry is EquipmentDefinition equipment) return equipment.Id;
+            if (entry is SmartToyCapabilityDefinition capability) return capability.Id;
+            return null;
         }
 
         private void OnCatalogEntryChanged(object sender, SelectionChangedEventArgs e)
         {
             UpdateCatalogUsageText();
+            SyncCatalogEditor();
+        }
+
+        private void SyncCatalogEditor()
+        {
+            _syncingCatalogEditor = true;
+            try
+            {
+                var entry = CatalogEntryList?.SelectedItem;
+                CatalogEditorPanel.Visibility = entry == null ? Visibility.Collapsed : Visibility.Visible;
+                if (entry == null) return;
+                CatalogTitleBox.Text = CatalogTitle(entry);
+                CatalogDescriptionBox.Visibility = entry is KinkDefinition ? Visibility.Visible : Visibility.Collapsed;
+                CatalogCategoryBox.Visibility = entry is EquipmentDefinition || entry is SmartToyCapabilityDefinition
+                    ? Visibility.Visible : Visibility.Collapsed;
+                CatalogCapabilityPicker.Visibility = entry is SessionTypeDefinition ? Visibility.Visible : Visibility.Collapsed;
+                CatalogDescriptionBox.Text = (entry as KinkDefinition)?.Description ?? "";
+                CatalogCategoryBox.Text = (entry as EquipmentDefinition)?.Category
+                    ?? (entry as SmartToyCapabilityDefinition)?.Category ?? "";
+                CatalogCapabilityPicker.SetItems(
+                    _vm.Content.SmartToyCapabilityDefinitions.Select(capability => new RelationChoice
+                    {
+                        Id = capability.Id, DisplayName = capability.Title
+                    }),
+                    (entry as SessionTypeDefinition)?.RequiredCapabilityIds ?? Enumerable.Empty<string>());
+            }
+            finally
+            {
+                _syncingCatalogEditor = false;
+            }
+        }
+
+        private static string CatalogTitle(object entry)
+        {
+            if (entry is SessionTypeDefinition session) return session.Title;
+            if (entry is CardTagDefinition tag) return tag.Title;
+            if (entry is KinkDefinition kink) return kink.Title;
+            if (entry is EquipmentDefinition equipment) return equipment.Title;
+            if (entry is SmartToyCapabilityDefinition capability) return capability.Title;
+            return "";
+        }
+
+        private CatalogEntryEdit CaptureCatalogEdit(object entry)
+        {
+            if (entry is SessionTypeDefinition session)
+                return new CatalogEntryEdit { Kind = CatalogKinds.SessionType, Id = session.Id, Title = session.Title, SortOrder = session.SortOrder, RequiredCapabilityIds = new List<string>(session.RequiredCapabilityIds) };
+            if (entry is CardTagDefinition tag)
+                return new CatalogEntryEdit { Kind = CatalogKinds.CardTag, Id = tag.Id, Title = tag.Title, SortOrder = tag.SortOrder };
+            if (entry is KinkDefinition kink)
+                return new CatalogEntryEdit { Kind = CatalogKinds.Kink, Id = kink.Id, Title = kink.Title, Description = kink.Description, SortOrder = kink.SortOrder };
+            if (entry is EquipmentDefinition equipment)
+                return new CatalogEntryEdit { Kind = CatalogKinds.Equipment, Id = equipment.Id, Title = equipment.Title, Category = equipment.Category, SortOrder = equipment.SortOrder };
+            if (entry is SmartToyCapabilityDefinition capability)
+                return new CatalogEntryEdit { Kind = CatalogKinds.SmartToyCapability, Id = capability.Id, Title = capability.Title, Category = capability.Category, SortOrder = capability.SortOrder };
+            return null;
+        }
+
+        private void OnCatalogEditorChanged(object sender, RoutedEventArgs e)
+        {
+            if (_syncingCatalogEditor) return;
+            UpdateCatalogUsageText();
+        }
+
+        private void OnSaveCatalogEntry(object sender, RoutedEventArgs e)
+        {
+            var entry = CatalogEntryList.SelectedItem;
+            var oldValue = CaptureCatalogEdit(entry);
+            if (oldValue == null) return;
+            var newValue = new CatalogEntryEdit
+            {
+                Kind = oldValue.Kind, Id = oldValue.Id, Title = CatalogTitleBox.Text?.Trim() ?? "",
+                Description = CatalogDescriptionBox.Text ?? "", Category = CatalogCategoryBox.Text?.Trim() ?? "",
+                SortOrder = oldValue.SortOrder, RequiredCapabilityIds = CatalogCapabilityPicker.SelectedIds.ToList()
+            };
+            if (string.IsNullOrWhiteSpace(newValue.Title))
+            {
+                MessageBox.Show(this, "A catalog title is required.", "Catalog", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            PushOrMergeWithReload(new UpdateCatalogEntryCommand(OpenConnection, oldValue, newValue), () =>
+            {
+                ApplyCatalogEdit(entry, newValue);
+                BindCatalogEntries();
+                SelectCatalogEntry(newValue.Id);
+                BindSessionTypeBox();
+                StatusText.Text = "Saved catalog entry.";
+            });
+        }
+
+        private static void ApplyCatalogEdit(object entry, CatalogEntryEdit value)
+        {
+            if (entry is SessionTypeDefinition session)
+            {
+                session.Title = value.Title; session.RequiredCapabilityIds = new List<string>(value.RequiredCapabilityIds ?? new List<string>()); return;
+            }
+            if (entry is CardTagDefinition tag) { tag.Title = value.Title; return; }
+            if (entry is KinkDefinition kink) { kink.Title = value.Title; kink.Description = value.Description; return; }
+            if (entry is EquipmentDefinition equipment) { equipment.Title = value.Title; equipment.Category = value.Category; return; }
+            if (entry is SmartToyCapabilityDefinition capability) { capability.Title = value.Title; capability.Category = value.Category; }
         }
 
         private void UpdateCatalogUsageText()
@@ -610,14 +732,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 CardTitleBox.Text = title;
                 CardBodyBox.Text = _cardBuffer.BodyText;
 
-                BindRelationPicker(CardTagPicker, _vm.Content.CardTagDefinitions.Select(t => t.Title).ToList(),
-                    _cardBuffer.CardTagIds.Select(id => TitleOf(_vm.Content.CardTagDefinitions, id)).ToList());
-                BindRelationPicker(CardKinkPicker, _vm.Content.KinkDefinitions.Select(k => k.Title).ToList(),
-                    _cardBuffer.KinkIds.Select(id => TitleOf(_vm.Content.KinkDefinitions, id)).ToList());
-                BindRelationPicker(CardEquipmentPicker, _vm.Content.EquipmentDefinitions.Select(x => x.Title).ToList(),
-                    _cardBuffer.RequiredEquipmentIds.Select(id => TitleOf(_vm.Content.EquipmentDefinitions, id)).ToList());
-                BindRelationPicker(CardCapabilityPicker, _vm.Content.SmartToyCapabilityDefinitions.Select(x => x.Title).ToList(),
-                    _cardBuffer.RequiredCapabilityIds.Select(id => TitleOf(_vm.Content.SmartToyCapabilityDefinitions, id)).ToList());
+                CardTagPicker.SetItems(_vm.Content.CardTagDefinitions.Select(t => new RelationChoice { Id = t.Id, DisplayName = t.Title }), _cardBuffer.CardTagIds);
+                CardKinkPicker.SetItems(_vm.Content.KinkDefinitions.Select(k => new RelationChoice { Id = k.Id, DisplayName = k.Title }), _cardBuffer.KinkIds);
+                CardEquipmentPicker.SetItems(_vm.Content.EquipmentDefinitions.Select(x => new RelationChoice { Id = x.Id, DisplayName = x.Title }), _cardBuffer.RequiredEquipmentIds);
+                CardCapabilityPicker.SetItems(_vm.Content.SmartToyCapabilityDefinitions.Select(x => new RelationChoice { Id = x.Id, DisplayName = x.Title }), _cardBuffer.RequiredCapabilityIds);
 
                 BuildCardSequenceHost();
                 UpdateCardDirtyText();
@@ -639,21 +757,29 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
 
             var sequenceEditor = CardEditorSequenceHost.Build(_cardBuffer.Sequence, card.Id, _cardBuffer.Title, _vm.Content);
-            foreach (var row in sequenceEditor.Rows)
+            SubscribeBufferedRows(sequenceEditor);
+            CardActionSequenceHost.Content = sequenceEditor;
+            FocusActionSequence(sequenceEditor);
+        }
+
+        private void SubscribeBufferedRows(ActionSequenceEditorViewModel sequence)
+        {
+            if (sequence == null) return;
+            foreach (var row in sequence.Rows)
             {
                 row.PropertyChanged += (_, args) =>
                 {
                     if (_syncingCardEditor) return;
                     if (args.PropertyName != nameof(ActionRowData.TextValue) &&
                         args.PropertyName != nameof(ActionRowData.NumberText)) return;
-                    if (_cardBuffer == null) return;
-                    _cardBuffer.ApplyRowValue(row.InstanceId, row.TextValue, ParseFloat(row.NumberText));
-                    row.PersistedTextValue = row.TextValue;
-                    row.PersistedNumberText = row.NumberText;
                     UpdateCardDirtyText();
                 };
+                foreach (var option in row.PromptOptions)
+                {
+                    option.PropertyChanged += (_, _) => UpdateCardDirtyText();
+                    SubscribeBufferedRows(option.ActionSequence);
+                }
             }
-            CardActionSequenceHost.Content = sequenceEditor;
         }
 
         private void UpdateCardDirtyText()
@@ -675,18 +801,18 @@ namespace TruthCardGame.ReferenceHost.Wpf
         }
 
         /// <summary>Relation picker selections land in the buffer only.</summary>
-        private void OnCardBufferRelationsChanged(object sender, SelectionChangedEventArgs e)
+        private void OnCardBufferRelationsChanged(object sender, RoutedEventArgs e)
         {
-            if (_suppressCardRelationEvents || _syncingCardEditor || _cardBuffer == null) return;
+            if (_syncingCardEditor || _cardBuffer == null) return;
 
             _cardBuffer.CardTagIds.Clear();
-            _cardBuffer.CardTagIds.AddRange(ResolvePickerIds(CardTagPicker, _vm.Content.CardTagDefinitions));
+            _cardBuffer.CardTagIds.AddRange(CardTagPicker.SelectedIds);
             _cardBuffer.KinkIds.Clear();
-            _cardBuffer.KinkIds.AddRange(ResolvePickerIds(CardKinkPicker, _vm.Content.KinkDefinitions));
+            _cardBuffer.KinkIds.AddRange(CardKinkPicker.SelectedIds);
             _cardBuffer.RequiredEquipmentIds.Clear();
-            _cardBuffer.RequiredEquipmentIds.AddRange(ResolvePickerIds(CardEquipmentPicker, _vm.Content.EquipmentDefinitions));
+            _cardBuffer.RequiredEquipmentIds.AddRange(CardEquipmentPicker.SelectedIds);
             _cardBuffer.RequiredCapabilityIds.Clear();
-            _cardBuffer.RequiredCapabilityIds.AddRange(ResolvePickerIds(CardCapabilityPicker, _vm.Content.SmartToyCapabilityDefinitions));
+            _cardBuffer.RequiredCapabilityIds.AddRange(CardCapabilityPicker.SelectedIds);
             UpdateCardDirtyText();
         }
 
@@ -694,8 +820,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void AddBufferedCardAction(ActionSequenceEditorViewModel sequence, string typeKey)
         {
             if (_cardBuffer == null) return;
-            var instanceId = (sequence.IdentityPrefix ?? _cardBuffer.CardId) + "-action-" + Guid.NewGuid().ToString("N").Substring(0, 8);
-            _cardBuffer.AddAction(typeKey, id => sequence.CreateDefaultInstance(typeKey, id));
+            _cardBuffer.AddAction(_cardBuffer.FindSequence(sequence.SequenceId) ?? _cardBuffer.Sequence,
+                typeKey, id => sequence.CreateDefaultInstance(typeKey, id));
             RebuildCardSequenceHost();
             StatusText.Text = "Added " + ActionTypeRegistry.ByTypeKey(typeKey).DisplayLabel +
                 " to the card (unsaved — Save Card applies it).";
@@ -711,57 +837,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
             BuildCardSequenceHost();
             UpdateCardDirtyText();
-        }
-
-        private static string TitleOf<T>(List<T> definitions, string id) where T : class
-        {
-            var property = typeof(T).GetProperty(nameof(CardTagDefinition.Id));
-            foreach (var definition in definitions)
-            {
-                if ((string)property.GetValue(definition) == id)
-                {
-                    return (string)typeof(T).GetProperty(nameof(CardTagDefinition.Title)).GetValue(definition);
-                }
-            }
-            return id;
-        }
-
-        private void BindRelationPicker(ListBox picker, List<string> allTitles, List<string> selectedTitles)
-        {
-            _suppressCardRelationEvents = true;
-            try
-            {
-                picker.ItemsSource = allTitles;
-                picker.SelectedItems.Clear();
-                foreach (var title in selectedTitles)
-                {
-                    var item = allTitles.FirstOrDefault(t => t == title);
-                    if (item != null && !picker.SelectedItems.Contains(item)) picker.SelectedItems.Add(item);
-                }
-            }
-            finally
-            {
-                _suppressCardRelationEvents = false;
-            }
-        }
-
-        private List<string> ResolvePickerIds<T>(ListBox picker, List<T> definitions) where T : class
-        {
-            var idProperty = typeof(T).GetProperty(nameof(CardTagDefinition.Id));
-            var titleProperty = typeof(T).GetProperty(nameof(CardTagDefinition.Title));
-            var result = new List<string>();
-            foreach (var title in picker.SelectedItems.Cast<string>())
-            {
-                foreach (var definition in definitions)
-                {
-                    if ((string)titleProperty.GetValue(definition) == title)
-                    {
-                        result.Add((string)idProperty.GetValue(definition));
-                        break;
-                    }
-                }
-            }
-            return result;
         }
 
         // ---------- Ticket 14: session weighting editors ----------
@@ -968,6 +1043,17 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 SessionTypeBox.SelectedItem = _vm.Content.SessionTypes.FirstOrDefault(t => t.Id == selected.Id);
             }
+        }
+
+        private static string TitleOf<T>(IEnumerable<T> definitions, string id) where T : class
+        {
+            if (definitions == null) return id;
+            var definition = definitions.FirstOrDefault(item =>
+            {
+                if (item is CardTagDefinition tag) return tag.Id == id;
+                return false;
+            });
+            return definition is CardTagDefinition cardTag ? cardTag.Title : id;
         }
     }
 

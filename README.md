@@ -25,6 +25,12 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   concept, shared tag table, and legacy v1 action tables were **dropped
   deliberately** at schema v5 (see
   [`Docs/MilestoneB/02-schema-audit.md`](Docs/MilestoneB/02-schema-audit.md)).
+- **Milestone B authoring readiness is implemented**: Cards use the shared
+  ActionSequence editor, the Inspector has a scoped searchable Action Browser
+  with drag/drop, PromptChoice has recursive option sequences, relation fields
+  use stable-ID searchable chips, catalogs have editors, and the separate
+  runner logs selection/check/action/flow diagnostics plus full card body text.
+  See [`Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md`](Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md).
 - Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core` +
   `Game.Profile`, .NET Standard 2.1) that both Unity and the WPF hosts run —
   one engine, multiple hosts. `GameContentDefinition` is the in-memory
@@ -39,7 +45,7 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   do not infer Unity or human acceptance from older milestone reports.
 - Latest automated .NET gates: **135 Core tests passed**, **123 SQLite tests
   passed, 1 skipped** (canonical-DB known skip), **11 profile tests passed**,
-  and **10 WPF tests passed**. The WPF host builds and launches.
+  and **15 WPF tests passed**. The WPF host builds and launches.
 - Development rules: [`agents.md`](agents.md) · Unity CLI notes: [`unity-cli.md`](unity-cli.md)
 
 ## Milestone B — Cards, Profile, Selection (0.4)

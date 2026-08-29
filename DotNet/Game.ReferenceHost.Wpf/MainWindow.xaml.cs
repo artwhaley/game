@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Windows;
@@ -64,12 +65,16 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private bool _syncingPhaseMeta;
         private bool _loadingPlacementPhase;
         private bool _suppressDisconnectCommands;
+        private readonly ObservableCollection<ActionTypeChoice> _actionBrowserChoices = new ObservableCollection<ActionTypeChoice>();
+        private ActionSequenceEditorViewModel _focusedActionSequence;
+        private Point _actionDragStart;
 
         public MainWindow()
         {
             InitializeComponent();
             _vm = new WorkbenchViewModel();
             DataContext = _vm;
+            ActionBrowserList.ItemsSource = _actionBrowserChoices;
 
             NodeDoubleClickCommand = new DelegateCommand<GraphNodeViewModel>(OnNodeDoubleClicked);
 
@@ -212,6 +217,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
             _vm.PhaseGraph.ActionChanged += (node, row, field) =>
             {
                 if (row == null || string.IsNullOrEmpty(row.InstanceId)) return;
+                if (field == nameof(PromptChoiceOptionRowData.Label))
+                {
+                    CommitPromptChoiceChange(row, LoadSequenceSnapshot(row.SequenceId));
+                    return;
+                }
                 if (field != nameof(ActionRowData.TextValue) && field != nameof(ActionRowData.NumberText)) return;
                 PushOrMerge(new UpdateActionInstanceCommand(OpenConnection, row.InstanceId, row.TypeKey,
                     row.PersistedTextValue, ParseFloat(row.PersistedNumberText),
@@ -223,6 +233,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
             _vm.SessionGraph.ActionChanged += (node, row, field) =>
             {
                 if (row == null || string.IsNullOrEmpty(row.InstanceId)) return;
+                if (field == nameof(PromptChoiceOptionRowData.Label))
+                {
+                    CommitPromptChoiceChange(row, LoadSequenceSnapshot(row.SequenceId));
+                    return;
+                }
                 if (field != nameof(ActionRowData.TextValue) && field != nameof(ActionRowData.NumberText)) return;
                 PushOrMerge(new UpdateActionInstanceCommand(OpenConnection, row.InstanceId, row.TypeKey,
                     row.PersistedTextValue, ParseFloat(row.PersistedNumberText),
@@ -484,7 +499,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             // Card editor rows edit the BUFFER only.
             if (row.Sequence.OwnerScope == ActionOwnerScope.CardSequence)
             {
-                _cardBuffer?.RemoveAction(row.InstanceId);
+                _cardBuffer?.RemoveAction(row.SequenceId, row.InstanceId);
                 RebuildCardSequenceHost();
                 return;
             }
@@ -513,7 +528,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             // Card editor rows edit the BUFFER only.
             if (row.Sequence.OwnerScope == ActionOwnerScope.CardSequence)
             {
-                if (_cardBuffer != null && _cardBuffer.MoveAction(row.InstanceId, delta))
+                if (_cardBuffer != null && _cardBuffer.MoveAction(row.SequenceId, row.InstanceId, delta))
                 {
                     RebuildCardSequenceHost();
                 }
@@ -539,7 +554,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 var instanceId = (sequence.IdentityPrefix ?? "card") + "-action-" + Guid.NewGuid().ToString("N").Substring(0, 8);
                 var duplicate = ActionInstanceCloneUtility.Clone(row.Definition, instanceId);
-                _cardBuffer?.AddConfiguredAction(duplicate);
+                _cardBuffer?.AddConfiguredAction(_cardBuffer.FindSequence(sequence.SequenceId) ?? _cardBuffer.Sequence, duplicate);
                 RebuildCardSequenceHost();
                 return;
             }
@@ -558,6 +573,301 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     reloadSession: sequence.IsSessionDecisionOption, reloadPhase: !sequence.IsSessionDecisionOption);
             }
             StatusText.Text = "Duplicated " + row.DisplayLabel + " action.";
+        }
+
+        private void FocusActionSequence(ActionSequenceEditorViewModel sequence)
+        {
+            _focusedActionSequence = sequence;
+            ActionBrowserTargetText.Text = sequence == null
+                ? "No focused sequence"
+                : $"{sequence.ScopeLabel} · {sequence.SequenceId}";
+            RefreshActionBrowser();
+        }
+
+        private void RefreshActionBrowser()
+        {
+            _actionBrowserChoices.Clear();
+            if (_focusedActionSequence == null) return;
+            var query = (ActionBrowserSearchBox?.Text ?? "").Trim();
+            foreach (var choice in ActionEditorRegistry.PickerChoices(_focusedActionSequence.OwnerScope))
+            {
+                if (query.Length == 0 || choice.SearchText.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+                    _actionBrowserChoices.Add(choice);
+            }
+        }
+
+        private void OnActionBrowserSearchChanged(object sender, TextChangedEventArgs e) => RefreshActionBrowser();
+
+        private void OnActionDragStart(object sender, MouseButtonEventArgs e)
+        {
+            _actionDragStart = e.GetPosition(sender as IInputElement);
+        }
+
+        private void OnActionBrowserDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (ActionBrowserList.SelectedItem is ActionTypeChoice choice)
+                AppendBrowserAction(choice, _focusedActionSequence, _focusedActionSequence?.Rows.Count ?? 0);
+        }
+
+        private void OnActionBrowserMouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed || !(ActionBrowserList.SelectedItem is ActionTypeChoice choice)) return;
+            var point = e.GetPosition(ActionBrowserList);
+            if (Math.Abs(point.X - _actionDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(point.Y - _actionDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            DragDrop.DoDragDrop(ActionBrowserList, new DataObject(typeof(ActionTypeChoice), choice), DragDropEffects.Copy);
+        }
+
+        private void OnActionRowMouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed || !(sender is FrameworkElement element) ||
+                !(element.DataContext is ActionRowData row)) return;
+            var point = e.GetPosition(element);
+            if (Math.Abs(point.X - _actionDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(point.Y - _actionDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+            {
+                _actionDragStart = point;
+                return;
+            }
+            DragDrop.DoDragDrop(element, new DataObject(typeof(ActionRowData), row), DragDropEffects.Copy | DragDropEffects.Move);
+        }
+
+        private void OnActionDrop(object sender, DragEventArgs e)
+        {
+            var targetSequence = (sender as FrameworkElement)?.DataContext as ActionSequenceEditorViewModel;
+            var targetIndex = targetSequence?.Rows.Count ?? 0;
+            if (sender is FrameworkElement targetElement && targetElement.DataContext is ActionRowData targetRow)
+            {
+                targetSequence = targetRow.Sequence;
+                targetIndex = targetSequence.Rows.IndexOf(targetRow);
+            }
+            if (targetSequence == null) return;
+
+            if (e.Data.GetDataPresent(typeof(ActionTypeChoice)))
+            {
+                var choice = (ActionTypeChoice)e.Data.GetData(typeof(ActionTypeChoice));
+                AppendBrowserAction(choice, targetSequence, targetIndex);
+                e.Handled = true;
+                return;
+            }
+            if (e.Data.GetDataPresent(typeof(ActionRowData)))
+            {
+                var sourceRow = (ActionRowData)e.Data.GetData(typeof(ActionRowData));
+                ReorderOrCopyAction(sourceRow, targetSequence, targetIndex);
+                e.Handled = true;
+            }
+        }
+
+        private void AppendBrowserAction(ActionTypeChoice choice, ActionSequenceEditorViewModel sequence, int ordinal)
+        {
+            if (choice == null || sequence == null || sequence.OwnerNode == null) return;
+            var instanceId = sequence.IdentityPrefix + "-action-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var instance = sequence.CreateDefaultInstance(choice.TypeKey, instanceId);
+            try
+            {
+                ActionTypeRegistry.ValidateScope(instance, sequence.OwnerScope);
+                if (sequence.OwnerScope == ActionOwnerScope.CardSequence)
+                {
+                    _cardBuffer?.InsertConfiguredAction(_cardBuffer.FindSequence(sequence.SequenceId) ?? _cardBuffer.Sequence, instance, ordinal);
+                    RebuildCardSequenceHost();
+                }
+                else if (choice.TypeKey == ActionTypeKeys.SessionGoto && sequence.IsSessionDecisionOption)
+                {
+                    PushCommand(new AddSessionGotoCommand(OpenConnection, sequence.OwnerNode.Id, sequence.OptionId,
+                        ((SessionGotoInstanceDefinition)instance).Label), reloadSession: true);
+                }
+                else
+                {
+                    PushCommand(new AddActionInstanceCommand(OpenConnection, sequence.SequenceId, sequence.OwnerScope,
+                        choice.TypeKey, instanceId, instance, ordinal),
+                        reloadSession: sequence.IsSessionDecisionOption, reloadPhase: !sequence.IsSessionDecisionOption);
+                }
+                StatusText.Text = "Added " + choice.DisplayLabel + " action.";
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "Action rejected: " + ex.Message;
+            }
+        }
+
+        private void ReorderOrCopyAction(ActionRowData source, ActionSequenceEditorViewModel target, int targetIndex)
+        {
+            if (source?.Definition == null || target == null) return;
+            if (ReferenceEquals(source.Sequence, target))
+            {
+                var current = source.Sequence.Rows.IndexOf(source);
+                var normalized = targetIndex;
+                if (current >= 0 && current < normalized) normalized--;
+                if (current < 0 || current == normalized) return;
+                if (target.OwnerScope == ActionOwnerScope.CardSequence)
+                {
+                    if (_cardBuffer?.MoveActionTo(target.SequenceId, source.InstanceId, normalized) == true) RebuildCardSequenceHost();
+                }
+                else
+                {
+                    PushCommand(new MoveActionInstanceToOrdinalCommand(OpenConnection, target.SequenceId,
+                        source.InstanceId, current, normalized),
+                        reloadSession: target.IsSessionDecisionOption, reloadPhase: !target.IsSessionDecisionOption);
+                }
+                return;
+            }
+
+            var newId = target.IdentityPrefix + "-action-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            var copy = ActionInstanceCloneUtility.Clone(source.Definition, newId);
+            try
+            {
+                ActionTypeRegistry.ValidateScope(copy, target.OwnerScope);
+                if (target.OwnerScope == ActionOwnerScope.CardSequence)
+                {
+                    _cardBuffer?.InsertConfiguredAction(_cardBuffer.FindSequence(target.SequenceId) ?? _cardBuffer.Sequence, copy, targetIndex);
+                    RebuildCardSequenceHost();
+                }
+                else if (copy is SessionGotoInstanceDefinition && target.IsSessionDecisionOption)
+                {
+                    PushCommand(new AddSessionGotoCommand(OpenConnection, target.OwnerNode.Id, target.OptionId,
+                        ((SessionGotoInstanceDefinition)copy).Label), reloadSession: true);
+                }
+                else
+                {
+                    PushCommand(new AddActionInstanceCommand(OpenConnection, target.SequenceId, target.OwnerScope,
+                        target.Rows.Count > 0 ? ActionTypeRegistry.ForInstance(copy).TypeKey : ActionTypeRegistry.ForInstance(copy).TypeKey,
+                        newId, copy, targetIndex),
+                        reloadSession: target.IsSessionDecisionOption, reloadPhase: !target.IsSessionDecisionOption);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "Copy rejected: " + ex.Message;
+            }
+        }
+
+        private void OnFocusActionSequence(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement element && element.DataContext is ActionSequenceEditorViewModel sequence)
+            {
+                FocusActionSequence(sequence);
+            }
+        }
+
+        private void OnTogglePromptChoice(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement element && element.DataContext is ActionRowData row)
+                row.IsExpanded = !row.IsExpanded;
+        }
+
+        private void OnAddPromptChoiceOption(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is FrameworkElement element) || !(element.DataContext is ActionRowData row) ||
+                !(row.Definition is PromptChoiceInstanceDefinition choice) || row.Sequence == null) return;
+            if (choice.Options.Count >= 3)
+            {
+                StatusText.Text = "PromptChoice supports at most three options.";
+                return;
+            }
+            var before = _cardBuffer != null && row.Sequence.OwnerScope == ActionOwnerScope.CardSequence
+                ? SequenceSnapshotUtility.Clone(_cardBuffer.FindSequence(row.SequenceId))
+                : LoadSequenceSnapshot(row.SequenceId);
+            var optionId = row.InstanceId + "-option-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            choice.Options.Add(new PromptChoiceOptionDefinition
+            {
+                Id = optionId,
+                Label = "Option " + (choice.Options.Count + 1),
+                Sequence = new ActionSequenceDefinition { Id = optionId + "-sequence" },
+            });
+            CommitPromptChoiceChange(row, before);
+        }
+
+        private void OnRemovePromptChoiceOption(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is FrameworkElement element) || !(element.DataContext is PromptChoiceOptionRowData option) ||
+                option.Parent?.Definition is not PromptChoiceInstanceDefinition choice || option.Parent.Sequence == null) return;
+            if (choice.Options.Count <= 1)
+            {
+                StatusText.Text = "PromptChoice must keep at least one option.";
+                return;
+            }
+            var before = _cardBuffer != null && option.Parent.Sequence.OwnerScope == ActionOwnerScope.CardSequence
+                ? SequenceSnapshotUtility.Clone(_cardBuffer.FindSequence(option.Parent.SequenceId))
+                : LoadSequenceSnapshot(option.Parent.SequenceId);
+            choice.Options.RemoveAll(item => item.Id == option.OptionId);
+            CommitPromptChoiceChange(option.Parent, before);
+        }
+
+        private void CommitPromptChoiceChange(ActionRowData row, ActionSequenceDefinition before)
+        {
+            if (_cardBuffer != null && row.Sequence.OwnerScope == ActionOwnerScope.CardSequence)
+            {
+                RebuildCardSequenceHost();
+                return;
+            }
+            var after = SequenceSnapshotUtility.Clone(row.Sequence);
+            PushCommand(new ReplaceActionSequenceContentsCommand(OpenConnection, before, after),
+                reloadSession: row.Sequence.IsSessionDecisionOption, reloadPhase: !row.Sequence.IsSessionDecisionOption);
+        }
+
+        private ActionSequenceDefinition LoadSequenceSnapshot(string sequenceId)
+        {
+            return WithConnectionResult(connection =>
+            {
+                var content = GameContentSnapshotLoader.Load(connection);
+                foreach (var card in content.Cards)
+                {
+                    var found = FindSequence(card.Sequence, sequenceId);
+                    if (found != null) return SequenceSnapshotUtility.Clone(found);
+                }
+                foreach (var phase in content.Phases)
+                {
+                    foreach (var node in phase.Graph?.Nodes ?? new List<GraphNodeDefinition>())
+                    {
+                        foreach (var sequence in PhaseSequencesOf(node as PhaseGraphNodeDefinition))
+                        {
+                            var found = FindSequence(sequence, sequenceId);
+                            if (found != null) return SequenceSnapshotUtility.Clone(found);
+                        }
+                    }
+                }
+                foreach (var session in content.Sessions)
+                {
+                    foreach (var node in session.Graph?.Nodes ?? new List<SessionGraphNodeDefinition>())
+                    {
+                        foreach (var sequence in SessionSequencesOf(node))
+                        {
+                            var found = FindSequence(sequence, sequenceId);
+                            if (found != null) return SequenceSnapshotUtility.Clone(found);
+                        }
+                    }
+                }
+                throw new InvalidOperationException("Action sequence not found: " + sequenceId);
+            });
+        }
+
+        private static ActionSequenceDefinition FindSequence(ActionSequenceDefinition sequence, string sequenceId)
+        {
+            if (sequence == null) return null;
+            if (sequence.Id == sequenceId) return sequence;
+            foreach (var instance in sequence.Instances)
+                if (instance is PromptChoiceInstanceDefinition choice)
+                    foreach (var option in choice.Options)
+                    {
+                        var found = FindSequence(option.Sequence, sequenceId);
+                        if (found != null) return found;
+                    }
+            return null;
+        }
+
+        private static IEnumerable<ActionSequenceDefinition> PhaseSequencesOf(PhaseGraphNodeDefinition node)
+        {
+            if (node is ActionNodeDefinition action && action.Sequence != null) yield return action.Sequence;
+            if (node is PhaseDecisionNodeDefinition decision)
+                foreach (var option in decision.Options)
+                    if (option.Sequence != null) yield return option.Sequence;
+        }
+
+        private static IEnumerable<ActionSequenceDefinition> SessionSequencesOf(SessionGraphNodeDefinition node)
+        {
+            if (node is SessionDecisionNodeDefinition decision)
+                foreach (var option in decision.Options)
+                    if (option.Sequence != null) yield return option.Sequence;
         }
 
         private void OnAddDecisionOption(object sender, RoutedEventArgs e)
@@ -670,6 +980,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 ? "id: " + node.Id
                 : "id: " + node.Id + "\nref: " + node.RefId;
             InspKind.Text = node.Kind + (string.IsNullOrEmpty(node.Subtitle) ? "" : "\n" + node.Subtitle);
+            if (node.ActionSequence != null)
+                FocusActionSequence(node.ActionSequence);
 
             // Selecting the Start node exposes the Session metadata (title + type + weighting).
             SessionMetaPanel.Visibility = node.Kind == "start" ? Visibility.Visible : Visibility.Collapsed;
@@ -717,20 +1029,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
             try
             {
                 PhaseTitleBox.Text = _vm.SelectedPhase.Title;
-                var allTitles = new List<string>();
-                var anyTitles = new List<string>();
-                foreach (var tagId in _vm.SelectedPhase.MustHaveAllCardTags)
-                {
-                    var tag = _vm.Content.CardTagDefinitions.FirstOrDefault(t => t.Id == tagId);
-                    allTitles.Add(tag?.Title ?? tagId);
-                }
-                foreach (var tagId in _vm.SelectedPhase.MustHaveAnyCardTags)
-                {
-                    var tag = _vm.Content.CardTagDefinitions.FirstOrDefault(t => t.Id == tagId);
-                    anyTitles.Add(tag?.Title ?? tagId);
-                }
-                PhaseIncludeTagsBox.Text = string.Join(", ", allTitles);
-                PhaseExcludeTagsBox.Text = string.Join(", ", anyTitles);
+                var choices = _vm.Content.CardTagDefinitions
+                    .Select(tag => new RelationChoice { Id = tag.Id, DisplayName = tag.Title })
+                    .ToList();
+                PhaseAllTagPicker.SetItems(choices, _vm.SelectedPhase.MustHaveAllCardTags);
+                PhaseAnyTagPicker.SetItems(choices, _vm.SelectedPhase.MustHaveAnyCardTags);
             }
             finally
             {
@@ -749,48 +1052,17 @@ namespace TruthCardGame.ReferenceHost.Wpf
             BindPhaseList();
         }
 
-        private void OnPhaseTagsChanged(object sender, TextChangedEventArgs e)
+        private void OnPhaseTagsChanged(object sender, RoutedEventArgs e)
         {
             if (_syncingPhaseMeta || _vm.SelectedPhase == null) return;
-            var allTitles = SplitTags(PhaseIncludeTagsBox.Text);
-            var anyTitles = SplitTags(PhaseExcludeTagsBox.Text);
-
-            var all = ResolveCardTagTitles(allTitles);
-            var any = ResolveCardTagTitles(anyTitles);
+            var all = PhaseAllTagPicker.SelectedIds.ToList();
+            var any = PhaseAnyTagPicker.SelectedIds.ToList();
 
             PushOrMerge(new SetPhaseCardQueryCommand(OpenConnection, _vm.SelectedPhase.Id,
                 _vm.SelectedPhase.MustHaveAllCardTags, _vm.SelectedPhase.MustHaveAnyCardTags, all, any));
             _vm.SelectedPhase.MustHaveAllCardTags = all;
             _vm.SelectedPhase.MustHaveAnyCardTags = any;
             StatusText.Text = "Phase card query updated.";
-        }
-
-        /// <summary>Maps typed tag titles back to stable CardTagDefinition ids; unknown titles resolve to nothing (fail-loud at save time via FK).</summary>
-        private List<string> ResolveCardTagTitles(List<string> titles)
-        {
-            var result = new List<string>();
-            foreach (var title in titles)
-            {
-                var tag = _vm.Content.CardTagDefinitions.FirstOrDefault(t =>
-                    string.Equals(t.Title, title, StringComparison.OrdinalIgnoreCase));
-                if (tag != null && !result.Contains(tag.Id))
-                {
-                    result.Add(tag.Id);
-                }
-            }
-            return result;
-        }
-
-        private static List<string> SplitTags(string text)
-        {
-            var result = new List<string>();
-            if (string.IsNullOrWhiteSpace(text)) return result;
-            foreach (var part in text.Split(','))
-            {
-                var tag = part.Trim();
-                if (tag.Length > 0) result.Add(tag);
-            }
-            return result;
         }
 
         private void SyncSessionMetaPanel()

@@ -164,45 +164,106 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// <summary>Appends a default instance of the given action type to the buffered sequence.</summary>
         public string AddAction(string typeKey, Func<string, ActionInstanceDefinition> defaultInstanceFactory)
         {
+            return AddAction(Sequence, typeKey, defaultInstanceFactory);
+        }
+
+        public string AddAction(ActionSequenceDefinition sequence, string typeKey, Func<string, ActionInstanceDefinition> defaultInstanceFactory)
+        {
+            if (sequence == null) throw new ArgumentNullException(nameof(sequence));
             var instanceId = CardId + "-action-" + Guid.NewGuid().ToString("N").Substring(0, 8);
-            var instance = defaultInstanceFactory(instanceId);
-            Sequence.Instances.Add(instance);
+            sequence.Instances.Add(defaultInstanceFactory(instanceId));
             return instanceId;
         }
 
         /// <summary>Appends a pre-built instance (duplicate path).</summary>
         public string AddConfiguredAction(ActionInstanceDefinition instance)
         {
+            return AddConfiguredAction(Sequence, instance);
+        }
+
+        public string AddConfiguredAction(ActionSequenceDefinition sequence, ActionInstanceDefinition instance)
+        {
+            if (sequence == null) throw new ArgumentNullException(nameof(sequence));
             if (instance == null) throw new ArgumentNullException(nameof(instance));
-            Sequence.Instances.Add(instance);
+            sequence.Instances.Add(instance);
+            return instance.Id;
+        }
+
+        public string InsertConfiguredAction(ActionSequenceDefinition sequence, ActionInstanceDefinition instance, int ordinal)
+        {
+            if (sequence == null) throw new ArgumentNullException(nameof(sequence));
+            if (instance == null) throw new ArgumentNullException(nameof(instance));
+            sequence.Instances.Insert(Math.Max(0, Math.Min(ordinal, sequence.Instances.Count)), instance);
             return instance.Id;
         }
 
         public void RemoveAction(string instanceId)
         {
-            Sequence.Instances.RemoveAll(i => i.Id == instanceId);
+            RemoveAction(Sequence.Id, instanceId);
+        }
+
+        public void RemoveAction(string sequenceId, string instanceId)
+        {
+            FindSequence(sequenceId)?.Instances.RemoveAll(i => i.Id == instanceId);
         }
 
         /// <summary>Moves an instance one slot; returns false at the edges.</summary>
         public bool MoveAction(string instanceId, int delta)
         {
-            var index = IndexOf(instanceId);
+            return MoveAction(Sequence.Id, instanceId, delta);
+        }
+
+        public bool MoveAction(string sequenceId, string instanceId, int delta)
+        {
+            var sequence = FindSequence(sequenceId);
+            if (sequence == null) return false;
+            var index = sequence.Instances.FindIndex(instance => instance.Id == instanceId);
             if (index < 0) return false;
             var other = index + delta;
-            if (other < 0 || other >= Sequence.Instances.Count) return false;
-            var moved = Sequence.Instances[index];
-            Sequence.Instances.RemoveAt(index);
-            Sequence.Instances.Insert(other, moved);
+            if (other < 0 || other >= sequence.Instances.Count) return false;
+            var moved = sequence.Instances[index];
+            sequence.Instances.RemoveAt(index);
+            sequence.Instances.Insert(other, moved);
+            return true;
+        }
+
+        public bool MoveActionTo(string sequenceId, string instanceId, int ordinal)
+        {
+            var sequence = FindSequence(sequenceId);
+            if (sequence == null) return false;
+            var current = sequence.Instances.FindIndex(instance => instance.Id == instanceId);
+            if (current < 0) return false;
+            var item = sequence.Instances[current];
+            sequence.Instances.RemoveAt(current);
+            ordinal = Math.Max(0, Math.Min(ordinal, sequence.Instances.Count));
+            sequence.Instances.Insert(ordinal, item);
             return true;
         }
 
         public int IndexOf(string instanceId)
         {
-            for (var i = 0; i < Sequence.Instances.Count; i++)
+            return Sequence.Instances.FindIndex(instance => instance.Id == instanceId);
+        }
+
+        public ActionSequenceDefinition FindSequence(string sequenceId)
+        {
+            return FindSequenceRecursive(Sequence, sequenceId);
+        }
+
+        private static ActionSequenceDefinition FindSequenceRecursive(ActionSequenceDefinition sequence, string sequenceId)
+        {
+            if (sequence == null) return null;
+            if (sequence.Id == sequenceId) return sequence;
+            foreach (var instance in sequence.Instances)
             {
-                if (Sequence.Instances[i].Id == instanceId) return i;
+                if (instance is PromptChoiceInstanceDefinition choice)
+                    foreach (var option in choice.Options)
+                    {
+                        var found = FindSequenceRecursive(option.Sequence, sequenceId);
+                        if (found != null) return found;
+                    }
             }
-            return -1;
+            return null;
         }
 
         /// <summary>
@@ -212,9 +273,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// </summary>
         public void ApplyRowValue(string instanceId, string textValue, float? numberValue)
         {
-            var index = IndexOf(instanceId);
+            ApplyRowValue(Sequence.Id, instanceId, textValue, numberValue);
+        }
+
+        public void ApplyRowValue(string sequenceId, string instanceId, string textValue, float? numberValue)
+        {
+            var sequence = FindSequence(sequenceId);
+            var index = sequence?.Instances.FindIndex(instance => instance.Id == instanceId) ?? -1;
             if (index < 0) return;
-            var instance = Sequence.Instances[index];
+            var instance = sequence.Instances[index];
             switch (instance)
             {
                 case DebugInstanceDefinition debug:
