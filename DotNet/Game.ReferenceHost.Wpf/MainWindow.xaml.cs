@@ -612,10 +612,46 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void OnActionStrictChoiceChanged(object sender, SelectionChangedEventArgs e)
         {
             if (!(sender is ComboBox combo) || !(combo.DataContext is ActionRowData row)) return;
-            // WPF raises a transient null selection while an ItemsSource is
-            // being reattached. Only a real option selection may edit the row.
+            // WPF raises selection events while an ItemsSource is being
+            // reattached. Only a focused/open control represents author input;
+            // all other events must leave the persisted row value untouched.
+            if (!combo.IsKeyboardFocusWithin && !combo.IsDropDownOpen) return;
             if (!(combo.SelectedItem is ActionParameterOption option)) return;
             row.TextValue = option.Id ?? "";
+        }
+
+        private void OnActionTextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (!(sender is Control control) || control.Visibility != Visibility.Visible ||
+                !control.IsKeyboardFocusWithin || !(control.DataContext is ActionRowData row)) return;
+            row.TextValue = sender is TextBox textBox ? textBox.Text : ((ComboBox)sender).Text;
+        }
+
+        private void OnActionEditableChoiceChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!(sender is ComboBox combo) || combo.Visibility != Visibility.Visible ||
+                !combo.IsKeyboardFocusWithin) return;
+            combo.GetBindingExpression(ComboBox.TextProperty)?.UpdateSource();
+        }
+
+        private void OnActionEditableChoiceLostFocus(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is ComboBox combo) || combo.Visibility != Visibility.Visible) return;
+            combo.GetBindingExpression(ComboBox.TextProperty)?.UpdateSource();
+        }
+
+        private void OnActionNumberChanged(object sender, TextChangedEventArgs e)
+        {
+            if (!(sender is Control control) || control.Visibility != Visibility.Visible ||
+                !control.IsKeyboardFocusWithin || !(control.DataContext is ActionRowData row)) return;
+            row.NumberText = ((TextBox)sender).Text;
+        }
+
+        private void OnActionSecondaryNumberChanged(object sender, TextChangedEventArgs e)
+        {
+            if (!(sender is Control control) || control.Visibility != Visibility.Visible ||
+                !control.IsKeyboardFocusWithin || !(control.DataContext is ActionRowData row)) return;
+            row.SecondaryNumberText = ((TextBox)sender).Text;
         }
 
         private void OnActionDragStart(object sender, MouseButtonEventArgs e)

@@ -194,9 +194,14 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             var temperature = sequence.Rows.Single(row => row.TypeKey == ActionTypeKeys.ModifyTemperature);
 
             Assert.That(stat.HasEditableChoiceEditor, Is.True);
+            Assert.That(stat.TextValue, Is.EqualTo("courage"));
+            Assert.That(((StatIncreaseInstanceDefinition)stat.Definition).StatKey, Is.EqualTo("courage"));
             CollectionAssert.AreEquivalent(new[] { "courage", "focus" },
                 stat.ChoiceOptions.Select(option => option.Id).ToArray());
             Assert.That(temperature.HasStrictChoiceEditor, Is.True);
+            Assert.That(temperature.TextValue, Is.EqualTo("happiness"));
+            Assert.That(((ModifyTemperatureInstanceDefinition)temperature.Definition).TemperatureId,
+                Is.EqualTo("happiness"));
             Assert.That(temperature.ChoiceOptions.Single().Id, Is.EqualTo("happiness"));
             Assert.That(temperature.ChoiceOptions.Single().Name, Is.EqualTo("Happiness"));
             Assert.That(temperature.NumberText, Is.EqualTo("5"));
@@ -209,6 +214,78 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
                 ActionTypeKeys.ModifyTemperature, "temp-new");
             Assert.That(newStat.StatKey, Is.EqualTo("courage"));
             Assert.That(newTemperature.TemperatureId, Is.EqualTo("happiness"));
+        }
+
+        [Test]
+        public void TemperatureChoiceRemainsSelectedAfterEditorRebuild()
+        {
+            EnsureApplication();
+            var resources = new MainWindow();
+            var host = new Window { Width = 800, Height = 500 };
+            try
+            {
+                var content = new GameContentDefinition();
+                content.Temperatures.Add(new TemperatureDefinition
+                {
+                    Id = "happiness", Title = "Happiness", MinValue = 0, MaxValue = 100, DefaultValue = 50,
+                });
+                content.Temperatures.Add(new TemperatureDefinition
+                {
+                    Id = "arousal", Title = "Arousal", MinValue = 0, MaxValue = 100, DefaultValue = 50,
+                });
+                var card = new CardDefinition
+                {
+                    Id = "card-rebuild", Title = "Rebuild",
+                    Sequence = new ActionSequenceDefinition { Id = "sequence-rebuild" },
+                };
+                card.Sequence.Instances.Add(new ModifyTemperatureInstanceDefinition
+                {
+                    Id = "temperature-action", TemperatureId = "happiness", Amount = 5,
+                });
+                content.Cards.Add(card);
+
+                var template = (DataTemplate)resources.Resources["ActionSequenceTemplate"];
+                Assert.That(((ModifyTemperatureInstanceDefinition)card.Sequence.Instances[0]).TemperatureId,
+                    Is.EqualTo("happiness"));
+                var first = CardEditorSequenceHost.Build(card, content);
+                var firstRow = first.Rows.Single();
+                Assert.That(((ModifyTemperatureInstanceDefinition)firstRow.Definition).TemperatureId,
+                    Is.EqualTo("happiness"));
+                var firstRowTextChanges = new List<string>();
+                firstRow.PropertyChanged += (_, args) =>
+                {
+                    if (args.PropertyName == nameof(ActionRowData.TextValue))
+                        firstRowTextChanges.Add(firstRow.TextValue ?? "<null>");
+                };
+                Assert.That(firstRow.TextValue, Is.EqualTo("happiness"));
+                host.Content = new ContentControl { Content = first, ContentTemplate = template };
+                host.Show();
+                host.UpdateLayout();
+
+                Assert.That(firstRow.TextValue, Is.EqualTo("happiness"),
+                    "render changes: " + string.Join(",", firstRowTextChanges));
+                Assert.That(FindVisualChildren<ComboBox>(host)
+                    .Single(combo => combo.DataContext == firstRow && combo.Visibility == Visibility.Visible).SelectedItem,
+                    Is.SameAs(firstRow.SelectedChoice));
+
+                host.Content = null;
+                host.UpdateLayout();
+                var rebuilt = CardEditorSequenceHost.Build(card, content);
+                host.Content = new ContentControl { Content = rebuilt, ContentTemplate = template };
+                host.UpdateLayout();
+
+                var rebuiltRow = rebuilt.Rows.Single();
+                Assert.That(rebuiltRow.TextValue, Is.EqualTo("happiness"));
+                Assert.That(rebuiltRow.IsDanger, Is.False);
+                Assert.That(FindVisualChildren<ComboBox>(host)
+                    .Single(combo => combo.DataContext == rebuiltRow && combo.Visibility == Visibility.Visible).SelectedItem,
+                    Is.SameAs(rebuiltRow.SelectedChoice));
+            }
+            finally
+            {
+                host.Close();
+                resources.Close();
+            }
         }
 
         [Test]
@@ -234,6 +311,7 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             Assert.That(delay.NumberText, Is.EqualTo("2"));
             Assert.That(toy.HasStrictChoiceEditor, Is.True);
             Assert.That(toy.ChoiceOptions.Single().Id, Is.EqualTo("vibrate"));
+            Assert.That(toy.TextValue, Is.EqualTo("vibrate"));
             Assert.That(toy.NumberText, Is.EqualTo("0.75"));
             Assert.That(toy.SecondaryNumberText, Is.EqualTo("3"));
         }
@@ -536,6 +614,18 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
                 if (ReferenceEquals(current, ancestor)) return true;
             }
             return false;
+        }
+
+        private static IEnumerable<T> FindVisualChildren<T>(DependencyObject parent)
+            where T : DependencyObject
+        {
+            if (parent == null) yield break;
+            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T match) yield return match;
+                foreach (var descendant in FindVisualChildren<T>(child)) yield return descendant;
+            }
         }
     }
 }

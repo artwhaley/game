@@ -193,6 +193,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private string _numberText;
         private string _secondaryNumberText;
         private bool _isExpanded = true;
+        private List<ActionParameterOption> _phaseChoiceOptions;
 
         public GraphNodeViewModel Owner { get; set; }
         public ActionSequenceEditorViewModel Sequence { get; set; }
@@ -223,10 +224,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
             get
             {
                 if (TypeKey == ActionTypeKeys.PhaseGoto)
-                    return ExitOptions.Select(option => new ActionParameterOption { Id = option.Id, Name = option.Name });
+                {
+                    if (_phaseChoiceOptions == null)
+                    {
+                        _phaseChoiceOptions = ExitOptions
+                            .Select(option => new ActionParameterOption { Id = option.Id, Name = option.Name })
+                            .ToList();
+                    }
+                    return _phaseChoiceOptions;
+                }
                 return ParameterOptions;
             }
         }
+        public ActionParameterOption SelectedChoice =>
+            ChoiceOptions.FirstOrDefault(option => string.Equals(option.Id, TextValue, StringComparison.Ordinal));
         public string PersistedTextValue { get; set; }
         public string PersistedNumberText { get; set; }
         public string PersistedSecondaryNumberText { get; set; }
@@ -276,6 +287,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     _textValue = value;
                     SyncDefinition();
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TextValue)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedChoice)));
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ValidationMessage)));
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDanger)));
                 }
@@ -1343,20 +1355,32 @@ namespace TruthCardGame.ReferenceHost.Wpf
             switch (instance)
             {
                 case DebugInstanceDefinition debug:
-                    row.NumberText = debug.DelaySeconds.ToString("0.###", CultureInfo.InvariantCulture);
-                    row.TextValue = debug.Message;
+                {
+                    var debugMessage = debug.Message;
+                    var debugDelay = debug.DelaySeconds;
+                    row.TextValue = debugMessage;
+                    row.NumberText = debugDelay.ToString("0.###", CultureInfo.InvariantCulture);
                     break;
+                }
                 case StatIncreaseInstanceDefinition stat:
-                    row.NumberText = stat.Amount.ToString("0.###", CultureInfo.InvariantCulture);
-                    row.TextValue = stat.StatKey;
+                {
+                    var statKey = stat.StatKey;
+                    var statAmount = stat.Amount;
+                    row.TextValue = statKey;
+                    row.NumberText = statAmount.ToString("0.###", CultureInfo.InvariantCulture);
                     break;
+                }
                 case IncrementProgressInstanceDefinition progress:
                     row.NumberText = progress.Amount.ToString("0.###", CultureInfo.InvariantCulture);
                     break;
                 case ModifyTemperatureInstanceDefinition temperature:
-                    row.NumberText = temperature.Amount.ToString("0.###", CultureInfo.InvariantCulture);
-                    row.TextValue = temperature.TemperatureId;
+                {
+                    var temperatureId = temperature.TemperatureId;
+                    var temperatureAmount = temperature.Amount;
+                    row.TextValue = temperatureId;
+                    row.NumberText = temperatureAmount.ToString("0.###", CultureInfo.InvariantCulture);
                     break;
+                }
                 case CutsceneInstanceDefinition cutscene:
                     row.TextValue = cutscene.ResourceId;
                     break;
@@ -1367,12 +1391,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     row.NumberText = delay.DurationSeconds.ToString("0.###", CultureInfo.InvariantCulture);
                     break;
                 case ToyActivityInstanceDefinition toy:
-                    var toyIntensity = toy.Intensity.ToString("0.###", CultureInfo.InvariantCulture);
-                    var toyDuration = toy.DurationSeconds.ToString("0.###", CultureInfo.InvariantCulture);
-                    row.SecondaryNumberText = toyDuration;
-                    row.NumberText = toyIntensity;
-                    row.TextValue = toy.CapabilityId;
+                {
+                    var toyCapabilityId = toy.CapabilityId;
+                    var toyIntensity = toy.Intensity;
+                    var toyDuration = toy.DurationSeconds;
+                    row.TextValue = toyCapabilityId;
+                    row.NumberText = toyIntensity.ToString("0.###", CultureInfo.InvariantCulture);
+                    row.SecondaryNumberText = toyDuration.ToString("0.###", CultureInfo.InvariantCulture);
                     break;
+                }
                 case PromptChoiceInstanceDefinition choice:
                     row.TextValue = choice.Prompt;
                     break;

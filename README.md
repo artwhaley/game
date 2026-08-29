@@ -51,9 +51,9 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   from the action label and is guarded against re-entry, preventing editor
   controls from initiating a fatal nested drag. Stat Increase uses an editable
   dropdown of authored stat keys; Modify Temperature uses the configured
-  Temperature definitions dropdown. Dual-field action rows initialize their
-  numeric value before synchronizing the selected key, so rebuilding the Card
-  editor after Save cannot reset authored amounts to zero. Schema v6 adds
+  Temperature definitions dropdown. Dual-field action rows snapshot all
+  persisted values before hydrating bound editor fields, so rebuilding the
+  Card editor after Save cannot reset authored IDs or numeric amounts. Schema v6 adds
   Dialog (text + blocking), Delay (duration + blocking), and Toy Activity
   (configured Smart Toy Capability + intensity + duration + blocking, default
   blocking). Dialog currently uses the same temporary host presentation as a
@@ -83,7 +83,7 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   [`Docs/PreMilestoneC/10-final-regression.md`](Docs/PreMilestoneC/10-final-regression.md)
   and do not infer human acceptance from older milestone reports.
 - Latest automated non-canonical .NET gates: **142 Core tests passed**, **125
-  SQLite tests passed**, **11 profile tests passed**, and **31 WPF tests
+  SQLite tests passed**, **11 profile tests passed**, and **32 WPF tests
   passed**. The canonical DB still passes integrity and foreign-key checks; its
   authored-content presence assertion is currently inapplicable because the
   active DB contains zero Sessions and zero Cards. The WPF host builds and
