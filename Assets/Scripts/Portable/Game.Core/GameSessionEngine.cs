@@ -62,7 +62,7 @@ namespace TruthCardGame.Core
             _session = _catalog.SessionById(sessionId);
             _tracker = new BackgroundActionTracker(_services.Log);
             SpawnOptions = spawn ?? SessionSpawnOptions.Default;
-            _rngFactory = rngFactory ?? new PhaseRunRngFactory();
+            _rngFactory = rngFactory ?? SeededRandomDomains.CreatePhaseRunFactory(SpawnOptions.Seed);
             _selectionProfile = selectionProfile ?? new CardSelectionProfile();
             if (executionBudget <= 0) throw new ArgumentOutOfRangeException(nameof(executionBudget));
             _executionBudget = executionBudget;
@@ -75,6 +75,9 @@ namespace TruthCardGame.Core
 
         /// <summary>The spawn options this engine was started with (Ticket 20 seam).</summary>
         public SessionSpawnOptions SpawnOptions { get; }
+
+        /// <summary>The visible integer seed that controls both deterministic RNG domains.</summary>
+        public int Seed => SpawnOptions.Seed;
 
         public string SessionId => _session.Id;
         public string SessionTitle => _session.Title;

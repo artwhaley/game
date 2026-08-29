@@ -184,5 +184,53 @@ namespace TruthCardGame.Core.Tests
             Assert.AreEqual(firstDrawOfSuspended, refSuspended.NextInt(0, 1000000),
                 "suspended run's RNG untouched by other runs' draws");
         }
+
+        [Test]
+        public void RunSeed_ReproducesBothChoices_WithoutSharingDomains()
+        {
+            var selector = new SessionSelector(_catalog);
+
+            var selectionA = SeededRandomDomains.CreateSessionSelection(24680);
+            var selectionB = SeededRandomDomains.CreateSessionSelection(24680);
+            Assert.IsTrue(selector.TrySelect(SampleContent.TypeStandard, selectionA, out var sessionA));
+            Assert.IsTrue(selector.TrySelect(SampleContent.TypeStandard, selectionB, out var sessionB));
+            Assert.AreEqual(sessionA.Id, sessionB.Id, "same seed reproduces Session selection");
+
+            var phaseA = SeededRandomDomains.CreatePhaseRunFactory(24680).Create();
+            var phaseB = SeededRandomDomains.CreatePhaseRunFactory(24680).Create();
+            for (var i = 0; i < 20; i++)
+            {
+                Assert.AreEqual(phaseA.NextInt(0, 1000000), phaseB.NextInt(0, 1000000),
+                    "same seed reproduces PhaseRun/Card RNG sequence");
+            }
+
+            // Consuming the Session stream cannot advance the PhaseRun stream.
+            var untouchedPhase = SeededRandomDomains.CreatePhaseRunFactory(24680).Create();
+            var sessionOnly = SeededRandomDomains.CreateSessionSelection(24680);
+            sessionOnly.NextInt(0, 1000000);
+            var phaseAfterSessionUse = SeededRandomDomains.CreatePhaseRunFactory(24680).Create();
+            Assert.AreEqual(untouchedPhase.NextInt(0, 1000000), phaseAfterSessionUse.NextInt(0, 1000000));
+        }
+
+        [Test]
+        public void RunSeed_DerivesDifferentDomainStreams()
+        {
+            Assert.AreNotEqual(
+                SeededRandomDomains.DeriveSeed(24680, 0x51E55101u),
+                SeededRandomDomains.DeriveSeed(24680, 0xCA4D5EEDu),
+                "domain salts derive independent stream seeds");
+        }
+
+        [Test]
+        public void SpawnOptions_WithSeed_PreservesTemperatureOverrides()
+        {
+            var original = new SessionSpawnOptions(10)
+                .OverrideTemperature(SampleContent.TemperatureHappiness, 25f);
+            var copy = original.WithSeed(20);
+
+            Assert.AreEqual(20, copy.Seed);
+            Assert.AreEqual(25f, copy.TemperatureOverrides[SampleContent.TemperatureHappiness]);
+            Assert.AreEqual(10, original.Seed);
+        }
     }
 }

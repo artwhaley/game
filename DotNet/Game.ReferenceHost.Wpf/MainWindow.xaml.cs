@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -1570,7 +1571,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void OnRunSession(object sender, RoutedEventArgs e)
         {
-            var player = new ReferencePlayerWindow { Owner = this };
+            if (!TryGetRunSeed(out var seed)) return;
+            var player = new ReferencePlayerWindow { Owner = this, Seed = seed };
             // Parity: while the player runs, the Phase Graph follows the phase
             // being played so the two views stay in sync.
             player.PhaseChanged += phaseId =>
@@ -1582,6 +1584,26 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 }
             };
             player.Show();
+        }
+
+        private bool TryGetRunSeed(out int seed)
+        {
+            if (int.TryParse(RunSeedBox.Text, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out seed))
+            {
+                return true;
+            }
+
+            StatusText.Text = "Invalid run seed";
+            MessageBox.Show(this, "Seed must be a signed 32-bit integer.", "Run seed",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        private void OnRandomizeRunSeed(object sender, RoutedEventArgs e)
+        {
+            RunSeedBox.Text = RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue)
+                .ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
         // ---------- session library CRUD ----------

@@ -256,6 +256,11 @@
                         Click="OnRunSession"/>
                 <Button Content="Play by Type" Margin="6,0,0,0" Padding="10,3" Style="{StaticResource DarkButton}"
                         Click="OnPlayByType" ToolTip="Consumer-style start: pick a session type, then play a random eligible session"/>
+                <TextBlock Text="Seed:" VerticalAlignment="Center" Margin="12,0,4,0" Foreground="#FFBBBBBB"/>
+                <TextBox x:Name="RunSeedBox" Text="0" Width="78" Height="24" Padding="3,1"
+                         Style="{StaticResource DarkTextBox}" ToolTip="Deterministic integer seed for session selection and playback"/>
+                <Button Content="Randomize" Margin="4,0,0,0" Padding="6,2" Style="{StaticResource DarkButton}"
+                        Click="OnRandomizeRunSeed" ToolTip="Choose a new run seed"/>
                 <Button Content="Undo (Ctrl+Z)" Margin="6,0,0,0" Padding="10,3" Style="{StaticResource DarkButton}"
                         Command="{Binding UndoCommand, RelativeSource={RelativeSource AncestorType=Window}}" ToolTip="Undo the last authoring edit"/>
                 <Button Content="Redo (Ctrl+Y)" Margin="6,0,0,0" Padding="10,3" Style="{StaticResource DarkButton}"
@@ -290,6 +295,11 @@
                     <TextBlock Text="Preview" FontWeight="Bold" VerticalAlignment="Center" Foreground="#FFDDDDDD"/>
                     <TextBlock x:Name="PreviewSessionLabel" Text="(no session)" Margin="10,0,0,0" VerticalAlignment="Center"
                                Foreground="#FFB0B0B0"/>
+                    <TextBlock Text="Seed:" Margin="12,0,4,0" VerticalAlignment="Center" Foreground="#FFBBBBBB"/>
+                    <TextBox x:Name="PreviewSeedBox" Text="0" Width="78" Height="24" Padding="3,1"
+                             Style="{StaticResource DarkTextBox}" ToolTip="Deterministic integer seed for this preview run"/>
+                    <Button Content="Randomize" Click="OnRandomizePreviewSeed" Padding="6,2" Margin="4,0,0,0"
+                            Style="{StaticResource DarkButton}" ToolTip="Choose a new preview seed"/>
                     <Button Content="Start ▶" Click="OnPreviewStart" Padding="8,2" Margin="14,0,0,0" Style="{StaticResource DarkButton}"/>
                     <Button Content="Continue" x:Name="PreviewDrawButton" Click="OnPreviewAdvance" Padding="8,2" Margin="4,0,0,0"
                             Style="{StaticResource DarkButton}" IsEnabled="False"/>

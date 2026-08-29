@@ -97,7 +97,9 @@ Workbench. Contracts and per-ticket records:
   weighting fields; PhaseEntry gains ALL/ANY query editors, eligible-card
   preview, and a diagnostics window with a Happiness slider;
   **Play by Type** runs the consumer flow (type eligibility → uniform random
-  session → profile-driven selection).
+  session → profile-driven selection). All runner surfaces expose a visible
+  integer seed; Session selection and PhaseRun/Card selection use separate
+  deterministic domains, and the exact seed is logged for replay.
 - **Deferred by design**: anti-repeat/recent-card penalties, decks without
   replacement, rarity/manual multipliers, boolean eligibility expressions,
   kink intensity scales, Unity Timeline/Action binding, Buttplug/DG-Lab/

@@ -13,13 +13,34 @@ namespace TruthCardGame.Core
     public sealed class SessionSpawnOptions
     {
         /// <summary>
+        /// The integer seed for this run. Hosts display and persist this value
+        /// so a session trace can be replayed exactly.
+        /// </summary>
+        public int Seed { get; }
+
+        /// <summary>
         /// Per-Temperature start overrides keyed by stable Temperature id.
         /// Absent ids keep their definition default (Happiness 50 when unset).
         /// Unknown ids are a content error and fail loudly at spawn.
         /// </summary>
         public Dictionary<string, float> TemperatureOverrides { get; } = new Dictionary<string, float>();
 
-        public static readonly SessionSpawnOptions Default = new SessionSpawnOptions();
+        public static readonly SessionSpawnOptions Default = new SessionSpawnOptions(0);
+
+        public SessionSpawnOptions(int seed = 0)
+        {
+            Seed = seed;
+        }
+
+        public SessionSpawnOptions WithSeed(int seed)
+        {
+            var copy = new SessionSpawnOptions(seed);
+            foreach (var pair in TemperatureOverrides)
+            {
+                copy.TemperatureOverrides[pair.Key] = pair.Value;
+            }
+            return copy;
+        }
 
         public SessionSpawnOptions OverrideTemperature(string temperatureId, float value)
         {

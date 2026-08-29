@@ -978,6 +978,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void OnPlayByType(object sender, RoutedEventArgs e)
         {
+            if (!TryGetRunSeed(out var seed)) return;
             var content = _vm.Content;
             var catalog = new ContentCatalog(content);
             UserProfileSnapshot profileSnapshot;
@@ -1027,14 +1028,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (selectedType == null) return;
 
             // Uniform selection with a dedicated RNG.
-            if (!eligibility.TrySelectSession(selectedType.Id, profile, new SystemRandomSource(), out var session))
+            if (!eligibility.TrySelectSession(selectedType.Id, profile,
+                SeededRandomDomains.CreateSessionSelection(seed), out var session))
             {
                 MessageBox.Show(this, "No session of that type is available.", "Play by Type",
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            var player = new ReferencePlayerWindow();
+            var player = new ReferencePlayerWindow { Seed = seed };
             player.Owner = this;
             try
             {

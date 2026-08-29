@@ -10,6 +10,11 @@
             <TextBlock Text="Session:" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="#FFDDDDDD"/>
             <ComboBox x:Name="SessionCombo" Width="220" Height="24" VerticalContentAlignment="Center"
                       Style="{StaticResource DarkComboBox}" ItemContainerStyle="{StaticResource DarkComboBoxItem}"/>
+            <TextBlock Text="Seed:" VerticalAlignment="Center" Margin="12,0,4,0" Foreground="#FFBBBBBB"/>
+            <TextBox x:Name="SeedBox" Text="0" Width="82" Height="24" Padding="3,1"
+                     Style="{StaticResource DarkTextBox}" ToolTip="Deterministic integer seed for this run"/>
+            <Button Content="Randomize" Width="76" Height="24" Margin="4,0,0,0"
+                    Style="{StaticResource DarkButton}" Click="OnRandomizeSeed" ToolTip="Choose a new run seed"/>
             <Button x:Name="StartButton" Content="Start / Restart Session" Width="150" Height="24" Margin="12,0,0,0"
                     Style="{StaticResource DarkButton}" Click="OnStartSession"/>
             <Button x:Name="AutoButton" Content="Auto ▶" Width="80" Height="24" Margin="8,0,0,0"

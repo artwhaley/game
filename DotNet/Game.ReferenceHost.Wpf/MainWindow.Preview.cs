@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Text;
@@ -79,12 +80,14 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     prompts: new PreviewPromptService(this),
                     cutscene: new PreviewCutsceneService(this));
 
-                _previewEngine = new GameSessionEngine(_previewContent, session.Id, services, SpawnOptionsForRun(),
+                if (!TryReadPreviewSeed(out var seed)) return;
+                _previewEngine = new GameSessionEngine(_previewContent, session.Id, services, SpawnOptionsForRun(seed),
                     rngFactory: null, selectionProfile: CardSelectionProfile.FromProfile(LoadProfileSnapshot()));
                 SubscribePreviewVm(); // eager VM: wire the trace before the first advance
                 PreviewSessionLabel.Text = session.Title + "  (fresh snapshot)";
                 PreviewErrorText.Text = "";
                 PreviewDrawButton.IsEnabled = false;
+                PreviewLog($"Seed: {seed}");
                 PreviewLog("Session started: " + session.Title + " (fresh snapshot)");
                 await AdvancePreviewAsync();
             }
@@ -127,11 +130,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     log: new PreviewLogSink(PreviewLog),
                     prompts: new PreviewPromptService(this),
                     cutscene: new PreviewCutsceneService(this));
-                _previewEngine = new GameSessionEngine(_previewContent, session.Id, services, SpawnOptionsForRun(),
+                if (!TryReadPreviewSeed(out var seed)) return;
+                _previewEngine = new GameSessionEngine(_previewContent, session.Id, services, SpawnOptionsForRun(seed),
                     rngFactory: null, selectionProfile: CardSelectionProfile.FromProfile(LoadProfileSnapshot()));
                 SubscribePreviewVm();
                 PreviewErrorText.Text = "";
                 PreviewDrawButton.IsEnabled = false;
+                PreviewLog($"Seed: {seed}");
                 PreviewLog("Restarted (fresh snapshot).");
                 await AdvancePreviewAsync();
             }
@@ -155,9 +160,29 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// Session start options (Ticket 20 spawn seam). Defaults today; a
         /// future profile loader supplies TemperatureOverrides here.
         /// </summary>
-        private static SessionSpawnOptions SpawnOptionsForRun()
+        private static SessionSpawnOptions SpawnOptionsForRun(int seed)
         {
-            return SessionSpawnOptions.Default;
+            return new SessionSpawnOptions(seed);
+        }
+
+        private bool TryReadPreviewSeed(out int seed)
+        {
+            if (int.TryParse(PreviewSeedBox.Text, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out seed))
+            {
+                return true;
+            }
+
+            PreviewStatus("Invalid seed");
+            PreviewLog("ERROR: Seed must be a signed 32-bit integer.");
+            return false;
+        }
+
+        private void OnRandomizePreviewSeed(object sender, RoutedEventArgs e)
+        {
+            PreviewSeedBox.Text = RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue)
+                .ToString(System.Globalization.CultureInfo.InvariantCulture);
+            PreviewLog("Seed randomized: " + PreviewSeedBox.Text);
         }
 
         private void StopPreview()
