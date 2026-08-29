@@ -19,20 +19,31 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private readonly GameContentDefinition _content;
         private readonly PhaseDefinition _phase;
         private readonly CardSelectionProfile _profile;
+        private readonly SessionCardWeightingDefinition _weighting;
 
-        public SelectionDiagnosticsWindow(GameContentDefinition content, PhaseDefinition phase, UserProfileSnapshot profileSnapshot)
+        public SelectionDiagnosticsWindow(GameContentDefinition content, PhaseDefinition phase,
+            UserProfileSnapshot profileSnapshot, SessionCardWeightingDefinition weighting)
         {
             InitializeComponent();
             _content = content;
             _phase = phase;
             _profile = CardSelectionProfile.FromProfile(profileSnapshot);
+            _weighting = weighting ?? new SessionCardWeightingDefinition();
 
             Title = "Selection Diagnostics — " + phase.Title;
-            PhaseText.Text = $"Phase '{phase.Title}' · ALL [{string.Join(", ", phase.MustHaveAllCardTags)}] · ANY [{string.Join(", ", phase.MustHaveAnyCardTags)}]";
+            var allTitles = phase.MustHaveAllCardTags.Select(id => TitleOf(content.CardTagDefinitions, id)).ToList();
+            var anyTitles = phase.MustHaveAnyCardTags.Select(id => TitleOf(content.CardTagDefinitions, id)).ToList();
+            PhaseText.Text = $"Phase '{phase.Title}' · ALL [{string.Join(", ", allTitles)}] · ANY [{string.Join(", ", anyTitles)}]";
             HappinessSlider.Value = 50;
             HappinessSlider.ValueChanged += (_, _) => Refresh();
             SearchBox.TextChanged += (_, _) => Refresh();
             Refresh();
+        }
+
+        private static string TitleOf(List<TruthCardGame.Content.CardTagDefinition> definitions, string id)
+        {
+            var match = definitions.FirstOrDefault(t => t.Id == id);
+            return match?.Title ?? id;
         }
 
         private void Refresh()
@@ -41,7 +52,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             HappinessText.Text = happiness.ToString("0");
             var query = (SearchBox.Text ?? "").Trim();
 
-            var weighting = new SessionCardWeightingDefinition();
+            var weighting = _weighting;
             var rows = new List<DiagnosticRow>();
             foreach (var card in _content.Cards)
             {
@@ -62,7 +73,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
 
             var eligibleCount = rows.Count(r => r.Weight != null);
-            SummaryText.Text = $"{eligibleCount} of {rows.Count} shown cards eligible · weights use session default tuning (1.0)";
+            var tuningLabel = "default 1.0 tuning";
+            if (_weighting != null && (_weighting.LoveBase != 1f || _weighting.LikeBase != 1f || _weighting.TortureBase != 1f ||
+                _weighting.LoveHappinessGain != 1f || _weighting.LikeHappinessGain != 1f || _weighting.TortureUnhappinessGain != 1f))
+            {
+                tuningLabel = "this session's tuning";
+            }
+            SummaryText.Text = $"{eligibleCount} of {rows.Count} shown cards eligible · weights use {tuningLabel}";
             DiagnosticsList.ItemsSource = rows;
         }
 

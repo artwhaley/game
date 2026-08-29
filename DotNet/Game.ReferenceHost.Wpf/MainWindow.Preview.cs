@@ -78,7 +78,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     prompts: new PreviewPromptService(this),
                     cutscene: new PreviewCutsceneService(this));
 
-                _previewEngine = new GameSessionEngine(_previewContent, session.Id, services, SpawnOptionsForRun());
+                _previewEngine = new GameSessionEngine(_previewContent, session.Id, services, SpawnOptionsForRun(),
+                    rngFactory: null, selectionProfile: CardSelectionProfile.FromProfile(LoadProfileSnapshot()));
                 SubscribePreviewVm(); // eager VM: wire the trace before the first advance
                 PreviewSessionLabel.Text = session.Title + "  (fresh snapshot)";
                 PreviewErrorText.Text = "";
@@ -125,7 +126,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     log: new PreviewLogSink(PreviewLog),
                     prompts: new PreviewPromptService(this),
                     cutscene: new PreviewCutsceneService(this));
-                _previewEngine = new GameSessionEngine(_previewContent, session.Id, services, SpawnOptionsForRun());
+                _previewEngine = new GameSessionEngine(_previewContent, session.Id, services, SpawnOptionsForRun(),
+                    rngFactory: null, selectionProfile: CardSelectionProfile.FromProfile(LoadProfileSnapshot()));
                 SubscribePreviewVm();
                 PreviewErrorText.Text = "";
                 PreviewDrawButton.IsEnabled = false;

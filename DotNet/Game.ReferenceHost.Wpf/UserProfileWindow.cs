@@ -36,7 +36,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public UserProfileWindow()
         {
             InitializeComponent();
-            Loaded += (_, _) => ReloadSafely();
+            Loaded += (_, _) => ReloadSafelyPublic();
         }
 
         private static SqliteConnection OpenProfileConnection()
@@ -52,9 +52,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// <summary>
         /// Full reload wrapped so ANY failure (content load, profile DB, UI
         /// build) surfaces as a message instead of an unhandled UI-thread
-        /// exception that kills the whole application.
+        /// exception that kills the whole application. Public so the
+        /// Workbench can refresh the window on reopen (catalogs may have
+        /// changed while it was closed).
         /// </summary>
-        private void ReloadSafely()
+        public void ReloadSafelyPublic()
         {
             try
             {
@@ -249,6 +251,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
         }
 
-        private void OnRefresh(object sender, RoutedEventArgs e) => ReloadSafely();
+        private void OnRefresh(object sender, RoutedEventArgs e) => ReloadSafelyPublic();
     }
 }

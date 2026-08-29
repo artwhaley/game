@@ -64,6 +64,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 _profileWindow = new UserProfileWindow();
                 _profileWindow.Owner = this;
             }
+            // Re-reading the catalogs on every activation keeps the profile
+            // window in step with catalog edits made while it was open.
+            if (!_profileWindow.IsVisible)
+            {
+                _profileWindow.ReloadSafelyPublic();
+            }
             _profileWindow.Show();
             if (_profileWindow.WindowState == WindowState.Minimized) _profileWindow.WindowState = WindowState.Normal;
             _profileWindow.Activate();
@@ -355,26 +361,43 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void BindCardList()
         {
+            // Remember the selection across rebinds (filter typing must not
+            // silently close a dirty card editor).
+            var selectedId = (CardList.SelectedItem as CardDefinition)?.Id;
+
             var query = (CardFilter.Text ?? "").Trim();
             var cards = string.IsNullOrEmpty(query)
                 ? _vm.Content.Cards.ToList()
                 : _vm.Content.Cards.Where(c => (c.Title ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
             CardList.ItemsSource = cards;
             CardList.DisplayMemberPath = nameof(CardDefinition.Title);
+
+            if (selectedId != null)
+            {
+                var restore = cards.FirstOrDefault(c => c.Id == selectedId);
+                if (restore != null) CardList.SelectedItem = restore;
+            }
         }
 
-        private void OnCardFilterChanged(object sender, TextChangedEventArgs e) => BindCardList();
+        private void OnCardFilterChanged(object sender, TextChangedEventArgs e)
+        {
+            // Preserve the open editor during filter rebinds: the selection
+            // restore in BindCardList keeps the same card selected, so this
+            // path never fires a null-selection close while typing.
+            BindCardList();
+        }
 
         private void OnCardListChanged(object sender, SelectionChangedEventArgs e)
         {
             if (CardList.SelectedItem is CardDefinition card)
             {
+                // Same card re-selected (filter rebind restore) — no-op.
+                if (_cardBuffer != null && _cardBuffer.CardId == card.Id) return;
                 OpenCardEditor(card);
             }
-            else
-            {
-                CloseCardEditor(promptForDirty: false);
-            }
+            // Null selection (list emptied by filter) keeps the editor open so
+            // unsaved work survives the keystroke; the editor closes through
+            // explicit paths (card switch, library tab switch, app close).
         }
 
         private void OnNewCard(object sender, RoutedEventArgs e)
@@ -816,7 +839,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void OnShowSelectionDiagnostics(object sender, RoutedEventArgs e)
         {
             if (_vm.SelectedPhase == null) return;
-            var window = new SelectionDiagnosticsWindow(_vm.Content, _vm.SelectedPhase, LoadProfileSnapshot());
+            // Weighting context: prefer the session that's placing this phase,
+            // else the selected session, else defaults.
+            var weighting = _vm.SelectedSession?.CardWeighting;
+            var window = new SelectionDiagnosticsWindow(_vm.Content, _vm.SelectedPhase, LoadProfileSnapshot(), weighting);
             window.Owner = this;
             window.Show();
         }
@@ -825,10 +851,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             var profile = CardSelectionProfile.FromProfile(LoadProfileSnapshot());
             var happiness = happinessOverride ?? 50f;
+            var allTitles = phase.MustHaveAllCardTags.Select(id => TitleOf(_vm.Content.CardTagDefinitions, id)).ToList();
+            var anyTitles = phase.MustHaveAnyCardTags.Select(id => TitleOf(_vm.Content.CardTagDefinitions, id)).ToList();
             var lines = new List<string>
             {
                 $"Phase: {phase.Title}  ·  Happiness: {happiness:0.#}",
-                $"Query: ALL [{string.Join(", ", phase.MustHaveAllCardTags)}]  ANY [{string.Join(", ", phase.MustHaveAnyCardTags)}]",
+                $"Query: ALL [{string.Join(", ", allTitles)}]  ANY [{string.Join(", ", anyTitles)}]",
                 "",
             };
             foreach (var card in _vm.Content.Cards)
