@@ -120,6 +120,72 @@ namespace TruthCardGame.Content.Sqlite.Tests
         }
 
         [Test]
+        public void CanonicalDatabase_DisposableCardCanary_UsesRealRepositories()
+        {
+            var copy = Path.Combine(Path.GetTempPath(), "gwb-canonical-canary-" + Guid.NewGuid().ToString("N") + ".db");
+            var cardId = "preflight-disposable-" + Guid.NewGuid().ToString("N");
+            try
+            {
+                File.Copy(CanonicalPath(), copy);
+                using (var connection = new SqliteConnection("Data Source=" + copy))
+                {
+                    connection.Open();
+                    ConnectionInitializer.Initialize(connection);
+                    CoreMigrator.EnsureSchema(connection);
+
+                    CardRepository.Create(connection, new CardDefinition
+                    {
+                        Id = cardId,
+                        Title = "Preflight Disposable",
+                    });
+                    CardRepository.Rename(connection, cardId, "Preflight Disposable Edited");
+                    CardRepository.SetBody(connection, cardId, "Disposable canary body");
+
+                    var saved = GameContentSnapshotLoader.Load(connection).Cards.Find(card => card.Id == cardId);
+                    Assert.IsNotNull(saved, "disposable card saved through CardRepository");
+                    Assert.AreEqual("Preflight Disposable Edited", saved.Title);
+                    Assert.AreEqual("Disposable canary body", saved.BodyText);
+                    Assert.AreEqual(2, saved.Sequence.Instances.Count, "default Wait + IncrementProgress actions persisted");
+                }
+
+                // Reopen is the repository equivalent of restarting the Workbench.
+                using (var reopened = new SqliteConnection("Data Source=" + copy))
+                {
+                    reopened.Open();
+                    ConnectionInitializer.Initialize(reopened);
+                    var persisted = GameContentSnapshotLoader.Load(reopened).Cards.Find(card => card.Id == cardId);
+                    Assert.IsNotNull(persisted, "card survives reopen");
+                    CardRepository.Delete(reopened, cardId);
+                }
+
+                using (var afterDelete = new SqliteConnection("Data Source=" + copy + ";Mode=ReadOnly"))
+                {
+                    afterDelete.Open();
+                    Assert.IsNull(GameContentSnapshotLoader.Load(afterDelete).Cards.Find(card => card.Id == cardId),
+                        "delete survives reopen");
+                    using (var command = afterDelete.CreateCommand())
+                    {
+                        command.CommandText = "PRAGMA integrity_check;";
+                        Assert.AreEqual("ok", command.ExecuteScalar());
+                    }
+                    using (var command = afterDelete.CreateCommand())
+                    {
+                        command.CommandText = "PRAGMA foreign_key_check;";
+                        using (var reader = command.ExecuteReader())
+                        {
+                            Assert.IsFalse(reader.Read());
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                SqliteConnection.ClearAllPools();
+                if (File.Exists(copy)) File.Delete(copy);
+            }
+        }
+
+        [Test]
         public void CanonicalDatabase_PlaysThroughTheSessionVm()
         {
             if (CanonicalDatabaseHasUnwiredPhaseExit())
