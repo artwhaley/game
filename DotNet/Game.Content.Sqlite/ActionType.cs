@@ -26,6 +26,7 @@ namespace TruthCardGame.Content.Sqlite
         public const string DialogV6 = ActionTypeKeys.Dialog;
         public const string DelayV6 = ActionTypeKeys.Delay;
         public const string ToyActivityV6 = ActionTypeKeys.ToyActivity;
+        public const string WaitForAllV8 = ActionTypeKeys.WaitForAll;
         public const string PhaseGotoV2 = ActionTypeKeys.PhaseGoto;
         public const string SessionGotoV2 = ActionTypeKeys.SessionGoto;
         public const string ReturnV2 = ActionTypeKeys.Return;

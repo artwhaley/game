@@ -115,7 +115,7 @@ namespace TruthCardGame.Core
                     $"Flow-control action '{instance.Id}' ({info.TypeKey}) must be blocking.");
             }
 
-            if (info.IsAlwaysBlocking)
+            if (info.IsAlwaysBlocking && !(instance is WaitForAllInstanceDefinition))
             {
                 // Transfer mechanics land with the graph VM; reduce to the request now.
                 var flow = ReduceFlow(instance, info.TypeKey);
@@ -233,6 +233,10 @@ namespace TruthCardGame.Core
                         TimeSpan.FromSeconds(Math.Max(0f, toy.DurationSeconds)), cancellationToken);
                     return ActionExecutionResult.Continue;
 
+                case WaitForAllInstanceDefinition waitForAll:
+                    await _background.WaitForCurrentAsync(cancellationToken);
+                    return ActionExecutionResult.Continue;
+
                 case PromptChoiceInstanceDefinition choice:
                     return await ExecutePromptChoiceAsync(choice, context, cancellationToken, budget);
 
@@ -281,6 +285,7 @@ namespace TruthCardGame.Core
                 context.Temperatures,
                 context.PhaseProgress,
                 nestedScope);
+            ActionSequenceScopeValidator.ValidatePromptChoiceDescendant(selected.Sequence, nestedScope);
             return await ExecuteSequenceAsync(selected.Sequence, nestedContext, cancellationToken, budget);
         }
 

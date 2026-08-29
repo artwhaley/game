@@ -6,9 +6,9 @@ namespace TruthCardGame.Content
     /// discriminators, the WPF editors, Unity host implementations — references
     /// these constants so the vocabulary cannot drift.
     ///
-    /// Flow-control types (PhaseGoto, SessionGoto, Return, EndSession) are always
-    /// blocking/control-synchronous; <see cref="IsAlwaysBlocking"/> is the shared
-    /// rule enforced by persistence, the registry, and the executor.
+    /// Flow-control types and the WaitForAll barrier are always blocking;
+    /// <see cref="IsAlwaysBlocking"/> is the shared rule enforced by
+    /// persistence, the registry, and the executor.
     /// </summary>
     public static class ActionTypeKeys
     {
@@ -21,6 +21,7 @@ namespace TruthCardGame.Content
         public const string Dialog = "dialog";
         public const string Delay = "delay";
         public const string ToyActivity = "toy_activity";
+        public const string WaitForAll = "wait_for_all";
         public const string PromptChoice = "prompt_choice";
         public const string WaitForContinue = "wait_for_continue";
 
@@ -37,7 +38,8 @@ namespace TruthCardGame.Content
                 || typeKey == SessionGoto
                 || typeKey == Return
                 || typeKey == EndSession
-                || typeKey == WaitForContinue;
+                || typeKey == WaitForContinue
+                || typeKey == WaitForAll;
         }
     }
 }

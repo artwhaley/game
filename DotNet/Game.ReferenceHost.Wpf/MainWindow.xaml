@@ -21,43 +21,38 @@
                     Value="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
         </Style>
 
-        <!-- One editor for every owned ActionSequence. The picker is grouped
-             by the explicit registry category and filtered by owner scope. -->
+        <!-- One editor for every owned ActionSequence. The first line is the
+             insertion surface; authored rows below it are visually distinct. -->
         <DataTemplate x:Key="ActionSequenceTemplate">
             <Border Background="#FF26262A" BorderBrush="#FF3A3A3E" BorderThickness="1"
                     CornerRadius="2" Margin="0,3,0,0" Padding="3" AllowDrop="True" Drop="OnActionDrop">
                 <StackPanel>
                     <TextBlock Text="{Binding ScopeLabel}" FontSize="10" Foreground="#FFB0B0B0"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                        <TextBox Style="{StaticResource DarkTextBox}" Padding="2,0" Width="72"
-                                 Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 ToolTip="Search Action Types"/>
+                    <Border Background="#FF202124" BorderBrush="#FF3A3A3E" BorderThickness="1"
+                            CornerRadius="2" Padding="3" Margin="0,2,0,0">
+                        <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Add Action:" FontWeight="SemiBold" Foreground="#FFB0B0B0"
+                                   VerticalAlignment="Center" Margin="0,0,4,0"/>
                         <ComboBox Style="{StaticResource DarkComboBox}" Padding="2,0" Width="128" Margin="3,0,0,0"
                                   ItemsSource="{Binding ActionTypePickerView}" DisplayMemberPath="DisplayLabel"
                                   SelectedValuePath="TypeKey" SelectedValue="{Binding SelectedActionTypeKey, Mode=TwoWay}"
                                   ToolTip="Action Type (filtered by owner scope)">
-                            <ComboBox.GroupStyle>
-                                <GroupStyle>
-                                    <GroupStyle.HeaderTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="#FF9CCC65"/>
-                                        </DataTemplate>
-                                    </GroupStyle.HeaderTemplate>
-                                </GroupStyle>
-                            </ComboBox.GroupStyle>
                         </ComboBox>
                         <Button Content="+ Action" Click="OnAddActionInstance" Padding="5,1" Margin="3,0,0,0"
                                 Style="{StaticResource DarkButton}" ToolTip="Append the selected Action Type"/>
-                        <Button Content="Focus" Click="OnFocusActionSequence" Padding="5,1" Margin="3,0,0,0"
-                                Style="{StaticResource DarkButton}" ToolTip="Focus this sequence in the Action Browser"/>
-                    </StackPanel>
+                        <Button Content="Target Browser" Click="OnFocusActionSequence" Padding="5,1" Margin="3,0,0,0"
+                                Style="{StaticResource DarkButton}" ToolTip="Make this sequence the destination for the bottom-right Action Browser"/>
+                        </StackPanel>
+                    </Border>
                     <ItemsControl ItemsSource="{Binding Rows}" Margin="0,3,0,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <Border Padding="2" Margin="0,1,0,1" AllowDrop="True" Drop="OnActionDrop">
                                     <Border.Style>
                                         <Style TargetType="Border">
-                                            <Setter Property="Background" Value="#FF2B2B2F"/>
+                                            <Setter Property="Background" Value="#FF263B55"/>
+                                            <Setter Property="BorderBrush" Value="#FF4B78A8"/>
+                                            <Setter Property="BorderThickness" Value="1"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsDanger}" Value="True">
                                                     <Setter Property="Background" Value="#FF45272A"/>
@@ -78,7 +73,8 @@
                                             <ComboBox Padding="2,0" Width="92" Margin="2,0,2,0"
                                                       ItemsSource="{Binding ChoiceOptions}" DisplayMemberPath="Name"
                                                       SelectedValuePath="Id"
-                                                      SelectedValue="{Binding TextValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                                      SelectedValue="{Binding TextValue, Mode=OneWay}"
+                                                      SelectionChanged="OnActionStrictChoiceChanged">
                                                 <ComboBox.Style>
                                                     <Style TargetType="ComboBox" BasedOn="{StaticResource DarkComboBox}">
                                                         <Setter Property="Visibility" Value="Collapsed"/>

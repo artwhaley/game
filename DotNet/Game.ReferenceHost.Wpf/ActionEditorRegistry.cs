@@ -122,6 +122,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 {
                     TypeKey = ActionTypeKeys.WaitForContinue, IsReadOnlyDisplay = true
                 },
+                [ActionTypeKeys.WaitForAll] = new ActionEditorDescriptor
+                {
+                    TypeKey = ActionTypeKeys.WaitForAll, IsReadOnlyDisplay = true
+                },
                 [ActionTypeKeys.PhaseGoto] = new ActionEditorDescriptor
                 {
                     TypeKey = ActionTypeKeys.PhaseGoto, HasChoiceEditor = true,
@@ -162,7 +166,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             IEnumerable<ExitOption> exitOptions,
             ObservableCollection<ActionRowData> rows = null,
             IEnumerable<ActionParameterOption> statOptions = null,
-            IEnumerable<ActionParameterOption> toyCapabilityOptions = null)
+            IEnumerable<ActionParameterOption> toyCapabilityOptions = null,
+            bool isPromptChoiceDescendant = false)
         {
             OwnerNode = ownerNode;
             SequenceId = sequenceId ?? "";
@@ -172,6 +177,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             ResourceOptions = new List<ActionParameterOption>(resourceOptions ?? Enumerable.Empty<ActionParameterOption>());
             ToyCapabilityOptions = new List<ActionParameterOption>(toyCapabilityOptions ?? Enumerable.Empty<ActionParameterOption>());
             ExitOptions = new List<ExitOption>(exitOptions ?? Enumerable.Empty<ExitOption>());
+            IsPromptChoiceDescendant = isPromptChoiceDescendant;
             Rows = rows ?? new ObservableCollection<ActionRowData>();
             foreach (var instance in instances ?? Enumerable.Empty<ActionInstanceDefinition>())
                 Rows.Add(PhaseGraphViewModel.ToActionRow(this, instance, Rows.Count));
@@ -183,6 +189,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public ActionOwnerScope OwnerScope { get; }
         public string ScopeLabel => OwnerScope == ActionOwnerScope.SessionDecisionOptionSequence ? "Session option actions" : "Actions";
         public bool IsSessionDecisionOption => OwnerScope == ActionOwnerScope.SessionDecisionOptionSequence;
+        public bool IsPromptChoiceDescendant { get; }
         public string IdentityPrefix => string.IsNullOrEmpty(OptionId)
             ? OwnerNode?.Id
             : OwnerNode?.Id + "-" + OptionId;
@@ -257,6 +264,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             _pickerChoices.Clear();
             foreach (var choice in ActionEditorRegistry.PickerChoices(OwnerScope))
             {
+                if (IsPromptChoiceDescendant && choice.TypeKey == ActionTypeKeys.WaitForAll)
+                    continue;
                 if (query.Length == 0 || choice.SearchText.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
                     _pickerChoices.Add(choice);
             }

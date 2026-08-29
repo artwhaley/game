@@ -62,6 +62,11 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   Schema v7 adds searchable slash-delimited folders to Cards only. The Cards
   drawer filters by folder and searches titles, stable IDs, and folder paths;
   the buffered Card editor saves folder moves in the same undoable edit.
+  Wait For All is an always-blocking snapshot barrier for currently running
+  nonblocking actions and is intentionally unavailable inside PromptChoice
+  descendant sequences. The action editor labels its insertion surface,
+  separates authored rows visually, and preserves configured strict dropdown
+  values while an editor is rebuilt.
   See [`Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md`](Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md).
 - Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core` +
   `Game.Profile`, .NET Standard 2.1) that both Unity and the WPF hosts run —
@@ -77,8 +82,8 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   in the Pre-Milestone C reliability stack. See
   [`Docs/PreMilestoneC/10-final-regression.md`](Docs/PreMilestoneC/10-final-regression.md)
   and do not infer human acceptance from older milestone reports.
-- Latest automated non-canonical .NET gates: **139 Core tests passed**, **122
-  SQLite tests passed**, **11 profile tests passed**, and **28 WPF tests
+- Latest automated non-canonical .NET gates: **142 Core tests passed**, **125
+  SQLite tests passed**, **11 profile tests passed**, and **31 WPF tests
   passed**. The canonical DB still passes integrity and foreign-key checks; its
   authored-content presence assertion is currently inapplicable because the
   active DB contains zero Sessions and zero Cards. The WPF host builds and

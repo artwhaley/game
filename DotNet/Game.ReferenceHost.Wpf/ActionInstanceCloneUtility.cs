@@ -71,6 +71,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case EndSessionInstanceDefinition:
                     clone = new EndSessionInstanceDefinition();
                     break;
+                case WaitForAllInstanceDefinition:
+                    clone = new WaitForAllInstanceDefinition();
+                    break;
                 default:
                     throw new InvalidOperationException("No explicit clone mapping for '" + source.GetType().Name + "'.");
             }

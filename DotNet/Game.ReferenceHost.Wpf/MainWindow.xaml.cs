@@ -609,6 +609,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void OnActionBrowserSearchChanged(object sender, TextChangedEventArgs e) => RefreshActionBrowser();
 
+        private void OnActionStrictChoiceChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!(sender is ComboBox combo) || !(combo.DataContext is ActionRowData row)) return;
+            // WPF raises a transient null selection while an ItemsSource is
+            // being reattached. Only a real option selection may edit the row.
+            if (!(combo.SelectedItem is ActionParameterOption option)) return;
+            row.TextValue = option.Id ?? "";
+        }
+
         private void OnActionDragStart(object sender, MouseButtonEventArgs e)
         {
             _actionDragStart = e.GetPosition(sender as IInputElement);

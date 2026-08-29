@@ -65,6 +65,8 @@ namespace TruthCardGame.Content.Sqlite.Tests
                     { Id = "delay", DurationSeconds = 2.5f, IsBlocking = true });
                 card.Sequence.Instances.Add(new ToyActivityInstanceDefinition
                     { Id = "toy", CapabilityId = "vibrate", Intensity = .7f, DurationSeconds = 4f, IsBlocking = true });
+                card.Sequence.Instances.Add(new WaitForAllInstanceDefinition
+                    { Id = "wait-all", IsBlocking = true });
                 CardRepository.Create(connection, card);
 
                 var loaded = GameContentSnapshotLoader.LoadSequence(connection, card.Sequence.Id);
@@ -76,6 +78,8 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 Assert.That(toy.Intensity, Is.EqualTo(.7f));
                 Assert.That(toy.DurationSeconds, Is.EqualTo(4f));
                 Assert.That(toy.IsBlocking, Is.True);
+                Assert.That(loaded.Instances[3], Is.TypeOf<WaitForAllInstanceDefinition>());
+                Assert.That(loaded.Instances[3].IsBlocking, Is.True);
             }
         }
 

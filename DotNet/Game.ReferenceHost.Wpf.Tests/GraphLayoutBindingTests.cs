@@ -114,6 +114,7 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
 
             var cardChoices = ActionEditorRegistry.PickerChoices(ActionOwnerScope.CardSequence).ToList();
             Assert.That(cardChoices.Any(choice => choice.TypeKey == ActionTypeKeys.PhaseGoto), Is.False);
+            Assert.That(cardChoices.Any(choice => choice.TypeKey == ActionTypeKeys.WaitForAll), Is.True);
             CollectionAssert.AreEqual(
                 cardChoices.Select(choice => choice.DisplayLabel).OrderBy(label => label, System.StringComparer.OrdinalIgnoreCase),
                 cardChoices.Select(choice => choice.DisplayLabel));
@@ -138,6 +139,25 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
                 new[] { prompt }, null, null, null);
             Assert.That(sessionSequence.Rows[0].PromptOptions[0].ActionSequence.OwnerScope,
                 Is.EqualTo(ActionOwnerScope.SessionDecisionPromptChoiceSequence));
+            Assert.That(sessionSequence.Rows[0].PromptOptions[0].ActionSequence.ActionTypePickerView
+                .Cast<ActionTypeChoice>().Any(choice => choice.TypeKey == ActionTypeKeys.WaitForAll), Is.False);
+        }
+
+        [Test]
+        public void ActionEditorUsesNamedInsertionSurfaceAndStableStrictChoiceBinding()
+        {
+            EnsureApplication();
+            var window = new MainWindow();
+            try
+            {
+                var template = (DataTemplate)window.Resources["ActionSequenceTemplate"];
+                Assert.That(template, Is.Not.Null);
+                Assert.That(window.FindName("ActionBrowserSearchBox"), Is.Not.Null);
+            }
+            finally
+            {
+                window.Close();
+            }
         }
 
         [Test]

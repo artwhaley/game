@@ -161,6 +161,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     return b is ReturnInstanceDefinition;
                 case EndSessionInstanceDefinition:
                     return b is EndSessionInstanceDefinition;
+                case WaitForAllInstanceDefinition:
+                    return b is WaitForAllInstanceDefinition;
                 default:
                     return false;
             }

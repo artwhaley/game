@@ -937,6 +937,13 @@ namespace TruthCardGame.Content.Sqlite
                             IsBlocking = true,
                         };
 
+                    case ActionType.WaitForAllV8:
+                        return new WaitForAllInstanceDefinition
+                        {
+                            Id = instanceId,
+                            IsBlocking = true,
+                        };
+
                     case ActionType.PhaseGotoV2:
                     {
                         string exitId = null;

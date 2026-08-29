@@ -72,6 +72,7 @@ namespace TruthCardGame.Core.Tests
                 new ToyActivityInstanceDefinition(),
                 new PromptChoiceInstanceDefinition(),
                 new WaitForContinueInstanceDefinition(),
+                new WaitForAllInstanceDefinition(),
                 new PhaseGotoInstanceDefinition(),
                 new SessionGotoInstanceDefinition(),
                 new ReturnInstanceDefinition(),
@@ -96,6 +97,7 @@ namespace TruthCardGame.Core.Tests
                          ActionTypeKeys.PhaseGoto,
                          ActionTypeKeys.SessionGoto,
                          ActionTypeKeys.WaitForContinue,
+                         ActionTypeKeys.WaitForAll,
                          ActionTypeKeys.Return,
                          ActionTypeKeys.EndSession,
                      })
@@ -331,6 +333,41 @@ namespace TruthCardGame.Core.Tests
             delay.Gate.TrySetResult(true);
             await _tracker.DrainAsync();
             Assert.AreEqual(0, _tracker.ActiveCount);
+        }
+
+        [Test]
+        public async Task WaitForAll_WaitsForBackgroundActionsAlreadyRunning()
+        {
+            var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _tracker.Start(gate.Task);
+            var context = Context(ActionOwnerScope.CardSequence);
+
+            var run = Run(_executor, context,
+                new WaitForAllInstanceDefinition { Id = "wait" },
+                new DebugInstanceDefinition { Id = "after", Message = "after barrier" });
+
+            Assert.IsFalse(run.IsCompleted, "the barrier must yield while current background work is active");
+            gate.SetResult(true);
+            await run;
+
+            Assert.IsTrue(_log.Entries.Exists(entry => entry.Contains("after barrier")));
+        }
+
+        [Test]
+        public void WaitForAll_IsRejectedInsidePromptChoiceDescendants()
+        {
+            var nested = new ActionSequenceDefinition
+            {
+                Id = "nested-wait",
+                Instances =
+                {
+                    new WaitForAllInstanceDefinition { Id = "nested-wait-action" },
+                },
+            };
+
+            Assert.Throws<InvalidOperationException>(() =>
+                ActionSequenceScopeValidator.ValidatePromptChoiceDescendant(
+                    nested, ActionOwnerScope.CardSequence));
         }
 
         // ---------- flow reduction ----------

@@ -206,7 +206,7 @@ namespace TruthCardGame.Content.Sqlite
             if (!instance.IsBlocking && ActionType.IsAlwaysBlocking(type))
             {
                 throw new InvalidOperationException(
-                    $"Flow-control instance '{instance.Id}' ({type}) cannot be nonblocking.");
+                    $"Always-blocking instance '{instance.Id}' ({type}) cannot be nonblocking.");
             }
 
             Sql.Execute(connection, transaction,
@@ -275,6 +275,7 @@ namespace TruthCardGame.Content.Sqlite
                         ("label", sessionGoto.Label ?? ""), ("i", instance.Id));
                     break;
                 case WaitForContinueInstanceDefinition wait:
+                case WaitForAllInstanceDefinition waitForAll:
                 case ReturnInstanceDefinition returnInstance:
                 case EndSessionInstanceDefinition endSession:
                     break;
@@ -363,7 +364,7 @@ namespace TruthCardGame.Content.Sqlite
             if (!instance.IsBlocking && ActionType.IsAlwaysBlocking(type))
             {
                 throw new InvalidOperationException(
-                    $"Flow-control instance '{instance.Id}' ({type}) cannot be nonblocking.");
+                    $"Always-blocking instance '{instance.Id}' ({type}) cannot be nonblocking.");
             }
 
             Sql.Execute(connection, transaction,
@@ -441,6 +442,7 @@ namespace TruthCardGame.Content.Sqlite
                     break;
 
                 case WaitForContinueInstanceDefinition wait:
+                case WaitForAllInstanceDefinition waitForAll:
                     // Code-defined no-parameter action; its action_instance row
                     // is the complete persisted representation.
                     break;
@@ -513,6 +515,7 @@ namespace TruthCardGame.Content.Sqlite
             if (instance is ToyActivityInstanceDefinition) return ActionType.ToyActivityV6;
             if (instance is PromptChoiceInstanceDefinition) return ActionType.PromptChoiceV2;
             if (instance is WaitForContinueInstanceDefinition) return ActionType.WaitForContinueV2;
+            if (instance is WaitForAllInstanceDefinition) return ActionType.WaitForAllV8;
             if (instance is PhaseGotoInstanceDefinition) return ActionType.PhaseGotoV2;
             if (instance is SessionGotoInstanceDefinition) return ActionType.SessionGotoV2;
             if (instance is ReturnInstanceDefinition) return ActionType.ReturnV2;

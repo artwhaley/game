@@ -85,6 +85,7 @@ namespace TruthCardGame.Core
             if (instance is DialogInstanceDefinition) return ActionTypeKeys.Dialog;
             if (instance is DelayInstanceDefinition) return ActionTypeKeys.Delay;
             if (instance is ToyActivityInstanceDefinition) return ActionTypeKeys.ToyActivity;
+            if (instance is WaitForAllInstanceDefinition) return ActionTypeKeys.WaitForAll;
             if (instance is PromptChoiceInstanceDefinition) return ActionTypeKeys.PromptChoice;
             if (instance is WaitForContinueInstanceDefinition) return ActionTypeKeys.WaitForContinue;
             if (instance is PhaseGotoInstanceDefinition) return ActionTypeKeys.PhaseGoto;
@@ -212,6 +213,20 @@ namespace TruthCardGame.Core
                 EditorDiscriminator = "ToyActivity",
                 DefaultInstance = () => new ToyActivityInstanceDefinition
                     { Id = "", CapabilityId = "", Intensity = 1f, DurationSeconds = 1f, IsBlocking = true },
+            });
+
+            Add(new ActionTypeInfo
+            {
+                TypeKey = ActionTypeKeys.WaitForAll,
+                DisplayLabel = "Wait For All",
+                AuthoringCategory = "Pacing/Input",
+                SearchKeywords = "wait background complete barrier",
+                LegalScopes = ActionOwnerScope.All,
+                IsAlwaysBlocking = true,
+                BlockingConfigurable = false,
+                DefaultBlocking = true,
+                EditorDiscriminator = "WaitForAll",
+                DefaultInstance = () => new WaitForAllInstanceDefinition { Id = "", IsBlocking = true },
             });
 
             Add(new ActionTypeInfo

@@ -78,6 +78,11 @@ namespace TruthCardGame.Content
         public float DurationSeconds { get; set; }
     }
 
+    /// <summary>Blocks sequence continuation until background actions already running complete.</summary>
+    public sealed class WaitForAllInstanceDefinition : ActionInstanceDefinition
+    {
+    }
+
     /// <summary>Prompts the user with labeled options; the selected option executes its own full nested Action sequence before normal completion.</summary>
     public sealed class PromptChoiceInstanceDefinition : ActionInstanceDefinition
     {

@@ -1401,7 +1401,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         sequence.ExitOptions,
                         new ObservableCollection<ActionRowData>(),
                         sequence.StatOptions,
-                        sequence.ToyCapabilityOptions)
+                        sequence.ToyCapabilityOptions,
+                        true)
                     {
                         OptionId = option.Id,
                     };

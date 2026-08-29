@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Threading;
 
 namespace TruthCardGame.Core
 {
@@ -83,6 +84,31 @@ namespace TruthCardGame.Core
                 {
                     // Intentional: completion/faults are handled and logged by the observer.
                 }
+            }
+        }
+
+        /// <summary>
+        /// Awaits the actions active at the instant this barrier is reached.
+        /// Tasks started later are intentionally not part of this barrier.
+        /// </summary>
+        public async Task WaitForCurrentAsync(CancellationToken cancellationToken)
+        {
+            Task[] snapshot;
+            lock (_gate) snapshot = _active.ToArray();
+            if (snapshot.Length == 0) return;
+
+            var all = Task.WhenAll(snapshot);
+            var canceled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using (cancellationToken.Register(() => canceled.TrySetCanceled(cancellationToken)))
+            {
+                var completed = await Task.WhenAny(all, canceled.Task);
+                if (completed == canceled.Task) await canceled.Task;
+            }
+
+            try { await all; }
+            catch (Exception)
+            {
+                // Individual failures are observed and logged by ObserveAsync.
             }
         }
     }
