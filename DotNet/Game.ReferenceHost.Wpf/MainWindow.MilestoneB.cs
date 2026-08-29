@@ -14,12 +14,13 @@ using TruthCardGame.Profile.Sqlite;
 namespace TruthCardGame.ReferenceHost.Wpf
 {
     /// <summary>
-    /// Milestone B authoring surfaces (Tickets 11–16):
+    /// Milestone B authoring surfaces (Tickets 11–16, round-2 rework):
     /// - Catalogs library mode (Session Types, Card Tags, Kinks, Equipment,
     ///   Smart Toy capabilities) with referenced-deletion blocking;
     /// - Cards library mode with search/New/Duplicate/Delete and the Card
-    ///   editor in the lower center pane (title, body, searchable relation
-    ///   pickers, reusable ActionSequence editor);
+    ///   editor in the INSPECTOR (fully buffered: Save Card / Revert apply
+    ///   or discard title, body, relations, AND the Action sequence as one
+    ///   undo step). The Phase graph below is never hidden;
     /// - Persistent User/Test Profile window backed by UserProfile.db;
     /// - Session weighting editors on the SessionStart inspector;
     /// - Selection diagnostics for the selected Phase;
@@ -32,6 +33,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private bool _syncingWeighting;
         private bool _suppressCardRelationEvents;
         private UserProfileWindow _profileWindow;
+        private CardEditBuffer _cardBuffer;
 
         // ---------- library mode switching (extends SetLibraryMode) ----------
 
@@ -349,7 +351,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             return dialog.ShowDialog() == true ? dialog.InputText?.Trim() : null;
         }
 
-        // ---------- Ticket 13: cards library + editor ----------
+        // ---------- Ticket 13 (round 2): cards library + buffered inspector editor ----------
 
         private void BindCardList()
         {
@@ -367,7 +369,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             if (CardList.SelectedItem is CardDefinition card)
             {
-                ShowCardEditor(card);
+                OpenCardEditor(card);
+            }
+            else
+            {
+                CloseCardEditor(promptForDirty: false);
             }
         }
 
@@ -383,7 +389,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 if (created != null)
                 {
                     CardList.SelectedItem = created;
-                    ShowCardEditor(created);
+                    OpenCardEditor(created);
                 }
             });
         }
@@ -396,7 +402,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
             PushOrMergeWithReload(new DeleteCardCommand(OpenConnection, card.Id), () =>
             {
-                HideCardEditor();
+                _cardBuffer = null; // deleting the buffered card discards the buffer with it
+                CardEditorInspectorPanel.Visibility = Visibility.Collapsed;
+                CardActionSequenceHost.Content = null;
                 LoadContent();
                 BindCardList();
             });
@@ -413,35 +421,183 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 if (created != null)
                 {
                     CardList.SelectedItem = created;
-                    ShowCardEditor(created);
+                    OpenCardEditor(created);
                 }
             });
         }
 
-        private void ShowCardEditor(CardDefinition card)
+        // ---------- buffered card editor (Inspector) ----------
+
+        /// <summary>
+        /// Opens the buffered editor for a card. A dirty buffer for a DIFFERENT
+        /// card prompts Save / Discard / Cancel first.
+        /// </summary>
+        private void OpenCardEditor(CardDefinition card)
         {
+            if (_cardBuffer != null && _cardBuffer.CardId != card.Id)
+            {
+                if (!ConfirmLeavingDirtyCard("switch to '" + card.Title + "'")) return;
+            }
+
+            _cardBuffer = new CardEditBuffer(card);
+            SyncCardEditorFromBuffer();
+            CardEditorInspectorPanel.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>
+        /// Closes the buffered editor. Prompts when the buffer is dirty unless
+        /// the caller already handled it (or discards deliberately, e.g. Delete).
+        /// Returns false when the user canceled and the caller should abort.
+        /// </summary>
+        private bool CloseCardEditor(bool promptForDirty)
+        {
+            if (_cardBuffer != null && promptForDirty && _cardBuffer.IsDirty)
+            {
+                if (!ConfirmLeavingDirtyCard("stop editing this card")) return false;
+            }
+            _cardBuffer = null;
+            CardEditorInspectorPanel.Visibility = Visibility.Collapsed;
+            CardActionSequenceHost.Content = null;
+            return true;
+        }
+
+        /// <summary>Save / Discard / Cancel for a dirty buffer. Returns false only on Cancel.</summary>
+        private bool ConfirmLeavingDirtyCard(string whatNext)
+        {
+            if (_cardBuffer == null || !_cardBuffer.IsDirty) return true;
+
+            var choice = MessageBox.Show(this,
+                "This card has unsaved changes.\n\nSave them before you " + whatNext + "?",
+                "Unsaved Card Changes",
+                MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+
+            switch (choice)
+            {
+                case MessageBoxResult.Yes:
+                    return SaveCardBuffer();
+                case MessageBoxResult.No:
+                    return true; // discard
+                default:
+                    return false; // cancel: stay on this card
+            }
+        }
+
+        /// <summary>Pushes every buffered change as ONE composite undo step.</summary>
+        private bool SaveCardBuffer()
+        {
+            if (_cardBuffer == null) return true;
+            var card = _vm.Content.Cards.FirstOrDefault(c => c.Id == _cardBuffer.CardId);
+            if (card == null)
+            {
+                _cardBuffer = null;
+                return true;
+            }
+
+            var commands = new List<IAuthoringCommand>();
+            if (!string.Equals(_cardBuffer.Title, card.Title ?? "", StringComparison.Ordinal))
+            {
+                commands.Add(new RenameCardCommand(OpenConnection, card.Id, card.Title ?? "", _cardBuffer.Title));
+            }
+            if (!string.Equals(_cardBuffer.BodyText, card.BodyText ?? "", StringComparison.Ordinal))
+            {
+                commands.Add(new SetCardBodyCommand(OpenConnection, card.Id, card.BodyText ?? "", _cardBuffer.BodyText));
+            }
+            if (_cardBuffer.FieldsChanged)
+            {
+                commands.Add(new SetCardRelationsCommand(OpenConnection, card,
+                    card.CardTagIds, card.KinkIds, card.RequiredEquipmentIds, card.RequiredCapabilityIds,
+                    _cardBuffer.CardTagIds, _cardBuffer.KinkIds, _cardBuffer.RequiredEquipmentIds, _cardBuffer.RequiredCapabilityIds));
+            }
+            if (_cardBuffer.SequenceChanged)
+            {
+                commands.Add(new ReplaceCardSequenceCommand(OpenConnection, card.Id,
+                    _cardBuffer.OriginalSequence, _cardBuffer.Sequence));
+            }
+
+            if (commands.Count == 0) return true; // nothing changed; nothing to save
+
+            var composite = commands.Count == 1
+                ? commands[0]
+                : new CompositeCommand("Edit card", commands.ToArray());
+
+            try
+            {
+                _stack.PushOrMerge(composite);
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = "Persistence error";
+                MessageBox.Show(this, "Database write failed:\n\n" + ex.Message,
+                    "Workbench", MessageBoxButton.OK, MessageBoxImage.Error);
+                ReloadAllFromDb();
+                return false;
+            }
+
+            // Update the in-memory definition to match what was saved.
+            card.Title = _cardBuffer.Title;
+            card.BodyText = _cardBuffer.BodyText;
+            card.CardTagIds = new List<string>(_cardBuffer.CardTagIds);
+            card.KinkIds = new List<string>(_cardBuffer.KinkIds);
+            card.RequiredEquipmentIds = new List<string>(_cardBuffer.RequiredEquipmentIds);
+            card.RequiredCapabilityIds = new List<string>(_cardBuffer.RequiredCapabilityIds);
+            card.Sequence = _cardBuffer.Sequence;
+
+            // Fresh buffer over the just-saved state: dirty flag clears.
+            _cardBuffer = new CardEditBuffer(card);
+            SyncCardEditorFromBuffer();
+            BindCardList();
+            CardList.SelectedItem = card;
+            StatusText.Text = $"Saved card '{card.Title}' (one undo step).";
+            return true;
+        }
+
+        private void OnCardSave(object sender, RoutedEventArgs e)
+        {
+            SaveCardBuffer();
+        }
+
+        private void OnCardRevert(object sender, RoutedEventArgs e)
+        {
+            if (_cardBuffer == null) return;
+            if (_cardBuffer.IsDirty &&
+                MessageBox.Show(this, "Discard all unsaved changes to this card?",
+                    "Revert Card", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+            var card = _vm.Content.Cards.FirstOrDefault(c => c.Id == _cardBuffer.CardId);
+            if (card != null)
+            {
+                _cardBuffer = new CardEditBuffer(card);
+                SyncCardEditorFromBuffer();
+                StatusText.Text = "Reverted unsaved card changes.";
+            }
+        }
+
+        /// <summary>Rebuilds the inspector fields + pickers + sequence host from the buffer.</summary>
+        private void SyncCardEditorFromBuffer()
+        {
+            if (_cardBuffer == null) return;
             _syncingCardEditor = true;
             try
             {
-                CardEditorHeader.Text = "Card Editor — " + card.Title;
-                CardTitleBox.Text = card.Title ?? "";
-                CardBodyBox.Text = card.BodyText ?? "";
+                var card = _vm.Content.Cards.FirstOrDefault(c => c.Id == _cardBuffer.CardId);
+                var title = _cardBuffer.Title;
+                CardEditorTitle.Text = "Card" + (string.IsNullOrEmpty(title) ? "" : " — " + title);
+                CardTitleBox.Text = title;
+                CardBodyBox.Text = _cardBuffer.BodyText;
 
                 BindRelationPicker(CardTagPicker, _vm.Content.CardTagDefinitions.Select(t => t.Title).ToList(),
-                    card.CardTagIds.Select(id => TitleOf(_vm.Content.CardTagDefinitions, id)).ToList());
+                    _cardBuffer.CardTagIds.Select(id => TitleOf(_vm.Content.CardTagDefinitions, id)).ToList());
                 BindRelationPicker(CardKinkPicker, _vm.Content.KinkDefinitions.Select(k => k.Title).ToList(),
-                    card.KinkIds.Select(id => TitleOf(_vm.Content.KinkDefinitions, id)).ToList());
+                    _cardBuffer.KinkIds.Select(id => TitleOf(_vm.Content.KinkDefinitions, id)).ToList());
                 BindRelationPicker(CardEquipmentPicker, _vm.Content.EquipmentDefinitions.Select(x => x.Title).ToList(),
-                    card.RequiredEquipmentIds.Select(id => TitleOf(_vm.Content.EquipmentDefinitions, id)).ToList());
+                    _cardBuffer.RequiredEquipmentIds.Select(id => TitleOf(_vm.Content.EquipmentDefinitions, id)).ToList());
                 BindRelationPicker(CardCapabilityPicker, _vm.Content.SmartToyCapabilityDefinitions.Select(x => x.Title).ToList(),
-                    card.RequiredCapabilityIds.Select(id => TitleOf(_vm.Content.SmartToyCapabilityDefinitions, id)).ToList());
+                    _cardBuffer.RequiredCapabilityIds.Select(id => TitleOf(_vm.Content.SmartToyCapabilityDefinitions, id)).ToList());
 
-                var sequenceEditor = CardEditorSequenceHost.Build(card, _vm.Content);
-                CardActionSequenceHost.Content = sequenceEditor;
-
-                PhaseGraphHeader.Visibility = Visibility.Collapsed;
-                PhaseEditor.Visibility = Visibility.Collapsed;
-                CardEditorPanel.Visibility = Visibility.Visible;
+                BuildCardSequenceHost();
+                UpdateCardDirtyText();
             }
             finally
             {
@@ -449,17 +605,89 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
         }
 
-        private void HideCardEditor()
+        /// <summary>Builds the buffered sequence's editor host, subscribing row edits to the buffer.</summary>
+        private void BuildCardSequenceHost()
         {
-            CardEditorPanel.Visibility = Visibility.Collapsed;
-            PhaseGraphHeader.Visibility = Visibility.Visible;
-            PhaseEditor.Visibility = Visibility.Visible;
-            CardActionSequenceHost.Content = null;
+            var card = _vm.Content.Cards.FirstOrDefault(c => c.Id == _cardBuffer?.CardId);
+            if (card == null || _cardBuffer == null)
+            {
+                CardActionSequenceHost.Content = null;
+                return;
+            }
+
+            var sequenceEditor = CardEditorSequenceHost.Build(_cardBuffer.Sequence, card.Id, _cardBuffer.Title, _vm.Content);
+            foreach (var row in sequenceEditor.Rows)
+            {
+                row.PropertyChanged += (_, args) =>
+                {
+                    if (_syncingCardEditor) return;
+                    if (args.PropertyName != nameof(ActionRowData.TextValue) &&
+                        args.PropertyName != nameof(ActionRowData.NumberText)) return;
+                    if (_cardBuffer == null) return;
+                    _cardBuffer.ApplyRowValue(row.InstanceId, row.TextValue, ParseFloat(row.NumberText));
+                    row.PersistedTextValue = row.TextValue;
+                    row.PersistedNumberText = row.NumberText;
+                    UpdateCardDirtyText();
+                };
+            }
+            CardActionSequenceHost.Content = sequenceEditor;
         }
 
-        private void OnCardEditorClose(object sender, RoutedEventArgs e)
+        private void UpdateCardDirtyText()
         {
-            HideCardEditor();
+            var dirty = _cardBuffer != null && _cardBuffer.IsDirty;
+            CardDirtyText.Text = dirty ? "● unsaved changes" : "";
+            CardSaveButton.IsEnabled = true;
+            CardRevertButton.IsEnabled = true;
+        }
+
+        /// <summary>Title/body keystrokes land in the buffer only.</summary>
+        private void OnCardBufferFieldChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_syncingCardEditor || _cardBuffer == null) return;
+            _cardBuffer.Title = CardTitleBox.Text;
+            _cardBuffer.BodyText = CardBodyBox.Text;
+            CardEditorTitle.Text = "Card" + (string.IsNullOrEmpty(_cardBuffer.Title) ? "" : " — " + _cardBuffer.Title);
+            UpdateCardDirtyText();
+        }
+
+        /// <summary>Relation picker selections land in the buffer only.</summary>
+        private void OnCardBufferRelationsChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_suppressCardRelationEvents || _syncingCardEditor || _cardBuffer == null) return;
+
+            _cardBuffer.CardTagIds.Clear();
+            _cardBuffer.CardTagIds.AddRange(ResolvePickerIds(CardTagPicker, _vm.Content.CardTagDefinitions));
+            _cardBuffer.KinkIds.Clear();
+            _cardBuffer.KinkIds.AddRange(ResolvePickerIds(CardKinkPicker, _vm.Content.KinkDefinitions));
+            _cardBuffer.RequiredEquipmentIds.Clear();
+            _cardBuffer.RequiredEquipmentIds.AddRange(ResolvePickerIds(CardEquipmentPicker, _vm.Content.EquipmentDefinitions));
+            _cardBuffer.RequiredCapabilityIds.Clear();
+            _cardBuffer.RequiredCapabilityIds.AddRange(ResolvePickerIds(CardCapabilityPicker, _vm.Content.SmartToyCapabilityDefinitions));
+            UpdateCardDirtyText();
+        }
+
+        /// <summary>Adds a default instance of the picked action type to the card buffer and refreshes the rows.</summary>
+        private void AddBufferedCardAction(ActionSequenceEditorViewModel sequence, string typeKey)
+        {
+            if (_cardBuffer == null) return;
+            var instanceId = (sequence.IdentityPrefix ?? _cardBuffer.CardId) + "-action-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+            _cardBuffer.AddAction(typeKey, id => sequence.CreateDefaultInstance(typeKey, id));
+            RebuildCardSequenceHost();
+            StatusText.Text = "Added " + ActionTypeRegistry.ByTypeKey(typeKey).DisplayLabel +
+                " to the card (unsaved — Save Card applies it).";
+        }
+
+        /// <summary>Rebuilds the card sequence host after a buffer row operation, keeping row-edit subscriptions.</summary>
+        private void RebuildCardSequenceHost()
+        {
+            if (_cardBuffer == null)
+            {
+                CardActionSequenceHost.Content = null;
+                return;
+            }
+            BuildCardSequenceHost();
+            UpdateCardDirtyText();
         }
 
         private static string TitleOf<T>(List<T> definitions, string id) where T : class
@@ -492,53 +720,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 _suppressCardRelationEvents = false;
             }
-        }
-
-        private void OnCardTitleChanged(object sender, TextChangedEventArgs e)
-        {
-            if (_syncingCardEditor) return;
-            if (!(CardList.SelectedItem is CardDefinition card)) return;
-            var oldTitle = card.Title;
-            var newTitle = CardTitleBox.Text;
-            if (oldTitle == newTitle) return;
-            PushOrMergeWithReload(new RenameCardCommand(OpenConnection, card.Id, oldTitle, newTitle), () =>
-            {
-                card.Title = newTitle;
-                CardEditorHeader.Text = "Card Editor — " + newTitle;
-                BindCardList();
-                CardList.SelectedItem = card;
-            });
-        }
-
-        private void OnCardBodyChanged(object sender, TextChangedEventArgs e)
-        {
-            if (_syncingCardEditor) return;
-            if (!(CardList.SelectedItem is CardDefinition card)) return;
-            var oldBody = card.BodyText ?? "";
-            var newBody = CardBodyBox.Text;
-            if (oldBody == newBody) return;
-            PushOrMergeWithReload(new SetCardBodyCommand(OpenConnection, card.Id, oldBody, newBody), () => card.BodyText = newBody);
-        }
-
-        private void OnCardRelationsChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (_suppressCardRelationEvents || _syncingCardEditor) return;
-            if (!(CardList.SelectedItem is CardDefinition card)) return;
-
-            var newTags = ResolvePickerIds(CardTagPicker, _vm.Content.CardTagDefinitions);
-            var newKinks = ResolvePickerIds(CardKinkPicker, _vm.Content.KinkDefinitions);
-            var newEquipment = ResolvePickerIds(CardEquipmentPicker, _vm.Content.EquipmentDefinitions);
-            var newCapabilities = ResolvePickerIds(CardCapabilityPicker, _vm.Content.SmartToyCapabilityDefinitions);
-
-            PushOrMergeWithReload(new SetCardRelationsCommand(OpenConnection, card,
-                card.CardTagIds, card.KinkIds, card.RequiredEquipmentIds, card.RequiredCapabilityIds,
-                newTags, newKinks, newEquipment, newCapabilities), () =>
-            {
-                card.CardTagIds = newTags;
-                card.KinkIds = newKinks;
-                card.RequiredEquipmentIds = newEquipment;
-                card.RequiredCapabilityIds = newCapabilities;
-            });
         }
 
         private List<string> ResolvePickerIds<T>(ListBox picker, List<T> definitions) where T : class
@@ -766,15 +947,23 @@ namespace TruthCardGame.ReferenceHost.Wpf
     /// Adapter for the Card editor's ActionSequence host: builds the
     /// GraphNodeViewModel + ActionSequenceEditorViewModel pair exactly like a
     /// Phase action node does (the node VM is a data holder, not a canvas node).
+    /// Two overloads: from a card definition (display) or from the edit
+    /// buffer's working sequence (the editing path).
     /// </summary>
     public static class CardEditorSequenceHost
     {
         public static ActionSequenceEditorViewModel Build(CardDefinition card, GameContentDefinition content)
         {
+            return Build(card.Sequence, card.Id, card.Title, content);
+        }
+
+        public static ActionSequenceEditorViewModel Build(ActionSequenceDefinition sequence, string cardId,
+            string cardTitle, GameContentDefinition content)
+        {
             var node = new GraphNodeViewModel
             {
-                Id = card.Id,
-                Title = card.Title,
+                Id = cardId,
+                Title = cardTitle,
                 Kind = "card",
                 CanEditActions = true,
             };
@@ -784,8 +973,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var resources = content.Resources
                 .Select(r => new ActionParameterOption { Id = r.Id, Name = string.IsNullOrEmpty(r.Name) ? r.Id : r.Name })
                 .ToList();
-            node.ActionSequence = new ActionSequenceEditorViewModel(node, card.Sequence?.Id,
-                ActionOwnerScope.CardSequence, card.Sequence?.Instances,
+            node.ActionSequence = new ActionSequenceEditorViewModel(node, sequence?.Id,
+                ActionOwnerScope.CardSequence, sequence?.Instances,
                 temperatures, resources, new List<ExitOption>());
             return node.ActionSequence;
         }

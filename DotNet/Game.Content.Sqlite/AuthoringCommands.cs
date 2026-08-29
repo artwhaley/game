@@ -1772,8 +1772,7 @@ namespace TruthCardGame.Content.Sqlite
 
     /// <summary>Replaces the session's card weighting (coalesced).</summary>
     public sealed class SetSessionWeightingCommand : AuthoringCommandBase
-    {
-        private readonly string _sessionId;
+    {        private readonly string _sessionId;
         private readonly SessionCardWeightingDefinition _oldWeighting;
         private SessionCardWeightingDefinition _newWeighting;
 
@@ -1807,6 +1806,56 @@ namespace TruthCardGame.Content.Sqlite
 
         protected override void ExecuteCore(DbConnection connection) => SessionRepository.ReplaceCardWeighting(connection, _sessionId, _newWeighting);
         protected override void UndoCore(DbConnection connection) => SessionRepository.ReplaceCardWeighting(connection, _sessionId, _oldWeighting);
+    }
+
+    /// <summary>
+    /// Replaces a card's entire owned Action sequence with a new one (the
+    /// buffered Card editor's Save path). Id-stable by design: the buffer
+    /// preserves original instance ids, so undo restores the exact rows.
+    /// </summary>
+    public sealed class ReplaceCardSequenceCommand : AuthoringCommandBase
+    {
+        private readonly string _cardId;
+        private readonly ActionSequenceDefinition _oldSequence;
+        private readonly ActionSequenceDefinition _newSequence;
+
+        public ReplaceCardSequenceCommand(Func<DbConnection> conn, string cardId,
+            ActionSequenceDefinition oldSequence, ActionSequenceDefinition newSequence) : base(conn)
+        {
+            _cardId = cardId;
+            _oldSequence = oldSequence ?? throw new ArgumentNullException(nameof(oldSequence));
+            _newSequence = newSequence ?? throw new ArgumentNullException(nameof(newSequence));
+        }
+
+        public override string Name => "Edit card actions";
+
+        protected override void ExecuteCore(DbConnection connection)
+        {
+            Replace(connection, _newSequence);
+        }
+
+        protected override void UndoCore(DbConnection connection)
+        {
+            Replace(connection, _oldSequence);
+        }
+
+        private void Replace(DbConnection connection, ActionSequenceDefinition sequence)
+        {
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    ActionSequenceWriter.Delete(connection, transaction, sequence.Id);
+                    ActionSequenceWriter.Write(connection, transaction, sequence);
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
     }
 
     /// <summary>Stable catalog-kind keys shared by the catalog commands.</summary>

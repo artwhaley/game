@@ -452,6 +452,14 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 StatusText.Text = "Add a cutscene Resource before authoring Play Cutscene.";
                 return;
             }
+
+            // Card editor rows edit the BUFFER only; Save Card applies them.
+            if (sequence.OwnerScope == ActionOwnerScope.CardSequence)
+            {
+                AddBufferedCardAction(sequence, typeKey);
+                return;
+            }
+
             var instanceId = sequence.IdentityPrefix + "-action-" + Guid.NewGuid().ToString("N").Substring(0, 8);
             var instance = sequence.CreateDefaultInstance(typeKey, instanceId);
             var reloadSession = sequence.IsSessionDecisionOption;
@@ -472,6 +480,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             if (!(sender is FrameworkElement element) || !(element.DataContext is ActionRowData row)) return;
             if (row.Owner == null || row.Definition == null || row.Sequence == null) return;
+
+            // Card editor rows edit the BUFFER only.
+            if (row.Sequence.OwnerScope == ActionOwnerScope.CardSequence)
+            {
+                _cardBuffer?.RemoveAction(row.InstanceId);
+                RebuildCardSequenceHost();
+                return;
+            }
+
             if (row.TypeKey == ActionTypeKeys.SessionGoto && row.Sequence.IsSessionDecisionOption)
             {
                 var snapshot = WithConnectionResult(connection => AuthoringUndo.SnapshotSessionGoto(connection, row.InstanceId));
@@ -492,6 +509,17 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             if (!(sender is FrameworkElement element) || !(element.DataContext is ActionRowData row)) return;
             if (row.Sequence == null) return;
+
+            // Card editor rows edit the BUFFER only.
+            if (row.Sequence.OwnerScope == ActionOwnerScope.CardSequence)
+            {
+                if (_cardBuffer != null && _cardBuffer.MoveAction(row.InstanceId, delta))
+                {
+                    RebuildCardSequenceHost();
+                }
+                return;
+            }
+
             var index = row.Sequence.Rows.IndexOf(row);
             var otherIndex = index + delta;
             if (index < 0 || otherIndex < 0 || otherIndex >= row.Sequence.Rows.Count) return;
@@ -502,8 +530,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void OnDuplicateActionInstance(object sender, RoutedEventArgs e)
         {
-            if (!(sender is FrameworkElement element) || !(element.DataContext is ActionRowData row) || row.Sequence == null) return;
+            if (!(sender is FrameworkElement element) || !(element.DataContext is ActionRowData row)) return;
+            if (row.Sequence == null) return;
             var sequence = row.Sequence;
+
+            // Card editor rows edit the BUFFER only.
+            if (sequence.OwnerScope == ActionOwnerScope.CardSequence)
+            {
+                var instanceId = (sequence.IdentityPrefix ?? "card") + "-action-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+                var duplicate = ActionInstanceCloneUtility.Clone(row.Definition, instanceId);
+                _cardBuffer?.AddConfiguredAction(duplicate);
+                RebuildCardSequenceHost();
+                return;
+            }
+
             if (row.TypeKey == ActionTypeKeys.SessionGoto && sequence.IsSessionDecisionOption)
             {
                 PushCommand(new AddSessionGotoCommand(OpenConnection, sequence.OwnerNode.Id,
@@ -918,9 +958,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 _vm.SelectPhase(phase);
                 _vm.PhaseGraph.HasPlacementContext = false;
                 PhaseHeader.Text = "Phase Graph — " + phase.Title;
-                // Selecting a Phase returns the lower center pane to the Phase Graph
-                // when the Card editor was showing (Milestone B lower-center modes).
-                HideCardEditor();
                 ReloadPhaseEditor();
                 UpdatePhaseHeader();
             }
@@ -1179,6 +1216,16 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void OnClosing(object sender, CancelEventArgs e)
         {
+            // Dirty card buffer: offer save/discard before losing it.
+            if (_cardBuffer != null && _cardBuffer.IsDirty)
+            {
+                if (!ConfirmLeavingDirtyCard("close the Workbench"))
+                {
+                    e.Cancel = true;
+                    return;
+                }
+            }
+
             // Persist current splitter positions as ratios before exit.
             try
             {

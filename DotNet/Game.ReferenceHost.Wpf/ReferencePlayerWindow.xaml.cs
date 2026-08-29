@@ -105,10 +105,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// <summary>
         /// Ticket 16: consumer-style start — select and run a specific session
         /// (used by the Workbench's Play-by-Type flow after uniform selection).
+        /// Self-sufficient: content loads here when the window was created
+        /// before its Loaded event fired (the caller may not have Shown it yet).
         /// </summary>
         public void RunSession(string sessionId)
         {
-            var session = _content?.Sessions.FirstOrDefault(s => s.Id == sessionId);
+            if (_content == null)
+            {
+                LoadContent();
+                if (_content == null)
+                {
+                    throw new InvalidOperationException("Content could not be loaded; cannot run session " + sessionId);
+                }
+            }
+            var session = _content.Sessions.FirstOrDefault(s => s.Id == sessionId);
             if (session == null)
             {
                 throw new InvalidOperationException("Session not found: " + sessionId);

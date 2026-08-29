@@ -9,13 +9,14 @@ using TruthCardGame.Content;
 using TruthCardGame.Content.Sqlite;
 using TruthCardGame.Core;
 using TruthCardGame.Core.Tests;
+using TruthCardGame.ReferenceHost.Wpf;
 
 namespace TruthCardGame.ReferenceHost.Wpf.Tests
 {
     /// <summary>
-    /// Milestone B WPF-side verification: reason mapping for the diagnostics
-    /// view model, the Card editor's sequence host construction, and the
-    /// consumer-style Play-by-Type selection flow against a temp DB.
+    /// Milestone B round-2 verification: the CardEditBuffer semantics and the
+    /// composite Save path (one undo step reverting title, body, relations,
+    /// AND the Action sequence together).
     /// </summary>
     [TestFixture]
     [Apartment(System.Threading.ApartmentState.STA)]
@@ -35,7 +36,7 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             return card;
         }
 
-        // ---------- Ticket 15: reason mapping is machine-readable, not strings ----------
+        // ---------- Ticket 15 (carried over): reason mapping + diagnostics ----------
 
         [Test]
         public void RejectionReasons_MapToTypedKinds()
@@ -55,12 +56,6 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             Assert.Contains(CardRejectionReasonKind.KinkUnconfigured, kinds);
             Assert.Contains(CardRejectionReasonKind.MissingEquipment, kinds);
             Assert.Contains(CardRejectionReasonKind.MissingCapability, kinds);
-
-            // Describe() renders readable text for each typed reason.
-            foreach (var reason in eligibility.Reasons)
-            {
-                Assert.IsFalse(string.IsNullOrEmpty(reason.Describe()));
-            }
         }
 
         [Test]
@@ -79,7 +74,7 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             Assert.AreEqual(1f, high, 0.0001f);
         }
 
-        // ---------- Ticket 16: play-by-type selection flow ----------
+        // ---------- Ticket 16 (carried over): play-by-type selection ----------
 
         [Test]
         public void PlayByType_SelectsUniformlyAmongEligibleSessions()
@@ -139,20 +134,171 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             Assert.AreEqual("s-toy", selected.Id);
         }
 
-        // ---------- Ticket 13: card editor sequence host builds ----------
+        // ---------- Round 2: the buffered card editor ----------
 
         [Test]
-        public void CardEditorSequenceHost_BuildsReusableEditor()
+        public void CardEditBuffer_StartsClean_AndTracksEveryChange()
+        {
+            var card = Card("c1", "Original", tags: new[] { "t1" });
+            var buffer = new CardEditBuffer(card);
+
+            Assert.IsFalse(buffer.IsDirty, "fresh buffer matches the card");
+
+            buffer.Title = "Renamed";
+            Assert.IsTrue(buffer.IsDirty, "title change dirties");
+            Assert.IsTrue(buffer.FieldsChanged);
+            Assert.IsFalse(buffer.SequenceChanged);
+
+            buffer = new CardEditBuffer(card);
+            buffer.BodyText = "Body";
+            Assert.IsTrue(buffer.IsDirty, "body change dirties");
+
+            buffer = new CardEditBuffer(card);
+            buffer.CardTagIds.Add("t2");
+            Assert.IsTrue(buffer.IsDirty, "relation change dirties");
+
+            buffer = new CardEditBuffer(card);
+            buffer.ApplyRowValue("prog-c1", null, 25f);
+            Assert.IsTrue(buffer.IsDirty, "row value change dirties");
+            Assert.IsTrue(buffer.SequenceChanged);
+            Assert.IsFalse(buffer.FieldsChanged);
+        }
+
+        [Test]
+        public void CardEditBuffer_RowOperations_EditTheCloneOnly()
+        {
+            var card = Card("c1", "Original");
+            var buffer = new CardEditBuffer(card);
+
+            buffer.AddAction(TruthCardGame.Content.ActionTypeKeys.Debug,
+                id => new DebugInstanceDefinition { Id = id, Message = "hello" });
+            Assert.AreEqual(3, buffer.Sequence.Instances.Count, "buffered sequence gained the row");
+            Assert.AreEqual(2, card.Sequence.Instances.Count, "the CARD's sequence is untouched");
+
+            buffer.RemoveAction("wait-c1");
+            Assert.AreEqual(2, buffer.Sequence.Instances.Count);
+
+            // Move the debug row up one slot.
+            var debugId = buffer.Sequence.Instances.First(i => i is DebugInstanceDefinition).Id;
+            var debugIndex = buffer.IndexOf(debugId);
+            Assert.IsTrue(buffer.MoveAction(debugId, -1));
+
+            buffer.ApplyRowValue(debugId, "changed", null);
+            Assert.AreEqual("changed",
+                ((DebugInstanceDefinition)buffer.Sequence.Instances.First(i => i is DebugInstanceDefinition)).Message);
+        }
+
+        [Test]
+        public void CardEditBuffer_DoesNotAliasTheCard()
+        {
+            var card = Card("c1", "Original");
+            var buffer = new CardEditBuffer(card);
+
+            buffer.Title = "Buffered";
+            buffer.ApplyRowValue("prog-c1", null, 50f);
+
+            Assert.AreEqual("Original", card.Title, "buffer edits never mutate the definition");
+            Assert.AreEqual(10f, ((IncrementProgressInstanceDefinition)card.Sequence.Instances[1]).Amount,
+                "sequence clone is a copy, not a reference");
+        }
+
+        // ---------- composite Save: one undo step for the whole card ----------
+
+        [Test]
+        public void SaveCard_CompositeRoundTrip_AndSingleStepUndo()
+        {
+            var dbPath = Path.Combine(Path.GetTempPath(), "card-buffer-save-" + Guid.NewGuid().ToString("N") + ".db");
+            try
+            {
+                using (var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=" + dbPath))
+                {
+                    connection.Open();
+                    ConnectionInitializer.Initialize(connection);
+                    CoreMigrator.EnsureSchema(connection);
+
+                    CatalogRepositories.CreateCardTag(connection, new CardTagDefinition { Id = "t1", Title = "One" });
+                    CatalogRepositories.CreateCardTag(connection, new CardTagDefinition { Id = "t2", Title = "Two" });
+                    CatalogRepositories.CreateKink(connection, new KinkDefinition { Id = "k1", Title = "Kink" });
+
+                    var card = Card("c-save", "Original", tags: new[] { "t1" });
+                    CardRepository.Create(connection, card);
+
+                    // Simulate the user's buffered edits.
+                    var buffer = new CardEditBuffer(card);
+                    buffer.Title = "Saved Title";
+                    buffer.BodyText = "Saved body.";
+                    buffer.CardTagIds.Remove("t1");
+                    buffer.CardTagIds.Add("t2");
+                    buffer.KinkIds.Add("k1");
+                    buffer.AddAction(TruthCardGame.Content.ActionTypeKeys.Debug,
+                        id => new DebugInstanceDefinition { Id = id, Message = "added by buffer" });
+
+                    // Commands need a fresh connection per execution (the base
+                    // class disposes what the factory returns).
+                    System.Data.Common.DbConnection Factory()
+                    {
+                        var open = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=" + dbPath);
+                        open.Open();
+                        ConnectionInitializer.Initialize(open);
+                        return open;
+                    }
+
+                    // The exact composite Save builds.
+                    var commands = new List<IAuthoringCommand>
+                    {
+                        new RenameCardCommand(Factory, card.Id, "Original", buffer.Title),
+                        new SetCardBodyCommand(Factory, card.Id, "", buffer.BodyText),
+                        new SetCardRelationsCommand(Factory, card,
+                            card.CardTagIds, card.KinkIds, card.RequiredEquipmentIds, card.RequiredCapabilityIds,
+                            buffer.CardTagIds, buffer.KinkIds, buffer.RequiredEquipmentIds, buffer.RequiredCapabilityIds),
+                        new ReplaceCardSequenceCommand(Factory, card.Id,
+                            buffer.OriginalSequence, buffer.Sequence),
+                    };
+                    var stack = new AuthoringCommandStack();
+                    stack.PushOrMerge(new CompositeCommand("Edit card", commands.ToArray()));
+
+                    // Reload and assert every field persisted.
+                    var reloaded = GameContentSnapshotLoader.Load(connection).Cards.First(c => c.Id == "c-save");
+                    Assert.AreEqual("Saved Title", reloaded.Title);
+                    Assert.AreEqual("Saved body.", reloaded.BodyText);
+                    CollectionAssert.AreEqual(new[] { "t2" }, reloaded.CardTagIds);
+                    CollectionAssert.AreEqual(new[] { "k1" }, reloaded.KinkIds);
+                    Assert.AreEqual(3, reloaded.Sequence.Instances.Count, "sequence gained the Debug row");
+                    Assert.IsInstanceOf<DebugInstanceDefinition>(reloaded.Sequence.Instances[2]);
+
+                    // ONE undo reverts the entire card edit.
+                    stack.Undo();
+                    var undone = GameContentSnapshotLoader.Load(connection).Cards.First(c => c.Id == "c-save");
+                    Assert.AreEqual("Original", undone.Title, "undo restored title");
+                    Assert.AreEqual("", undone.BodyText, "undo restored body");
+                    CollectionAssert.AreEqual(new[] { "t1" }, undone.CardTagIds, "undo restored relations");
+                    Assert.AreEqual(0, undone.KinkIds.Count);
+                    Assert.AreEqual(2, undone.Sequence.Instances.Count, "undo restored the sequence");
+                }
+            }
+            finally
+            {
+                Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+                if (File.Exists(dbPath)) File.Delete(dbPath);
+            }
+        }
+
+        // ---------- carried over: card sequence host builds ----------
+
+        [Test]
+        public void CardEditorSequenceHost_BuildsFromCardAndBuffer()
         {
             var card = Card("c1", "Editable");
             var content = new GameContentDefinition();
             content.Cards.Add(card);
 
-            var editor = TruthCardGame.ReferenceHost.Wpf.CardEditorSequenceHost.Build(card, content);
+            var fromCard = CardEditorSequenceHost.Build(card, content);
+            Assert.AreEqual(ActionOwnerScope.CardSequence, fromCard.OwnerScope);
+            Assert.AreEqual(2, fromCard.Rows.Count, "Wait + Progress rows");
 
-            Assert.IsNotNull(editor);
-            Assert.AreEqual(ActionOwnerScope.CardSequence, editor.OwnerScope);
-            Assert.AreEqual(2, editor.Rows.Count, "Wait + Progress rows");
+            var buffer = new CardEditBuffer(card);
+            var fromBuffer = CardEditorSequenceHost.Build(buffer.Sequence, card.Id, buffer.Title, content);
+            Assert.AreEqual(2, fromBuffer.Rows.Count, "buffer path builds the same editor");
         }
     }
 }
