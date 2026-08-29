@@ -59,11 +59,46 @@ namespace TruthCardGame.Content.Sqlite
                 ("title", (object)title ?? DBNull.Value), ("id", id));
         }
 
-        /// <summary>Deletes the phase; throws SqliteException when a session still references it (RESTRICT).</summary>
+        /// <summary>
+        /// Deletes the phase and its owned graph. PhaseGoto rows must be
+        /// detached from the phase's exits first because their RESTRICT FK is
+        /// checked before SQLite processes the owning graph's cascades.
+        /// Session placements remain protected by their phase RESTRICT FK.
+        /// </summary>
         public static void Delete(DbConnection connection, string id)
         {
             if (string.IsNullOrEmpty(id)) throw new ArgumentException("Phase id required.", nameof(id));
-            Sql.Execute(connection, null, "DELETE FROM phase WHERE id = @id;", ("id", id));
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    var ownedSequences = new List<string>();
+                    Sql.QueryAll(connection, transaction,
+                        "SELECT pna.action_sequence_id FROM phase_node_action pna " +
+                        "JOIN phase_graph_node n ON n.id = pna.node_id WHERE n.phase_id = @id " +
+                        "UNION SELECT pdo.action_sequence_id FROM phase_decision_option pdo " +
+                        "JOIN phase_graph_node n ON n.id = pdo.node_id WHERE n.phase_id = @id;",
+                        reader => ownedSequences.Add(reader.GetString(0)), ("id", id));
+                    foreach (var sequenceId in ownedSequences)
+                    {
+                        ActionSequenceWriter.ClearContents(connection, transaction, sequenceId);
+                        ActionSequenceWriter.Delete(connection, transaction, sequenceId);
+                    }
+
+                    Sql.Execute(connection, transaction,
+                        "UPDATE action_instance_phase_goto SET phase_exit_id = NULL " +
+                        "WHERE phase_exit_id IN (SELECT id FROM phase_exit WHERE phase_id = @id);",
+                        ("id", id));
+                    Sql.Execute(connection, transaction,
+                        "DELETE FROM phase WHERE id = @id;", ("id", id));
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
         }
 
         /// <summary>

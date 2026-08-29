@@ -40,7 +40,9 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   support Copy Log, UTF-8 Save Log, and log-only Clear Log; Card Started entries
   include the full card body. Selection diagnostics resolve catalog names while
   retaining stable IDs, and an existing unreadable UserProfile.db blocks runs
-  with an explicit error.
+  with an explicit error. Phase deletion transactionally detaches owned
+  PhaseGoto exit references before cascading the phase graph, while phases
+  placed in Sessions remain protected from deletion.
   See [`Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md`](Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md).
 - Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core` +
   `Game.Profile`, .NET Standard 2.1) that both Unity and the WPF hosts run —

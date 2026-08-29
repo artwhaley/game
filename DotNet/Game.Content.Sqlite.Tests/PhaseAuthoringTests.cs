@@ -101,6 +101,27 @@ namespace TruthCardGame.Content.Sqlite.Tests
         }
 
         [Test]
+        public void DeletePhase_WithOwnedPhaseGoto_DetachesRestrictReferenceAndCascades()
+        {
+            PhaseRepository.Create(_connection, "p1", "Phase with goto");
+            PhaseExitRepository.Create(_connection, "p1",
+                new PhaseExitDefinition { Id = "px-complete", Name = "Complete" }, 0);
+            var action = new ActionNodeDefinition
+            {
+                Id = "n-action",
+                Sequence = new ActionSequenceDefinition { Id = "n-action-seq" },
+            };
+            PhaseGraphRepository.AddNode(_connection, "p1", action);
+            PhaseGraphRepository.AddPhaseGoto(_connection, "n-action", "px-complete");
+
+            Assert.DoesNotThrow(() => PhaseRepository.Delete(_connection, "p1"));
+            Assert.AreEqual(0, Count("phase WHERE id='p1'"));
+            Assert.AreEqual(0, Count("action_instance_phase_goto"));
+            Assert.AreEqual(0, Count("action_instance"));
+            Assert.AreEqual(0, Count("action_sequence"));
+        }
+
+        [Test]
         public void Usage_CountsDistinctSessionsAndPlacements()
         {
             PhaseRepository.Create(_connection, "p1", "Cold Start");
