@@ -45,13 +45,16 @@ are never overridden by a packet.
 9. **Flag missing dependencies.** If something required is missing (an install, a package, a tool), flag it — but assume it may be on its way and continue where possible.
 10. **Fail noisy.** Never invent fallback behavior that masks a problem. If something breaks, let it break loudly and report exactly what failed and why. Silent recovery is worse than a crash.
 11. **Report verification honestly.** If a change couldn't be verified (editor closed, headless limits, whatever the reason), say so plainly — never report "done" for an unverified change.
-12. **Run the app after every app change.** After any application code, XAML,
-   scene, content, or app-configuration edit, build and launch the affected app
-   before considering the work complete. For this project, launch the WPF host
-   (`DotNet/Game.ReferenceHost.Wpf`) or the Unity Editor as appropriate. Keep the
-   app running long enough to confirm it starts, watch for startup exceptions,
-   and spot-check the affected feature when possible. A clean build is not a
-   substitute for running the app. This is non-negotiable for app work.
+12. **Run and leave the main app running after every app change.** After any
+   application code, XAML, scene, content, or app-configuration edit, build and
+   launch the main application before considering the work complete. For this
+   project, launch the WPF host (`DotNet/Game.ReferenceHost.Wpf`) or the Unity
+   Editor as appropriate. Keep the application process running when handing
+   the work back so the user can test the changes. While it is running, confirm
+   startup, watch for startup exceptions, and spot-check the affected feature
+   when possible. Only stop it if it crashes, the user asks, or leaving it
+   running is technically impossible; report that plainly. A clean build is
+   not a substitute for running the app. This is non-negotiable for app work.
 
 ## Unity-specific essentials
 
