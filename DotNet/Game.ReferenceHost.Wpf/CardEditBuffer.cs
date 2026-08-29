@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using TruthCardGame.Content;
+using TruthCardGame.Content.Sqlite;
 
 namespace TruthCardGame.ReferenceHost.Wpf
 {
@@ -22,6 +23,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         public string Title { get; set; }
         public string BodyText { get; set; }
+        public string FolderPath { get; set; }
         public List<string> CardTagIds { get; } = new List<string>();
         public List<string> KinkIds { get; } = new List<string>();
         public List<string> RequiredEquipmentIds { get; } = new List<string>();
@@ -40,6 +42,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
             Title = card.Title ?? "";
             BodyText = card.BodyText ?? "";
+            FolderPath = card.FolderPath ?? "";
             CardTagIds.AddRange(card.CardTagIds);
             KinkIds.AddRange(card.KinkIds);
             RequiredEquipmentIds.AddRange(card.RequiredEquipmentIds);
@@ -54,6 +57,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public bool IsDirty =>
             !string.Equals(Title, _original.Title ?? "", StringComparison.Ordinal) ||
             !string.Equals(BodyText, _original.BodyText ?? "", StringComparison.Ordinal) ||
+            !string.Equals(CardRepository.NormalizeFolder(FolderPath), CardRepository.NormalizeFolder(_original.FolderPath), StringComparison.Ordinal) ||
             !IdListsEqual(CardTagIds, _original.CardTagIds) ||
             !IdListsEqual(KinkIds, _original.KinkIds) ||
             !IdListsEqual(RequiredEquipmentIds, _original.RequiredEquipmentIds) ||
@@ -64,6 +68,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public bool FieldsChanged =>
             !string.Equals(Title, _original.Title ?? "", StringComparison.Ordinal) ||
             !string.Equals(BodyText, _original.BodyText ?? "", StringComparison.Ordinal) ||
+            !string.Equals(CardRepository.NormalizeFolder(FolderPath), CardRepository.NormalizeFolder(_original.FolderPath), StringComparison.Ordinal) ||
             !IdListsEqual(CardTagIds, _original.CardTagIds) ||
             !IdListsEqual(KinkIds, _original.KinkIds) ||
             !IdListsEqual(RequiredEquipmentIds, _original.RequiredEquipmentIds) ||

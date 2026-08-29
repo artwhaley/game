@@ -15,6 +15,8 @@ namespace TruthCardGame.Content
         public string Id { get; set; } = "";
         public string Title { get; set; } = "";
         public string BodyText { get; set; } = "";
+        /// <summary>Optional slash-delimited authoring folder path; runtime semantics ignore it.</summary>
+        public string FolderPath { get; set; } = "";
 
         /// <summary>CardTagDefinition ids evaluated against a Phase's ALL/ANY query.</summary>
         public List<string> CardTagIds { get; set; } = new List<string>();

@@ -32,6 +32,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private bool _syncingCardEditor;
         private bool _syncingWeighting;
         private bool _syncingCatalogEditor;
+        private bool _syncingCardFolderFilter;
         private UserProfileWindow _profileWindow;
         private CardEditBuffer _cardBuffer;
 
@@ -489,10 +490,28 @@ namespace TruthCardGame.ReferenceHost.Wpf
             // silently close a dirty card editor).
             var selectedId = (CardList.SelectedItem as CardDefinition)?.Id;
 
+            const string allFolders = "(All folders)";
+            var selectedFolder = CardFolderFilter.SelectedItem as string;
+            _syncingCardFolderFilter = true;
+            CardFolderFilter.ItemsSource = new[] { allFolders }
+                .Concat(_vm.Content.Cards.Select(c => CardRepository.NormalizeFolder(c.FolderPath))
+                    .Where(folder => folder.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(folder => folder, StringComparer.OrdinalIgnoreCase)).ToList();
+            CardFolderFilter.SelectedItem = !string.IsNullOrEmpty(selectedFolder) && CardFolderFilter.Items.Contains(selectedFolder)
+                ? selectedFolder : allFolders;
+            _syncingCardFolderFilter = false;
+
+            var folder = CardFolderFilter.SelectedItem as string;
             var query = (CardFilter.Text ?? "").Trim();
-            var cards = string.IsNullOrEmpty(query)
-                ? _vm.Content.Cards.ToList()
-                : _vm.Content.Cards.Where(c => (c.Title ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+            var cards = _vm.Content.Cards
+                .Where(c => folder == allFolders || string.Equals(CardRepository.NormalizeFolder(c.FolderPath), folder, StringComparison.OrdinalIgnoreCase))
+                .Where(c => string.IsNullOrEmpty(query) ||
+                    (c.Title ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    (c.Id ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    (c.FolderPath ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+                .OrderBy(c => c.FolderPath, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(c => c.Title, StringComparer.OrdinalIgnoreCase)
+                .ToList();
             CardList.ItemsSource = cards;
             CardList.DisplayMemberPath = nameof(CardDefinition.Title);
 
@@ -501,6 +520,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 var restore = cards.FirstOrDefault(c => c.Id == selectedId);
                 if (restore != null) CardList.SelectedItem = restore;
             }
+        }
+
+        private void OnCardFolderFilterChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!_syncingCardFolderFilter) BindCardList();
         }
 
         private void OnCardFilterChanged(object sender, TextChangedEventArgs e)
@@ -652,6 +676,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 commands.Add(new SetCardBodyCommand(OpenConnection, card.Id, card.BodyText ?? "", _cardBuffer.BodyText));
             }
+            if (!string.Equals(CardRepository.NormalizeFolder(_cardBuffer.FolderPath),
+                CardRepository.NormalizeFolder(card.FolderPath), StringComparison.Ordinal))
+            {
+                commands.Add(new SetCardFolderCommand(OpenConnection, card.Id, card.FolderPath, _cardBuffer.FolderPath));
+            }
             if (_cardBuffer.FieldsChanged)
             {
                 commands.Add(new SetCardRelationsCommand(OpenConnection, card,
@@ -686,6 +715,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             // Update the in-memory definition to match what was saved.
             card.Title = _cardBuffer.Title;
             card.BodyText = _cardBuffer.BodyText;
+            card.FolderPath = CardRepository.NormalizeFolder(_cardBuffer.FolderPath);
             card.CardTagIds = new List<string>(_cardBuffer.CardTagIds);
             card.KinkIds = new List<string>(_cardBuffer.KinkIds);
             card.RequiredEquipmentIds = new List<string>(_cardBuffer.RequiredEquipmentIds);
@@ -736,6 +766,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 CardEditorTitle.Text = "Card" + (string.IsNullOrEmpty(title) ? "" : " — " + title);
                 CardTitleBox.Text = title;
                 CardBodyBox.Text = _cardBuffer.BodyText;
+                CardFolderBox.Text = _cardBuffer.FolderPath;
 
                 CardTagPicker.SetItems(_vm.Content.CardTagDefinitions.Select(t => new RelationChoice { Id = t.Id, DisplayName = t.Title }), _cardBuffer.CardTagIds);
                 CardKinkPicker.SetItems(_vm.Content.KinkDefinitions.Select(k => new RelationChoice { Id = k.Id, DisplayName = k.Title }), _cardBuffer.KinkIds);
@@ -776,7 +807,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 {
                     if (_syncingCardEditor) return;
                     if (args.PropertyName != nameof(ActionRowData.TextValue) &&
-                        args.PropertyName != nameof(ActionRowData.NumberText)) return;
+                        args.PropertyName != nameof(ActionRowData.NumberText) &&
+                        args.PropertyName != nameof(ActionRowData.SecondaryNumberText)) return;
                     UpdateCardDirtyText();
                 };
                 foreach (var option in row.PromptOptions)
@@ -801,6 +833,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (_syncingCardEditor || _cardBuffer == null) return;
             _cardBuffer.Title = CardTitleBox.Text;
             _cardBuffer.BodyText = CardBodyBox.Text;
+            _cardBuffer.FolderPath = CardFolderBox.Text;
             CardEditorTitle.Text = "Card" + (string.IsNullOrEmpty(_cardBuffer.Title) ? "" : " — " + _cardBuffer.Title);
             UpdateCardDirtyText();
         }

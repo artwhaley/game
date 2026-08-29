@@ -104,9 +104,10 @@ namespace TruthCardGame.Content.Sqlite
                 {
                     ActionSequenceWriter.Write(connection, transaction, card.Sequence);
                     Sql.Execute(connection, transaction,
-                        "INSERT INTO card (id, title, body_text, action_sequence_id) VALUES (@id, @title, @body, @seq);",
+                        "INSERT INTO card (id, title, body_text, folder_path, action_sequence_id) VALUES (@id, @title, @body, @folder, @seq);",
                         ("id", card.Id), ("title", (object)card.Title ?? DBNull.Value),
-                        ("body", (object)card.BodyText ?? DBNull.Value), ("seq", card.Sequence.Id));
+                        ("body", (object)card.BodyText ?? DBNull.Value), ("folder", NormalizeFolder(card.FolderPath)),
+                        ("seq", card.Sequence.Id));
                     ReplaceRelations(connection, transaction, card.Id, card.CardTagIds);
                     ReplaceRelationTable(connection, transaction, "card_kink", "card_id", "kink_id", card.Id, card.KinkIds);
                     ReplaceRelationTable(connection, transaction, "card_required_equipment", "card_id", "equipment_id", card.Id, card.RequiredEquipmentIds);
@@ -147,6 +148,20 @@ namespace TruthCardGame.Content.Sqlite
             Sql.Execute(connection, null,
                 "UPDATE card SET body_text = @body WHERE id = @id;",
                 ("body", (object)bodyText ?? DBNull.Value), ("id", cardId));
+        }
+
+        public static void SetFolder(DbConnection connection, string cardId, string folderPath)
+        {
+            Sql.Execute(connection, null,
+                "UPDATE card SET folder_path = @folder WHERE id = @id;",
+                ("folder", NormalizeFolder(folderPath)), ("id", cardId));
+        }
+
+        public static string NormalizeFolder(string folderPath)
+        {
+            if (string.IsNullOrWhiteSpace(folderPath)) return "";
+            var parts = folderPath.Replace('\\', '/').Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            return string.Join("/", Array.ConvertAll(parts, part => part.Trim()));
         }
 
         public static void ReplaceRelations(DbConnection connection, CardDefinition card)
@@ -221,14 +236,15 @@ namespace TruthCardGame.Content.Sqlite
             if (string.IsNullOrEmpty(sourceCardId)) throw new ArgumentException("Source card id required.", nameof(sourceCardId));
             if (string.IsNullOrEmpty(newCardId)) throw new ArgumentException("New card id required.", nameof(newCardId));
 
-            string sourceTitle = null, sourceBody = null, sourceSequenceId = null;
+            string sourceTitle = null, sourceBody = null, sourceFolder = null, sourceSequenceId = null;
             Sql.QueryAll(connection,
-                "SELECT title, body_text, action_sequence_id FROM card WHERE id = @id;",
+                "SELECT title, body_text, folder_path, action_sequence_id FROM card WHERE id = @id;",
                 reader =>
                 {
                     sourceTitle = reader.IsDBNull(0) ? "" : reader.GetString(0);
                     sourceBody = reader.IsDBNull(1) ? "" : reader.GetString(1);
-                    sourceSequenceId = reader.IsDBNull(2) ? null : reader.GetString(2);
+                    sourceFolder = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                    sourceSequenceId = reader.IsDBNull(3) ? null : reader.GetString(3);
                 },
                 ("id", sourceCardId));
 
@@ -242,6 +258,7 @@ namespace TruthCardGame.Content.Sqlite
                 Id = newCardId,
                 Title = string.IsNullOrEmpty(title) ? sourceTitle : title,
                 BodyText = sourceBody,
+                FolderPath = sourceFolder,
             };
 
             clone.CardTagIds.AddRange(RelationIds(connection, "SELECT tag_id FROM card_tag WHERE card_id = @id ORDER BY ordinal;", sourceCardId));
@@ -259,9 +276,10 @@ namespace TruthCardGame.Content.Sqlite
                 {
                     ActionSequenceWriter.Write(connection, transaction, clone.Sequence);
                     Sql.Execute(connection, transaction,
-                        "INSERT INTO card (id, title, body_text, action_sequence_id) VALUES (@id, @title, @body, @seq);",
+                        "INSERT INTO card (id, title, body_text, folder_path, action_sequence_id) VALUES (@id, @title, @body, @folder, @seq);",
                         ("id", clone.Id), ("title", (object)clone.Title ?? DBNull.Value),
-                        ("body", (object)clone.BodyText ?? DBNull.Value), ("seq", clone.Sequence.Id));
+                        ("body", (object)clone.BodyText ?? DBNull.Value), ("folder", clone.FolderPath ?? ""),
+                        ("seq", clone.Sequence.Id));
                     ReplaceRelationTable(connection, transaction, "card_tag", "card_id", "tag_id", clone.Id, clone.CardTagIds);
                     ReplaceRelationTable(connection, transaction, "card_kink", "card_id", "kink_id", clone.Id, clone.KinkIds);
                     ReplaceRelationTable(connection, transaction, "card_required_equipment", "card_id", "equipment_id", clone.Id, clone.RequiredEquipmentIds);

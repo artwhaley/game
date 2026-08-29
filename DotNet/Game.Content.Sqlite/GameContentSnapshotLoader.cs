@@ -219,13 +219,15 @@ namespace TruthCardGame.Content.Sqlite
             {
                 string title = "";
                 string bodyText = "";
+                string folderPath = "";
                 string sequenceId = "";
-                QueryOne(connection, "SELECT title, body_text, action_sequence_id FROM card WHERE id = @id;",
+                QueryOne(connection, "SELECT title, body_text, folder_path, action_sequence_id FROM card WHERE id = @id;",
                     reader =>
                     {
                         title = reader.GetString(0);
                         bodyText = reader.IsDBNull(1) ? "" : reader.GetString(1);
-                        sequenceId = reader.IsDBNull(2) ? null : reader.GetString(2);
+                        folderPath = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                        sequenceId = reader.IsDBNull(3) ? null : reader.GetString(3);
                     },
                     Param("id", id));
 
@@ -234,7 +236,7 @@ namespace TruthCardGame.Content.Sqlite
                     throw new InvalidOperationException($"Loader: card '{id}' has no owned action_sequence_id.");
                 }
 
-                var card = new CardDefinition { Id = id, Title = title, BodyText = bodyText };
+                var card = new CardDefinition { Id = id, Title = title, BodyText = bodyText, FolderPath = folderPath };
                 card.CardTagIds.AddRange(OrderedRelationIds(connection,
                     "SELECT tag_id FROM card_tag WHERE card_id = @id ORDER BY ordinal;",
                     Param("id", id)));

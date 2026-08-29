@@ -1804,18 +1804,19 @@ namespace TruthCardGame.Content.Sqlite
             _snapshot = null;
             using (var connection = conn())
             {
-                string title = null, body = null, sequenceId = null;
-                Sql.QueryAll(connection, "SELECT title, body_text, action_sequence_id FROM card WHERE id = @id;",
+                string title = null, body = null, folder = null, sequenceId = null;
+                Sql.QueryAll(connection, "SELECT title, body_text, folder_path, action_sequence_id FROM card WHERE id = @id;",
                     reader =>
                     {
                         title = reader.IsDBNull(0) ? "" : reader.GetString(0);
                         body = reader.IsDBNull(1) ? "" : reader.GetString(1);
-                        sequenceId = reader.IsDBNull(2) ? null : reader.GetString(2);
+                        folder = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                        sequenceId = reader.IsDBNull(3) ? null : reader.GetString(3);
                     },
                     ("id", cardId));
                 if (sequenceId == null) throw new InvalidOperationException($"Card '{cardId}' not found.");
 
-                _snapshot = new CardDefinition { Id = cardId, Title = title, BodyText = body };
+                _snapshot = new CardDefinition { Id = cardId, Title = title, BodyText = body, FolderPath = folder };
                 _snapshot.CardTagIds.AddRange(IdsOf(connection, "SELECT tag_id FROM card_tag WHERE card_id = @id;", cardId));
                 _snapshot.KinkIds.AddRange(IdsOf(connection, "SELECT kink_id FROM card_kink WHERE card_id = @id;", cardId));
                 _snapshot.RequiredEquipmentIds.AddRange(IdsOf(connection, "SELECT equipment_id FROM card_required_equipment WHERE card_id = @id;", cardId));
@@ -1917,6 +1918,36 @@ namespace TruthCardGame.Content.Sqlite
 
         protected override void ExecuteCore(DbConnection connection) => CardRepository.SetBody(connection, _cardId, _newBody);
         protected override void UndoCore(DbConnection connection) => CardRepository.SetBody(connection, _cardId, _oldBody);
+    }
+
+    /// <summary>Moves a card between authoring folders (coalesced).</summary>
+    public sealed class SetCardFolderCommand : AuthoringCommandBase
+    {
+        private readonly string _cardId;
+        private readonly string _oldFolder;
+        private string _newFolder;
+
+        public SetCardFolderCommand(Func<DbConnection> conn, string cardId, string oldFolder, string newFolder) : base(conn)
+        {
+            _cardId = cardId;
+            _oldFolder = CardRepository.NormalizeFolder(oldFolder);
+            _newFolder = CardRepository.NormalizeFolder(newFolder);
+        }
+
+        public override string Name => "Move card to folder";
+        public override string MergeKey => "cardfolder:" + _cardId;
+        public override bool Merge(IAuthoringCommand incoming)
+        {
+            if (incoming is SetCardFolderCommand folder && folder._cardId == _cardId)
+            {
+                _newFolder = folder._newFolder;
+                return true;
+            }
+            return false;
+        }
+
+        protected override void ExecuteCore(DbConnection connection) => CardRepository.SetFolder(connection, _cardId, _newFolder);
+        protected override void UndoCore(DbConnection connection) => CardRepository.SetFolder(connection, _cardId, _oldFolder);
     }
 
     /// <summary>Replaces the card's four relation lists atomically; undo restores the captured originals.</summary>

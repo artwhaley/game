@@ -300,5 +300,19 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             var fromBuffer = CardEditorSequenceHost.Build(buffer.Sequence, card.Id, buffer.Title, content);
             Assert.AreEqual(2, fromBuffer.Rows.Count, "buffer path builds the same editor");
         }
+
+        [Test]
+        public void CardEditBuffer_TracksFolderAsAnOrdinaryBufferedField()
+        {
+            var card = Card("folder-card", "Folder Card");
+            card.FolderPath = "Romance/Soft";
+            var buffer = new CardEditBuffer(card);
+
+            Assert.That(buffer.FolderPath, Is.EqualTo("Romance/Soft"));
+            Assert.That(buffer.IsDirty, Is.False);
+            buffer.FolderPath = "Romance/Intense";
+            Assert.That(buffer.FieldsChanged, Is.True);
+            Assert.That(buffer.IsDirty, Is.True);
+        }
     }
 }

@@ -59,6 +59,9 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   blocking). Dialog currently uses the same temporary host presentation as a
   Cutscene. Card duplication recursively assigns fresh IDs to the owned action
   sequence, every PromptChoice option sequence, and every nested action.
+  Schema v7 adds searchable slash-delimited folders to Cards only. The Cards
+  drawer filters by folder and searches titles, stable IDs, and folder paths;
+  the buffered Card editor saves folder moves in the same undoable edit.
   See [`Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md`](Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md).
 - Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core` +
   `Game.Profile`, .NET Standard 2.1) that both Unity and the WPF hosts run —

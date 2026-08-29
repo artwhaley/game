@@ -91,6 +91,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 prompt.Options.Add(new PromptChoiceOptionDefinition
                     { Id = "source-option", Label = "One", Sequence = nested });
                 var source = new CardDefinition { Id = "source", Title = "Source",
+                    FolderPath = "Romance/Soft",
                     Sequence = new ActionSequenceDefinition { Id = "source-seq" } };
                 source.Sequence.Instances.Add(prompt);
                 CardRepository.Create(connection, source);
@@ -100,6 +101,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 var sourceChoice = (PromptChoiceInstanceDefinition)sourceReloaded.Instances.Single();
                 var cloneChoice = (PromptChoiceInstanceDefinition)clone.Sequence.Instances.Single();
 
+                Assert.That(clone.FolderPath, Is.EqualTo("Romance/Soft"));
                 Assert.That(clone.Sequence.Id, Is.Not.EqualTo(sourceReloaded.Id));
                 Assert.That(cloneChoice.Id, Is.Not.EqualTo(sourceChoice.Id));
                 Assert.That(cloneChoice.Options.Single().Id, Is.Not.EqualTo(sourceChoice.Options.Single().Id));
@@ -107,6 +109,25 @@ namespace TruthCardGame.Content.Sqlite.Tests
                     Is.Not.EqualTo(sourceChoice.Options.Single().Sequence.Id));
                 Assert.That(cloneChoice.Options.Single().Sequence.Instances.Single().Id,
                     Is.Not.EqualTo(sourceChoice.Options.Single().Sequence.Instances.Single().Id));
+            }
+        }
+
+        [Test]
+        public void CardFolderPath_IsNormalizedStoredAndLoaded()
+        {
+            using (var connection = Open())
+            {
+                CoreMigrator.EnsureSchema(connection);
+                CardRepository.Create(connection, new CardDefinition
+                {
+                    Id = "folder-card", Title = "Folder Card", FolderPath = " Romance\\Soft / Favorites ",
+                });
+
+                var loaded = GameContentSnapshotLoader.Load(connection).Cards.Single();
+                Assert.That(loaded.FolderPath, Is.EqualTo("Romance/Soft/Favorites"));
+                CardRepository.SetFolder(connection, loaded.Id, "Intense / Public");
+                loaded = GameContentSnapshotLoader.Load(connection).Cards.Single();
+                Assert.That(loaded.FolderPath, Is.EqualTo("Intense/Public"));
             }
         }
 
@@ -316,6 +337,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 Assert.IsNotNull(actualCard);
                 Assert.AreEqual(expectedCard.Title, actualCard.Title);
                 Assert.AreEqual(expectedCard.BodyText, actualCard.BodyText);
+                Assert.AreEqual(expectedCard.FolderPath, actualCard.FolderPath);
                 CollectionAssert.AreEqual(expectedCard.CardTagIds, actualCard.CardTagIds);
                 CollectionAssert.AreEqual(expectedCard.KinkIds, actualCard.KinkIds);
                 CollectionAssert.AreEqual(expectedCard.RequiredEquipmentIds, actualCard.RequiredEquipmentIds);

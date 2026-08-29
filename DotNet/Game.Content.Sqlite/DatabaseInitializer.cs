@@ -155,8 +155,9 @@ namespace TruthCardGame.Content.Sqlite
             ActionSequenceWriter.Write(connection, transaction, card.Sequence);
 
             Sql.Execute(connection, transaction,
-                "INSERT INTO card (id, title, body_text, action_sequence_id) VALUES (@id, @title, @body, @seq);",
-                ("id", card.Id), ("title", card.Title), ("body", (object)card.BodyText ?? DBNull.Value), ("seq", card.Sequence.Id));
+                "INSERT INTO card (id, title, body_text, folder_path, action_sequence_id) VALUES (@id, @title, @body, @folder, @seq);",
+                ("id", card.Id), ("title", card.Title), ("body", (object)card.BodyText ?? DBNull.Value),
+                ("folder", CardRepository.NormalizeFolder(card.FolderPath)), ("seq", card.Sequence.Id));
 
             ReplaceRelations(connection, transaction, "card_tag", "card_id", "tag_id", card.Id, card.CardTagIds);
             ReplaceRelations(connection, transaction, "card_kink", "card_id", "kink_id", card.Id, card.KinkIds);
