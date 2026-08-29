@@ -144,7 +144,7 @@
                                                                             Style="{StaticResource DarkButton}" ToolTip="Delete option"/>
                                                                 </StackPanel>
                                                                 <ContentControl Content="{Binding ActionSequence}"
-                                                                                ContentTemplate="{StaticResource ActionSequenceTemplate}"/>
+                                                                                ContentTemplate="{DynamicResource ActionSequenceTemplate}"/>
                                                             </StackPanel>
                                                         </Border>
                                                     </DataTemplate>

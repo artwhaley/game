@@ -1390,7 +1390,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 var filled = GraphAutoLayout.FillMissing(graph.Nodes, graph.Edges, layout);
                 foreach (var pair in filled)
                 {
-                    if (!layout.ContainsKey(pair.Key))
+                    if (!LayoutPositionMatches(layout, pair.Key, pair.Value))
                         AuthoringLayoutRepository.SaveSessionNodePosition(connection, _vm.SelectedSession.Id, pair.Key, pair.Value.X, pair.Value.Y);
                 }
                 var viewport = AuthoringLayoutRepository.LoadViewport(connection, "session", _vm.SelectedSession.Id);
@@ -1404,16 +1404,37 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (_vm.SelectedPhase == null) return;
             WithConnection(connection =>
             {
+                // The selected PhaseDefinition is the live library object and
+                // can still hold the graph from before the command executed.
+                // Read the graph back from SQLite before rebuilding the canvas;
+                // otherwise a successful insert stays invisible until restart.
+                var freshPhase = GameContentSnapshotLoader.Load(connection).Phases
+                    .FirstOrDefault(phase => phase.Id == _vm.SelectedPhase.Id);
+                if (freshPhase == null) return;
+                _vm.SelectedPhase.Graph = freshPhase.Graph;
+                _vm.SelectedPhase.Exits.Clear();
+                _vm.SelectedPhase.Exits.AddRange(freshPhase.Exits);
+
                 var layout = AuthoringLayoutRepository.LoadPhaseNodePositions(connection, _vm.SelectedPhase.Id);
                 var filled = GraphAutoLayout.FillMissing(_vm.SelectedPhase.Graph.Nodes, _vm.SelectedPhase.Graph.Edges, layout);
                 foreach (var pair in filled)
                 {
-                    if (!layout.ContainsKey(pair.Key))
+                    if (!LayoutPositionMatches(layout, pair.Key, pair.Value))
                         AuthoringLayoutRepository.SavePhaseNodePosition(connection, _vm.SelectedPhase.Id, pair.Key, pair.Value.X, pair.Value.Y);
                 }
                 var viewport = AuthoringLayoutRepository.LoadViewport(connection, "phase", _vm.SelectedPhase.Id);
                 _vm.PhaseGraph.LoadFromDefinition(_vm.SelectedPhase, filled, viewport);
             });
+        }
+
+        private static bool LayoutPositionMatches(
+            Dictionary<string, (double X, double Y)> layout,
+            string nodeId,
+            (double X, double Y) position)
+        {
+            return layout.TryGetValue(nodeId, out var saved) &&
+                   Math.Abs(saved.X - position.X) < 0.001 &&
+                   Math.Abs(saved.Y - position.Y) < 0.001;
         }
 
         // ---------- layout (GridSplitters + persisted ratios) ----------
@@ -1661,7 +1682,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (_vm.SelectedSession == null) { StatusText.Text = "Select a session first."; return; }
             var phase = PhaseList.SelectedItem as PhaseDefinition ?? _vm.SelectedPhase;
             if (phase == null) { StatusText.Text = "Select a phase in the Library first."; return; }
-            AddPhaseReference(phase, new Point(80, 60));
+            AddPhaseReference(phase, CenterGraphPosition(SessionEditor, _vm.SessionGraph));
         }
 
         private void OnAddSessionDecision(object sender, RoutedEventArgs e)
@@ -1706,15 +1727,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void PersistSessionNode(SessionGraphNodeDefinition node, Point? location = null)
         {
-            var point = location ?? NextAutoPosition();
+            var point = location ?? CenterGraphPosition(SessionEditor, _vm.SessionGraph);
             PushCommand(new AddSessionNodeCommand(OpenConnection, _vm.SelectedSession.Id, node,
                 new Point2(point.X, point.Y)), reloadSession: true);
-        }
-
-        private Point NextAutoPosition()
-        {
-            var offset = 60.0 + _vm.SessionGraph.Nodes.Count * 36;
-            return new Point(offset, offset);
         }
 
         private void OnDeleteSelectedNode(object sender, RoutedEventArgs e)
@@ -1857,15 +1872,55 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void PersistPhaseNode(PhaseGraphNodeDefinition node, Point? location = null)
         {
-            var point = location ?? NextPhasePosition();
+            var point = location ?? CenterGraphPosition(PhaseEditor, _vm.PhaseGraph);
             PushCommand(new AddPhaseNodeCommand(OpenConnection, _vm.SelectedPhase.Id, node,
                 new Point2(point.X, point.Y)), reloadPhase: true);
         }
 
-        private Point NextPhasePosition()
+        /// <summary>
+        /// Converts the visible center of a Nodify canvas to graph coordinates.
+        /// New nodes are centered in the current viewport; if that point is
+        /// already occupied, use the nearest clear spot so repeated clicks do
+        /// not create another pile.
+        /// </summary>
+        private static Point CenterGraphPosition(FrameworkElement editor, GraphEditorViewModel graph)
         {
-            var offset = 60.0 + _vm.PhaseGraph.Nodes.Count * 30;
-            return new Point(offset, offset);
+            var width = editor != null && editor.ActualWidth > 1 ? editor.ActualWidth : 600;
+            var height = editor != null && editor.ActualHeight > 1 ? editor.ActualHeight : 300;
+            var zoom = graph?.ViewportZoom > 0.0001 ? graph.ViewportZoom : 1.0;
+            var viewport = graph?.ViewportLocation ?? new Point();
+            var center = new Point(
+                (width * 0.5 - viewport.X) / zoom - 105,
+                (height * 0.5 - viewport.Y) / zoom - 65);
+
+            if (graph == null || !graph.Nodes.Any(node => OverlapsNode(node.Location, center, zoom)))
+                return center;
+
+            var stepX = 230 / zoom;
+            var stepY = 160 / zoom;
+            var candidates = new[]
+            {
+                new Point(center.X + stepX, center.Y),
+                new Point(center.X - stepX, center.Y),
+                new Point(center.X, center.Y + stepY),
+                new Point(center.X, center.Y - stepY),
+                new Point(center.X + stepX, center.Y + stepY),
+                new Point(center.X - stepX, center.Y + stepY),
+                new Point(center.X + stepX, center.Y - stepY),
+                new Point(center.X - stepX, center.Y - stepY),
+            };
+            foreach (var candidate in candidates)
+            {
+                if (!graph.Nodes.Any(node => OverlapsNode(node.Location, candidate, zoom)))
+                    return candidate;
+            }
+            return center;
+        }
+
+        private static bool OverlapsNode(Point existing, Point candidate, double zoom)
+        {
+            return Math.Abs(existing.X - candidate.X) < 190 / zoom &&
+                   Math.Abs(existing.Y - candidate.Y) < 120 / zoom;
         }
 
         // ---------- phase library CRUD + header ----------

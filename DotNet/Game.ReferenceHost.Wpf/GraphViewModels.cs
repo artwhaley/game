@@ -909,7 +909,24 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 }
             }
 
-            var occupied = result.Where(pair => ids.Contains(pair.Key)).Select(pair => pair.Value).ToList();
+            // A previous authoring build could persist several new nodes at the
+            // same default coordinate because the live canvas was not refreshed
+            // after insertion. Keep the first saved node at an exact coordinate,
+            // but treat later duplicates as missing so they are assigned distinct
+            // positions and the repaired layout can be persisted by the host.
+            var occupied = new List<(double X, double Y)>();
+            foreach (var node in nodes)
+            {
+                if (!result.TryGetValue(node.Id, out var savedPoint)) continue;
+                if (occupied.Any(point => Math.Abs(point.X - savedPoint.X) < 0.001 &&
+                                          Math.Abs(point.Y - savedPoint.Y) < 0.001))
+                {
+                    result.Remove(node.Id);
+                    continue;
+                }
+                occupied.Add(savedPoint);
+            }
+
             foreach (var node in nodes)
             {
                 if (result.ContainsKey(node.Id)) continue;

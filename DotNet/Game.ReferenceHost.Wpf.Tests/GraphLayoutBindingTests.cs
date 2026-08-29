@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
@@ -118,6 +119,84 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             var prompt = sequence.CreateDefaultInstance(ActionTypeKeys.PromptChoice, "prompt-test");
             Assert.That(prompt, Is.TypeOf<PromptChoiceInstanceDefinition>());
             Assert.That(((PromptChoiceInstanceDefinition)prompt).Options, Has.Count.EqualTo(2));
+        }
+
+        [Test]
+        public void PromptChoiceNestedSequenceTemplateRenders()
+        {
+            EnsureApplication();
+            var resources = new MainWindow();
+            var host = new Window { Width = 800, Height = 600 };
+            try
+            {
+                var card = new CardDefinition
+                {
+                    Id = "card-prompt",
+                    Title = "Prompt Card",
+                    Sequence = new ActionSequenceDefinition { Id = "seq-prompt" },
+                };
+                var prompt = new PromptChoiceInstanceDefinition
+                {
+                    Id = "prompt-choice",
+                    Prompt = "Choose",
+                    IsBlocking = true,
+                };
+                prompt.Options.Add(new PromptChoiceOptionDefinition
+                {
+                    Id = "prompt-option-a",
+                    Label = "A",
+                    Sequence = new ActionSequenceDefinition { Id = "prompt-seq-a" },
+                });
+                prompt.Options.Add(new PromptChoiceOptionDefinition
+                {
+                    Id = "prompt-option-b",
+                    Label = "B",
+                    Sequence = new ActionSequenceDefinition { Id = "prompt-seq-b" },
+                });
+                card.Sequence.Instances.Add(prompt);
+
+                var content = new GameContentDefinition();
+                var sequence = CardEditorSequenceHost.Build(card, content);
+                var template = (DataTemplate)resources.Resources["ActionSequenceTemplate"];
+                host.Resources["ActionSequenceTemplate"] = template;
+                host.Content = new ContentControl
+                {
+                    Content = sequence,
+                    ContentTemplate = template,
+                };
+                host.Show();
+                host.UpdateLayout();
+
+                Assert.That(sequence.Rows, Has.Count.EqualTo(1));
+                Assert.That(sequence.Rows[0].PromptOptions, Has.Count.EqualTo(2));
+                Assert.That(sequence.Rows[0].PromptOptions[0].ActionSequence, Is.Not.Null);
+            }
+            finally
+            {
+                host.Close();
+                resources.Close();
+            }
+        }
+
+        [Test]
+        public void AutoLayoutRepairsExactDuplicateSavedCoordinates()
+        {
+            var nodes = new GraphNodeDefinition[]
+            {
+                new PhaseEntryNodeDefinition { Id = "entry" },
+                new ReturnNodeDefinition { Id = "return-a" },
+                new ReturnNodeDefinition { Id = "return-b" },
+            };
+            var saved = new Dictionary<string, (double X, double Y)>
+            {
+                ["return-a"] = (240, 240),
+                ["return-b"] = (240, 240),
+            };
+
+            var filled = GraphAutoLayout.FillMissing(nodes, null, saved);
+
+            Assert.That(filled.Values.Distinct().Count(), Is.EqualTo(3));
+            Assert.That(filled["return-b"], Is.Not.EqualTo((240d, 240d)));
         }
 
         [Test]

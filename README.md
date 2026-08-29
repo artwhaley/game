@@ -30,6 +30,9 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   with drag/drop, PromptChoice has recursive option sequences, relation fields
   use stable-ID searchable chips, catalogs have editors, and the separate
   runner logs selection/check/action/flow diagnostics plus full card body text.
+  Graph node palette inserts now refresh both live canvases from SQLite,
+  center new nodes in the current viewport, repair legacy duplicate positions,
+  and render nested PromptChoice action sequences without terminating the host.
   See [`Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md`](Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md).
 - Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core` +
   `Game.Profile`, .NET Standard 2.1) that both Unity and the WPF hosts run —
