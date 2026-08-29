@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -31,6 +32,18 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private CancellationTokenSource _sessionCts;
         private CancellationTokenSource _autoCts;
         private bool _waitingForContinue;
+        private int _seed;
+
+        /// <summary>The visible integer seed used for the next/restarted run.</summary>
+        public int Seed
+        {
+            get => _seed;
+            set
+            {
+                _seed = value;
+                if (SeedBox != null) SeedBox.Text = value.ToString(CultureInfo.InvariantCulture);
+            }
+        }
 
         /// <summary>Raised on the UI thread whenever playback enters a phase (phase id).</summary>
         public event Action<string> PhaseChanged;
@@ -72,9 +85,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// profile loader supplies SessionSpawnOptions.TemperatureOverrides here
         /// from UserProfilePaths.ProfileDatabasePath().
         /// </summary>
-        private static SessionSpawnOptions SpawnOptionsForRun()
+        private static SessionSpawnOptions SpawnOptionsForRun(int seed)
         {
-            return SessionSpawnOptions.Default;
+            return new SessionSpawnOptions(seed);
         }
 
         /// <summary>
@@ -141,6 +154,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     return;
                 }
 
+                if (!TryReadSeed(out var seed)) return;
+                _seed = seed;
+
                 StopAuto();
                 CancelSession();
                 _sessionCts = new CancellationTokenSource();
@@ -152,7 +168,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     prompts: new UiPromptService(this),
                     cutscene: new UiCutsceneService(this));
 
-                _engine = new GameSessionEngine(_content, selected.Id, services, SpawnOptionsForRun(),
+                _engine = new GameSessionEngine(_content, selected.Id, services, SpawnOptionsForRun(seed),
                     rngFactory: null, selectionProfile: LoadSelectionProfile());
 
                 SubscribeEngine();
@@ -166,6 +182,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 TemperaturesText.Text = RefreshTemperatures();
                 SetStatus("Starting…");
                 DrawNextButton.IsEnabled = false;
+                Log($"Seed: {seed}");
                 Log($"Session started: {SelectionDiagnosticsFormatter.Session(selected)}");
 
                 await AdvanceAsync();
@@ -180,6 +197,24 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 SetStatus("Error");
                 Log("ERROR starting session: " + ex.Message);
             }
+        }
+
+        private bool TryReadSeed(out int seed)
+        {
+            if (int.TryParse(SeedBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out seed))
+            {
+                return true;
+            }
+
+            SetStatus("Invalid seed");
+            Log("ERROR: Seed must be a signed 32-bit integer.");
+            return false;
+        }
+
+        private void OnRandomizeSeed(object sender, RoutedEventArgs e)
+        {
+            Seed = RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
+            Log($"Seed randomized: {Seed}");
         }
 
         private async void OnDrawNext(object sender, RoutedEventArgs e)
