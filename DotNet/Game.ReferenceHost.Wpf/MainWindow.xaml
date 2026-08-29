@@ -737,12 +737,19 @@
                         <TextBlock x:Name="ActionBrowserTargetText" Text="No focused sequence" FontSize="9"
                                    Foreground="#FFB0B0B0" Margin="0,2,0,3" TextTrimming="CharacterEllipsis"/>
                         <TextBox x:Name="ActionBrowserSearchBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
-                                 TextChanged="OnActionBrowserSearchChanged" ToolTip="Search actions by category, label, or keyword"/>
+                                 TextChanged="OnActionBrowserSearchChanged" ToolTip="Search actions by name or keyword"/>
                         <ListBox x:Name="ActionBrowserList" Height="180" Margin="0,4,0,0"
                                  Style="{StaticResource DarkListBox}" ItemContainerStyle="{StaticResource DarkListBoxItem}"
-                                 DisplayMemberPath="BrowserDisplayLabel" MouseLeftButtonDown="OnActionDragStart"
+                                 DisplayMemberPath="DisplayLabel" MouseLeftButtonDown="OnActionDragStart"
                                  MouseDoubleClick="OnActionBrowserDoubleClick"
-                                 PreviewMouseMove="OnActionBrowserMouseMove"/>
+                                 PreviewMouseMove="OnActionBrowserMouseMove"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                        </ListBox>
                         <TextBlock Text="Double-click or drag an action into a sequence. Scope-invalid drops are rejected."
                                    TextWrapping="Wrap" FontSize="9" Foreground="#FF808080" Margin="0,3,0,0"/>
                     </StackPanel>

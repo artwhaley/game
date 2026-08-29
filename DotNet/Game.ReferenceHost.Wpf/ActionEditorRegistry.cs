@@ -21,7 +21,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public string TypeKey => Info.TypeKey;
         public string DisplayLabel => Info.DisplayLabel;
         public string Category => string.IsNullOrEmpty(Info.AuthoringCategory) ? "Other" : Info.AuthoringCategory;
-        public string BrowserDisplayLabel => Category + " / " + DisplayLabel;
         public string SearchText => (Info.DisplayLabel + " " + Info.TypeKey + " " + Info.SearchKeywords).Trim();
     }
 
@@ -59,8 +58,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             return ActionTypeRegistry.All
                 .Where(info => (info.LegalScopes & scope) != 0 && Descriptors.ContainsKey(info.TypeKey))
                 .Select(info => new ActionTypeChoice(info))
-                .OrderBy(choice => choice.Category, StringComparer.Ordinal)
-                .ThenBy(choice => choice.DisplayLabel, StringComparer.Ordinal);
+                .OrderBy(choice => choice.DisplayLabel, StringComparer.OrdinalIgnoreCase);
         }
 
         public static ActionEditorDescriptor For(string typeKey)
@@ -243,9 +241,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
             var view = new ListCollectionView(new List<ActionTypeChoice>(_pickerChoices));
             view.GroupDescriptions.Clear();
-            view.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ActionTypeChoice.Category)));
             view.SortDescriptions.Clear();
-            view.SortDescriptions.Add(new SortDescription(nameof(ActionTypeChoice.Category), ListSortDirection.Ascending));
             view.SortDescriptions.Add(new SortDescription(nameof(ActionTypeChoice.DisplayLabel), ListSortDirection.Ascending));
             ActionTypePickerView = view;
             if (string.IsNullOrEmpty(SelectedActionTypeKey) && _pickerChoices.Count > 0)

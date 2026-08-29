@@ -27,7 +27,8 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   [`Docs/MilestoneB/02-schema-audit.md`](Docs/MilestoneB/02-schema-audit.md)).
 - **Milestone B authoring readiness is implemented**: Cards use the shared
   ActionSequence editor, the Inspector has a scoped searchable Action Browser
-  with drag/drop, PromptChoice has recursive option sequences, relation fields
+  with plain alphabetized names, a wrapping multi-column layout, and drag/drop;
+  PromptChoice has recursive option sequences, relation fields
   use stable-ID searchable chips, catalogs have editors, and the separate
   runner logs selection/check/action/flow diagnostics plus full card body text.
   Graph node palette inserts now refresh both live canvases from SQLite,

@@ -114,6 +114,10 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
 
             var cardChoices = ActionEditorRegistry.PickerChoices(ActionOwnerScope.CardSequence).ToList();
             Assert.That(cardChoices.Any(choice => choice.TypeKey == ActionTypeKeys.PhaseGoto), Is.False);
+            CollectionAssert.AreEqual(
+                cardChoices.Select(choice => choice.DisplayLabel).OrderBy(label => label, System.StringComparer.OrdinalIgnoreCase),
+                cardChoices.Select(choice => choice.DisplayLabel));
+            Assert.That(cardChoices.All(choice => !choice.DisplayLabel.Contains(" / ")), Is.True);
 
             var sequence = new ActionSequenceEditorViewModel(
                 new GraphNodeViewModel { Id = "action-test" }, "sequence-test",
@@ -122,6 +126,7 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             sequence.SearchText = "temperature";
             Assert.That(sequence.ActionTypePickerView.Cast<ActionTypeChoice>().All(choice =>
                 choice.SearchText.IndexOf("temperature", System.StringComparison.OrdinalIgnoreCase) >= 0), Is.True);
+            Assert.That(sequence.ActionTypePickerView.GroupDescriptions, Is.Empty);
 
             var prompt = sequence.CreateDefaultInstance(ActionTypeKeys.PromptChoice, "prompt-test");
             Assert.That(prompt, Is.TypeOf<PromptChoiceInstanceDefinition>());
