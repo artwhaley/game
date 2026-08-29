@@ -1,7 +1,9 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -23,8 +25,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
     /// </summary>
     public partial class ReferencePlayerWindow : Window
     {
-        private const int MaxLogEntries = 400;
-
         private readonly ObservableCollection<string> _log = new ObservableCollection<string>();
         private GameContentDefinition _content;
         private GameSessionEngine _engine;
@@ -78,27 +78,19 @@ namespace TruthCardGame.ReferenceHost.Wpf
         }
 
         /// <summary>
-        /// Milestone B: the persistent UserProfile drives Card selection. A
-        /// missing/broken profile DB degrades to an empty profile (all kinks
-        /// Unconfigured) rather than blocking play — the profile window is
-        /// where the user configures it.
+        /// A missing profile DB is a legitimate empty state. An existing
+        /// profile DB that cannot be opened, migrated, or read is a loud
+        /// authoring/runtime error rather than an empty-profile fallback.
         /// </summary>
         private static CardSelectionProfile LoadSelectionProfile()
         {
-            try
+            var path = UserProfilePaths.ProfileDatabasePath();
+            if (!File.Exists(path)) return new CardSelectionProfile();
+            using (var connection = new SqliteConnection("Data Source=" + path))
             {
-                var path = UserProfilePaths.ProfileDatabasePath();
-                if (!File.Exists(path)) return new CardSelectionProfile();
-                using (var connection = new SqliteConnection("Data Source=" + path))
-                {
-                    connection.Open();
-                    TruthCardGame.Profile.Sqlite.ProfileStore.EnsureSchema(connection);
-                    return TruthCardGame.Profile.Sqlite.ProfileStore.Load(connection).ToSelectionProfile();
-                }
-            }
-            catch (Exception)
-            {
-                return new CardSelectionProfile();
+                connection.Open();
+                TruthCardGame.Profile.Sqlite.ProfileStore.EnsureSchema(connection);
+                return TruthCardGame.Profile.Sqlite.ProfileStore.Load(connection).ToSelectionProfile();
             }
         }
 
@@ -181,7 +173,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 TemperaturesText.Text = RefreshTemperatures();
                 SetStatus("Starting…");
                 DrawNextButton.IsEnabled = false;
-                Log($"Session started: {selected.Title} (fixed seeds)");
+                Log($"Session started: {selected.Title}");
 
                 await AdvanceAsync();
             }
@@ -391,7 +383,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 CardTitle.Text = card.Title;
                 CardBodyText.Text = card.BodyText ?? "";
                 SetStatus("Executing…");
-                Log($"card started: {card.Title}");
+                LogCardStarted(card);
             };
             _engine.CardFinished += card =>
             {
@@ -433,6 +425,65 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             var phase = TryPhase(phaseId);
             return phase != null ? $"{phase.Title} [{phaseId}]" : phaseId;
+        }
+
+        private void LogCardStarted(CardDefinition card)
+        {
+            Log("CARD START\nTitle: " + (card?.Title ?? "") + "\nBody:\n" + (card?.BodyText ?? ""));
+        }
+
+        private void OnCopyLog(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                Clipboard.SetText(RunnerLogBuffer.Export(_log));
+                SetStatus("Log copied");
+            }
+            catch (Exception ex)
+            {
+                SetStatus("Copy failed");
+                Log("ERROR copying log: " + ex.Message);
+            }
+        }
+
+        private void OnSaveLog(object sender, RoutedEventArgs e)
+        {
+            var session = SessionCombo.SelectedItem as SessionDefinition;
+            var title = SanitizeFileName(session?.Title ?? "Session");
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Save execution log",
+                Filter = "Log files (*.log)|*.log|Text files (*.txt)|*.txt|All files (*.*)|*.*",
+                FileName = title + "-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".log",
+                AddExtension = true,
+            };
+            if (dialog.ShowDialog(this) != true) return;
+            try
+            {
+                File.WriteAllText(dialog.FileName, RunnerLogBuffer.Export(_log), new UTF8Encoding(false));
+                SetStatus("Log saved");
+            }
+            catch (Exception ex)
+            {
+                SetStatus("Save failed");
+                Log("ERROR saving log: " + ex.Message);
+            }
+        }
+
+        private void OnClearLog(object sender, RoutedEventArgs e)
+        {
+            RunnerLogBuffer.Clear(_log);
+            SetStatus("Log cleared");
+        }
+
+        private static string SanitizeFileName(string value)
+        {
+            var invalid = Path.GetInvalidFileNameChars();
+            var builder = new StringBuilder();
+            foreach (var character in value ?? "Session")
+                builder.Append(invalid.Contains(character) ? '_' : character);
+            var result = builder.ToString().Trim();
+            return result.Length == 0 ? "Session" : result;
         }
 
         // ---------- prompt / cutscene UI (host services) ----------
@@ -582,11 +633,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             RunOnUi(() =>
             {
-                _log.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
-                while (_log.Count > MaxLogEntries)
-                {
-                    _log.RemoveAt(0);
-                }
+                RunnerLogBuffer.Append(_log, $"[{DateTime.Now:HH:mm:ss}] {message}");
                 if (LogList.Items.Count > 0)
                 {
                     LogList.ScrollIntoView(LogList.Items.GetItemAt(LogList.Items.Count - 1));

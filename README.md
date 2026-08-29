@@ -36,6 +36,9 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   Session GOTO is restricted to direct SessionDecision option sequences;
   nested PromptChoice sequences inherit session-safe actions without borrowing
   the containing decision's projected socket ownership.
+  The Reference Player and live Preview retain 10,000 diagnostic lines and
+  support Copy Log, UTF-8 Save Log, and log-only Clear Log; Card Started entries
+  include the full card body.
   See [`Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md`](Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md).
 - Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core` +
   `Game.Profile`, .NET Standard 2.1) that both Unity and the WPF hosts run —

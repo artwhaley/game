@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Data.Sqlite;
@@ -24,8 +27,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
     /// </summary>
     public partial class MainWindow
     {
-        private const int MaxPreviewLogEntries = 200;
-
         private GameSessionEngine _previewEngine;
         private GameContentDefinition _previewContent;
         private CancellationTokenSource _previewCts;
@@ -84,7 +85,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 PreviewSessionLabel.Text = session.Title + "  (fresh snapshot)";
                 PreviewErrorText.Text = "";
                 PreviewDrawButton.IsEnabled = false;
-                PreviewLog("Session started: " + session.Title + " (fixed seeds, fresh snapshot)");
+                PreviewLog("Session started: " + session.Title + " (fresh snapshot)");
                 await AdvancePreviewAsync();
             }
             catch (Exception ex)
@@ -239,7 +240,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             vm.CardStarted += card => RunOnUi(() =>
             {
                 PreviewCardText.Text = card.Title;
-                PreviewLog("card started: " + card.Title);
+                PreviewLog("CARD START\nTitle: " + (card?.Title ?? "") + "\nBody:\n" + (card?.BodyText ?? ""));
             });
             vm.VariableCheckEvaluated += (node, value, passed) => RunOnUi(() =>
             {
@@ -515,8 +516,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             RunOnUi(() =>
             {
-                _previewLog.Add($"[{DateTime.Now:HH:mm:ss}] {message}");
-                while (_previewLog.Count > MaxPreviewLogEntries) _previewLog.RemoveAt(0);
+                RunnerLogBuffer.Append(_previewLog, $"[{DateTime.Now:HH:mm:ss}] {message}");
                 if (PreviewLogList.Items.Count > 0)
                 {
                     PreviewLogList.ScrollIntoView(PreviewLogList.Items.GetItemAt(PreviewLogList.Items.Count - 1));
@@ -527,6 +527,59 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void PreviewStatus(string status)
         {
             RunOnUi(() => PreviewStatusText.Text = status);
+        }
+
+        private void OnPreviewCopyLog(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                Clipboard.SetText(RunnerLogBuffer.Export(_previewLog));
+                PreviewStatus("Log copied");
+            }
+            catch (Exception ex)
+            {
+                PreviewStatus("Copy failed");
+                PreviewLog("ERROR copying log: " + ex.Message);
+            }
+        }
+
+        private void OnPreviewSaveLog(object sender, RoutedEventArgs e)
+        {
+            var title = SanitizePreviewFileName(_vm.SelectedSession?.Title ?? "Session");
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "Save preview log",
+                Filter = "Log files (*.log)|*.log|Text files (*.txt)|*.txt|All files (*.*)|*.*",
+                FileName = title + "-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".log",
+                AddExtension = true,
+            };
+            if (dialog.ShowDialog(this) != true) return;
+            try
+            {
+                File.WriteAllText(dialog.FileName, RunnerLogBuffer.Export(_previewLog), new UTF8Encoding(false));
+                PreviewStatus("Log saved");
+            }
+            catch (Exception ex)
+            {
+                PreviewStatus("Save failed");
+                PreviewLog("ERROR saving log: " + ex.Message);
+            }
+        }
+
+        private void OnPreviewClearLog(object sender, RoutedEventArgs e)
+        {
+            RunnerLogBuffer.Clear(_previewLog);
+            PreviewStatus("Log cleared");
+        }
+
+        private static string SanitizePreviewFileName(string value)
+        {
+            var invalid = Path.GetInvalidFileNameChars();
+            var builder = new StringBuilder();
+            foreach (var character in value ?? "Session")
+                builder.Append(invalid.Contains(character) ? '_' : character);
+            var result = builder.ToString().Trim();
+            return result.Length == 0 ? "Session" : result;
         }
 
         // ---------- preview host services ----------

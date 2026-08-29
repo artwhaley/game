@@ -57,7 +57,16 @@
             <DockPanel Grid.Column="1" Margin="8,0,0,0">
                 <Border DockPanel.Dock="Top" Background="#FF212226" BorderBrush="#FF3A3A3E" BorderThickness="1"
                         Padding="8,6">
-                    <TextBlock Text="Execution log" FontWeight="Bold" Foreground="#FFDDDDDD"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Execution log" FontWeight="Bold" Foreground="#FFDDDDDD"
+                                   VerticalAlignment="Center"/>
+                        <Button x:Name="CopyLogButton" Content="Copy Log" Margin="12,0,0,0" Padding="6,1"
+                                Style="{StaticResource DarkButton}" Click="OnCopyLog"/>
+                        <Button x:Name="SaveLogButton" Content="Save Log…" Margin="4,0,0,0" Padding="6,1"
+                                Style="{StaticResource DarkButton}" Click="OnSaveLog"/>
+                        <Button x:Name="ClearLogButton" Content="Clear Log" Margin="4,0,0,0" Padding="6,1"
+                                Style="{StaticResource DarkButton}" Click="OnClearLog"/>
+                    </StackPanel>
                 </Border>
                 <ListBox x:Name="LogList" FontFamily="Consolas" FontSize="11"
                          Style="{StaticResource DarkListBox}" ItemContainerStyle="{StaticResource DarkListBoxItem}"/>

@@ -295,6 +295,9 @@
                             Style="{StaticResource DarkButton}" IsEnabled="False"/>
                     <Button Content="Restart ↺" Click="OnPreviewRestart" Padding="8,2" Margin="4,0,0,0" Style="{StaticResource DarkButton}"/>
                     <Button Content="Stop ■" Click="OnPreviewStop" Padding="8,2" Margin="4,0,0,0" Style="{StaticResource DarkButton}"/>
+                    <Button x:Name="PreviewCopyLogButton" Content="Copy Log" Click="OnPreviewCopyLog" Padding="6,2" Margin="12,0,0,0" Style="{StaticResource DarkButton}"/>
+                    <Button x:Name="PreviewSaveLogButton" Content="Save Log…" Click="OnPreviewSaveLog" Padding="6,2" Margin="4,0,0,0" Style="{StaticResource DarkButton}"/>
+                    <Button x:Name="PreviewClearLogButton" Content="Clear Log" Click="OnPreviewClearLog" Padding="6,2" Margin="4,0,0,0" Style="{StaticResource DarkButton}"/>
                     <TextBlock x:Name="PreviewStatusText" Text="" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="#FF9CCC65"/>
                 </StackPanel>
                 <TextBlock Grid.Row="1" x:Name="PreviewTemperaturesText" Text="" Margin="2,4,0,0" FontFamily="Consolas" FontSize="11"
