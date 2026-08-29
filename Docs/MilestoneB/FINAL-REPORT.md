@@ -109,22 +109,39 @@ execution packet `new tickets/Game_Milestone_B_Cards_Profile_Selection_Execution
 
 ## Remaining known issues
 
-- The PhaseEntry inspector's tag boxes accept tag *titles* (comma
-  separated) and resolve them back to stable ids; unknown titles are dropped
-  silently rather than flagged inline (FK protects the DB; a picker-style
-  editor is a candidate Milestone C polish item).
-- Card relation pickers are multi-select lists of titles; searchable
-  add/remove controls (spec's ideal shape) are a Milestone C polish item.
+- ~~The PhaseEntry inspector's tag boxes accept tag titles (comma separated);
+  unknown titles are dropped silently~~ (still true; a picker-style editor
+  remains a Milestone C polish item — FK protects the DB).
+- ~~Card relation pickers are multi-select lists of titles; searchable
+  add/remove controls are a Milestone C polish item.~~ (unchanged)
 - Catalog rename exists at the repository/command layer but the Catalogs list
-  has no inline rename control yet (create/delete + usage blocking are live).
+  has no inline rename control yet.
 - SessionType required-capability editing exists in the repositories but
-  not yet as a Catalogs-mode editor (SessionType capability requirements
-  are authorable only through the DB/commands today).
+  not yet as a Catalogs-mode editor.
 - `SessionTypePickerWindow` shows only type eligibility; missing-capability
   detail per type is in the status lines.
 - Unity: not compiled/tested in-editor this milestone (see above).
-- Card draw logging in the player window does not yet surface per-candidate
-  weights (the `CardSelectionEvaluated` event seam exists for it).
+- ~~Card draw logging in the player window does not yet surface per-candidate
+  weights~~ (the `CardSelectionEvaluated` event seam still exists for it;
+  surfacing remains deferred).
+
+### Round-2 acceptance fixes (2026-08-28, post first human pass)
+
+Fixed after the first hands-on acceptance: Profile window crash (nonexistent
+`ListTextBrush` FindResource on the UI thread — now a static brush plus every
+save path degrades to a message); catalog lists not refreshing on create/delete
+(handlers now mirror rows into the in-memory snapshot before rebinding); Play
+by Type "Session not found" (RunSession loads content itself when constructed
+pre-Show); unlabeled weighting fields (row labels + column headers + formula
+tooltips); the Phase graph disappearing with the card editor (the Card editor
+moved into the Inspector as a fully buffered Save/Revert surface — title, body,
+relations, AND Action sequence edit one CardEditBuffer, Save pushes a single
+CompositeCommand so one Ctrl+Z reverts the entire card edit, and the shared
+ActionSequence handlers route CardSequence scope to the buffer — previously
+card action row edits silently vanished); the phase node buttons got a
+"Phase nodes:" caption. Test totals after round 2: **283 passed, 1 known
+skip** (135 Core / 123 SQLite / 11 profile / 14 WPF, including the composite
+save round-trip with single-step undo).
 
 ## Deferred Milestone C/D items (per packet)
 
