@@ -1106,12 +1106,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var temperatures = content.Temperatures
                 .Select(t => new ActionParameterOption { Id = t.Id, Name = t.Title })
                 .ToList();
+            var stats = ConfiguredActionParameters.StatOptions(content);
             var resources = content.Resources
                 .Select(r => new ActionParameterOption { Id = r.Id, Name = string.IsNullOrEmpty(r.Name) ? r.Id : r.Name })
                 .ToList();
             node.ActionSequence = new ActionSequenceEditorViewModel(node, sequence?.Id,
                 ActionOwnerScope.CardSequence, sequence?.Instances,
-                temperatures, resources, new List<ExitOption>());
+                temperatures, resources, new List<ExitOption>(), statOptions: stats);
             return node.ActionSequence;
         }
     }

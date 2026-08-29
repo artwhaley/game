@@ -136,6 +136,54 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
         }
 
         [Test]
+        public void StatAndTemperatureActionsUseConfiguredDropdownOptions()
+        {
+            var content = new GameContentDefinition();
+            content.Temperatures.Add(new TemperatureDefinition
+            {
+                Id = "happiness", Title = "Happiness", MinValue = 0, MaxValue = 100, DefaultValue = 50,
+            });
+            var phase = new PhaseDefinition { Id = "phase-a", Title = "Phase" };
+            phase.Graph.Nodes.Add(new VariableCheckNodeDefinition
+            {
+                Id = "check-focus", SourceKind = VariableSourceKind.Stat, VariableKey = "focus",
+            });
+            content.Phases.Add(phase);
+            var card = new CardDefinition
+            {
+                Id = "card-a", Title = "Card",
+                Sequence = new ActionSequenceDefinition { Id = "sequence-a" },
+            };
+            card.Sequence.Instances.Add(new StatIncreaseInstanceDefinition
+            {
+                Id = "stat-courage", StatKey = "courage", Amount = 1,
+            });
+            card.Sequence.Instances.Add(new ModifyTemperatureInstanceDefinition
+            {
+                Id = "temp-happiness", TemperatureId = "happiness", Amount = 5,
+            });
+            content.Cards.Add(card);
+
+            var sequence = CardEditorSequenceHost.Build(card, content);
+            var stat = sequence.Rows.Single(row => row.TypeKey == ActionTypeKeys.StatIncrease);
+            var temperature = sequence.Rows.Single(row => row.TypeKey == ActionTypeKeys.ModifyTemperature);
+
+            Assert.That(stat.HasEditableChoiceEditor, Is.True);
+            CollectionAssert.AreEquivalent(new[] { "courage", "focus" },
+                stat.ChoiceOptions.Select(option => option.Id).ToArray());
+            Assert.That(temperature.HasStrictChoiceEditor, Is.True);
+            Assert.That(temperature.ChoiceOptions.Single().Id, Is.EqualTo("happiness"));
+            Assert.That(temperature.ChoiceOptions.Single().Name, Is.EqualTo("Happiness"));
+
+            var newStat = (StatIncreaseInstanceDefinition)sequence.CreateDefaultInstance(
+                ActionTypeKeys.StatIncrease, "stat-new");
+            var newTemperature = (ModifyTemperatureInstanceDefinition)sequence.CreateDefaultInstance(
+                ActionTypeKeys.ModifyTemperature, "temp-new");
+            Assert.That(newStat.StatKey, Is.EqualTo("courage"));
+            Assert.That(newTemperature.TemperatureId, Is.EqualTo("happiness"));
+        }
+
+        [Test]
         public void PromptChoiceNestedSequenceTemplateRenders()
         {
             EnsureApplication();

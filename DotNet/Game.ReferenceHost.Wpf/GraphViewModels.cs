@@ -233,6 +233,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public bool HasTextEditor => Editor.HasTextEditor;
         public bool HasNumberEditor => Editor.HasNumberEditor;
         public bool HasChoiceEditor => Editor.HasChoiceEditor;
+        public bool HasStrictChoiceEditor => Editor.HasChoiceEditor && !Editor.IsChoiceEditable;
+        public bool HasEditableChoiceEditor => Editor.HasChoiceEditor && Editor.IsChoiceEditable;
         public bool IsDanger => !string.IsNullOrEmpty(ValidationMessage);
 
         public string ValidationMessage
@@ -244,6 +246,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     return "Enter a number.";
                 if (TypeKey == ActionTypeKeys.PhaseGoto && string.IsNullOrWhiteSpace(TextValue))
                     return "Assign a PhaseExit before playback.";
+                if (TypeKey == ActionTypeKeys.StatIncrease && string.IsNullOrWhiteSpace(TextValue))
+                    return "Select or enter a Stat.";
                 if (TypeKey == ActionTypeKeys.ModifyTemperature && string.IsNullOrWhiteSpace(TextValue))
                     return "Select a Temperature.";
                 if (TypeKey == ActionTypeKeys.Cutscene &&
@@ -574,6 +578,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public ObservableCollection<ConnectionViewModel> Connections { get; } = new ObservableCollection<ConnectionViewModel>();
 
         public List<ActionParameterOption> TemperatureOptions { get; private set; } = new List<ActionParameterOption>();
+        public List<ActionParameterOption> StatOptions { get; private set; } = new List<ActionParameterOption>();
         public List<ActionParameterOption> ResourceOptions { get; private set; } = new List<ActionParameterOption>();
 
         public PendingConnectionViewModel PendingConnection { get; }
@@ -666,6 +671,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             TemperatureOptions = (content?.Temperatures ?? new List<TemperatureDefinition>())
                 .Select(item => new ActionParameterOption { Id = item.Id, Name = string.IsNullOrEmpty(item.Title) ? item.Id : item.Title })
                 .ToList();
+            StatOptions = ConfiguredActionParameters.StatOptions(content);
             ResourceOptions = (content?.Resources ?? new List<ResourceDefinition>())
                 .Where(item => string.Equals(item.Kind, "cutscene", StringComparison.OrdinalIgnoreCase))
                 .Select(item => new ActionParameterOption { Id = item.Id, Name = string.IsNullOrEmpty(item.Name) ? item.Id : item.Name })
@@ -998,6 +1004,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         option => option.Label,
                         option => option.Sequence,
                         option => ActionOwnerScope.SessionDecisionOptionSequence,
+                        StatOptions,
                         TemperatureOptions,
                         ResourceOptions,
                         _ => new List<ExitOption>());
@@ -1221,7 +1228,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     vm.ActionSequence = new ActionSequenceEditorViewModel(vm, actionNode.Sequence?.Id,
                         ActionOwnerScope.PhaseActionSequence,
                         actionNode.Sequence?.Instances,
-                        TemperatureOptions, ResourceOptions, ExitOptionsFor(phase), vm.ActionRows);
+                        TemperatureOptions, ResourceOptions, ExitOptionsFor(phase), vm.ActionRows,
+                        StatOptions);
                 }
                 if (node is PhaseDecisionNodeDefinition phaseDecision)
                 {
@@ -1230,6 +1238,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         option => option.Label,
                         option => option.Sequence,
                         option => ActionOwnerScope.ChoiceOptionSequence,
+                        StatOptions,
                         TemperatureOptions,
                         ResourceOptions,
                         _ => ExitOptionsFor(phase));
@@ -1282,8 +1291,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 Ordinal = ordinal,
                 TypeKey = info.TypeKey,
                 DisplayLabel = info.DisplayLabel,
-                ParameterOptions = info.TypeKey == ActionTypeKeys.ModifyTemperature
-                    ? sequence.TemperatureOptions
+                ParameterOptions = info.TypeKey == ActionTypeKeys.StatIncrease
+                    ? sequence.StatOptions
+                    : info.TypeKey == ActionTypeKeys.ModifyTemperature ? sequence.TemperatureOptions
                     : info.TypeKey == ActionTypeKeys.Cutscene ? sequence.ResourceOptions : new List<ActionParameterOption>(),
                 ExitOptions = sequence.ExitOptions,
             };
@@ -1332,7 +1342,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         sequence.TemperatureOptions,
                         sequence.ResourceOptions,
                         sequence.ExitOptions,
-                        new ObservableCollection<ActionRowData>())
+                        new ObservableCollection<ActionRowData>(),
+                        sequence.StatOptions)
                     {
                         OptionId = option.Id,
                     };
@@ -1401,6 +1412,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             Func<TDecisionOption, string> labelOf,
             Func<TDecisionOption, ActionSequenceDefinition> sequenceOf,
             Func<TDecisionOption, ActionOwnerScope> actionScopeOf,
+            IEnumerable<ActionParameterOption> statOptions,
             IEnumerable<ActionParameterOption> temperatureOptions,
             IEnumerable<ActionParameterOption> resourceOptions,
             Func<string, List<ExitOption>> exitOptionsFor)
@@ -1424,7 +1436,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     temperatureOptions,
                     resourceOptions,
                     exitOptionsFor(optionIdOf(option)),
-                    row.ActionRows)
+                    row.ActionRows,
+                    statOptions)
                 {
                     OptionId = row.OptionId,
                 };

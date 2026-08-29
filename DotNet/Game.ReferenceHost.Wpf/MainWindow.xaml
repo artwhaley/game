@@ -54,8 +54,7 @@
                     <ItemsControl ItemsSource="{Binding Rows}" Margin="0,3,0,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border Padding="2" Margin="0,1,0,1" AllowDrop="True" Drop="OnActionDrop"
-                                        PreviewMouseLeftButtonDown="OnActionDragStart" PreviewMouseMove="OnActionRowMouseMove">
+                                <Border Padding="2" Margin="0,1,0,1" AllowDrop="True" Drop="OnActionDrop">
                                     <Border.Style>
                                         <Style TargetType="Border">
                                             <Setter Property="Background" Value="#FF2B2B2F"/>
@@ -72,7 +71,10 @@
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding DisplayLabel}" Width="78" FontSize="10"
                                                        VerticalAlignment="Center" Foreground="#FFDDDDDD"
-                                                       TextTrimming="CharacterEllipsis"/>
+                                                       TextTrimming="CharacterEllipsis"
+                                                       PreviewMouseLeftButtonDown="OnActionDragStart"
+                                                       PreviewMouseMove="OnActionRowMouseMove"
+                                                       ToolTip="Drag this label to reorder the action"/>
                                             <ComboBox Padding="2,0" Width="92" Margin="2,0,2,0"
                                                       ItemsSource="{Binding ChoiceOptions}" DisplayMemberPath="Name"
                                                       SelectedValuePath="Id"
@@ -81,7 +83,22 @@
                                                     <Style TargetType="ComboBox" BasedOn="{StaticResource DarkComboBox}">
                                                         <Setter Property="Visibility" Value="Collapsed"/>
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding HasChoiceEditor}" Value="True">
+                                                            <DataTrigger Binding="{Binding HasStrictChoiceEditor}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ComboBox.Style>
+                                            </ComboBox>
+                                            <ComboBox Padding="2,0" Width="92" Margin="2,0,2,0"
+                                                      ItemsSource="{Binding ChoiceOptions}" DisplayMemberPath="Name"
+                                                      IsEditable="True" IsTextSearchEnabled="True"
+                                                      Text="{Binding TextValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                                <ComboBox.Style>
+                                                    <Style TargetType="ComboBox" BasedOn="{StaticResource DarkComboBox}">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasEditableChoiceEditor}" Value="True">
                                                                 <Setter Property="Visibility" Value="Visible"/>
                                                             </DataTrigger>
                                                         </Style.Triggers>

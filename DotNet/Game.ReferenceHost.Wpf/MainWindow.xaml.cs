@@ -69,6 +69,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private readonly ObservableCollection<ActionTypeChoice> _actionBrowserChoices = new ObservableCollection<ActionTypeChoice>();
         private ActionSequenceEditorViewModel _focusedActionSequence;
         private Point _actionDragStart;
+        private bool _actionDragInProgress;
 
         public MainWindow()
         {
@@ -614,7 +615,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var point = e.GetPosition(ActionBrowserList);
             if (Math.Abs(point.X - _actionDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
                 Math.Abs(point.Y - _actionDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-            DragDrop.DoDragDrop(ActionBrowserList, new DataObject(typeof(ActionTypeChoice), choice), DragDropEffects.Copy);
+            RunActionDrag(ActionBrowserList, new DataObject(typeof(ActionTypeChoice), choice), DragDropEffects.Copy);
         }
 
         private void OnActionRowMouseMove(object sender, MouseEventArgs e)
@@ -628,7 +629,21 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 _actionDragStart = point;
                 return;
             }
-            DragDrop.DoDragDrop(element, new DataObject(typeof(ActionRowData), row), DragDropEffects.Copy | DragDropEffects.Move);
+            RunActionDrag(element, new DataObject(typeof(ActionRowData), row), DragDropEffects.Copy | DragDropEffects.Move);
+        }
+
+        private void RunActionDrag(DependencyObject source, DataObject data, DragDropEffects effects)
+        {
+            if (_actionDragInProgress) return;
+            _actionDragInProgress = true;
+            try
+            {
+                DragDrop.DoDragDrop(source, data, effects);
+            }
+            finally
+            {
+                _actionDragInProgress = false;
+            }
         }
 
         private void OnActionDrop(object sender, DragEventArgs e)

@@ -43,6 +43,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public bool HasTextEditor { get; set; }
         public bool HasNumberEditor { get; set; }
         public bool HasChoiceEditor { get; set; }
+        public bool IsChoiceEditable { get; set; }
         public string TextLabel { get; set; }
         public string NumberLabel { get; set; }
         public string ChoiceLabel { get; set; }
@@ -80,8 +81,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 },
                 [ActionTypeKeys.StatIncrease] = new ActionEditorDescriptor
                 {
-                    TypeKey = ActionTypeKeys.StatIncrease, HasTextEditor = true, HasNumberEditor = true,
-                    TextLabel = "Stat", NumberLabel = "Amount"
+                    TypeKey = ActionTypeKeys.StatIncrease, HasChoiceEditor = true, IsChoiceEditable = true,
+                    HasNumberEditor = true, ChoiceLabel = "Stat", NumberLabel = "Amount"
                 },
                 [ActionTypeKeys.IncrementProgress] = new ActionEditorDescriptor
                 {
@@ -145,12 +146,14 @@ namespace TruthCardGame.ReferenceHost.Wpf
             IEnumerable<ActionParameterOption> temperatureOptions,
             IEnumerable<ActionParameterOption> resourceOptions,
             IEnumerable<ExitOption> exitOptions,
-            ObservableCollection<ActionRowData> rows = null)
+            ObservableCollection<ActionRowData> rows = null,
+            IEnumerable<ActionParameterOption> statOptions = null)
         {
             OwnerNode = ownerNode;
             SequenceId = sequenceId ?? "";
             OwnerScope = ownerScope;
             TemperatureOptions = new List<ActionParameterOption>(temperatureOptions ?? Enumerable.Empty<ActionParameterOption>());
+            StatOptions = new List<ActionParameterOption>(statOptions ?? Enumerable.Empty<ActionParameterOption>());
             ResourceOptions = new List<ActionParameterOption>(resourceOptions ?? Enumerable.Empty<ActionParameterOption>());
             ExitOptions = new List<ExitOption>(exitOptions ?? Enumerable.Empty<ExitOption>());
             Rows = rows ?? new ObservableCollection<ActionRowData>();
@@ -171,6 +174,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         public ObservableCollection<ActionRowData> Rows { get; }
         public List<ActionParameterOption> TemperatureOptions { get; }
+        public List<ActionParameterOption> StatOptions { get; }
         public List<ActionParameterOption> ResourceOptions { get; }
         public List<ExitOption> ExitOptions { get; }
 
@@ -206,6 +210,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var info = ActionTypeRegistry.ByTypeKey(typeKey);
             var instance = info.DefaultInstance();
             instance.Id = instanceId;
+            if (instance is StatIncreaseInstanceDefinition stat && StatOptions.Count > 0)
+                stat.StatKey = StatOptions[0].Id;
             if (instance is ModifyTemperatureInstanceDefinition temperature && TemperatureOptions.Count > 0)
                 temperature.TemperatureId = TemperatureOptions[0].Id;
             if (instance is CutsceneInstanceDefinition cutscene && ResourceOptions.Count > 0)
@@ -245,6 +251,67 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (string.IsNullOrEmpty(SelectedActionTypeKey) && _pickerChoices.Count > 0)
                 SelectedActionTypeKey = _pickerChoices[0].TypeKey;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ActionTypePickerView)));
+        }
+    }
+
+    /// <summary>
+    /// PlayerStats is intentionally schema-free. The authoring dropdown is
+    /// therefore populated from stable stat keys already used anywhere in the
+    /// content graph, while remaining editable so the first use can define a
+    /// new key.
+    /// </summary>
+    public static class ConfiguredActionParameters
+    {
+        public static List<ActionParameterOption> StatOptions(GameContentDefinition content)
+        {
+            var keys = new HashSet<string>(StringComparer.Ordinal);
+            if (content == null) return new List<ActionParameterOption>();
+
+            foreach (var card in content.Cards ?? new List<CardDefinition>())
+                CollectSequence(card?.Sequence, keys);
+            foreach (var phase in content.Phases ?? new List<PhaseDefinition>())
+            {
+                var nodes = phase?.Graph?.Nodes;
+                if (nodes == null) continue;
+                foreach (var node in nodes)
+                {
+                    if (node is VariableCheckNodeDefinition check && check.SourceKind == VariableSourceKind.Stat)
+                        Add(keys, check.VariableKey);
+                    if (node is ActionNodeDefinition action) CollectSequence(action.Sequence, keys);
+                    if (node is PhaseDecisionNodeDefinition decision)
+                        foreach (var option in decision.Options) CollectSequence(option?.Sequence, keys);
+                }
+            }
+            foreach (var session in content.Sessions ?? new List<SessionDefinition>())
+            {
+                var nodes = session?.Graph?.Nodes;
+                if (nodes == null) continue;
+                foreach (var node in nodes)
+                {
+                    if (node is SessionDecisionNodeDefinition decision)
+                        foreach (var option in decision.Options) CollectSequence(option?.Sequence, keys);
+                }
+            }
+
+            return keys.OrderBy(key => key, StringComparer.OrdinalIgnoreCase)
+                .Select(key => new ActionParameterOption { Id = key, Name = key })
+                .ToList();
+        }
+
+        private static void CollectSequence(ActionSequenceDefinition sequence, HashSet<string> keys)
+        {
+            if (sequence == null) return;
+            foreach (var instance in sequence.Instances)
+            {
+                if (instance is StatIncreaseInstanceDefinition stat) Add(keys, stat.StatKey);
+                if (instance is PromptChoiceInstanceDefinition choice)
+                    foreach (var option in choice.Options) CollectSequence(option?.Sequence, keys);
+            }
+        }
+
+        private static void Add(HashSet<string> keys, string key)
+        {
+            if (!string.IsNullOrWhiteSpace(key)) keys.Add(key.Trim());
         }
     }
 }
