@@ -48,15 +48,17 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   snapshot; `Game.Core` owns resolution and runtime. See
   [Extraction milestone](#extraction-milestone-01) below.
 - Editor builders generate scenes + starter content — no manual wiring.
-- Unity 6000.5.9f1 is pinned. Unity is compile-compatible with the portable
-  model changes (asmdefs cover the new `Game.Profile` source); the full Unity
-  Action binding/Timeline bridge remains deferred and was **not** run as a
-  gate this milestone. The current verification record is
-  [`Docs/MilestoneB/FINAL-REPORT.md`](Docs/MilestoneB/FINAL-REPORT.md);
-  do not infer Unity or human acceptance from older milestone reports.
-- Latest automated .NET gates: **135 Core tests passed**, **123 SQLite tests
-  passed, 1 skipped** (canonical-DB known skip), **11 profile tests passed**,
-  and **15 WPF tests passed**. The WPF host builds and launches.
+- Unity 6000.5.9f1 is pinned. The Ticket 10 batch check reached script
+  compilation but currently fails on existing Unity-side drift:
+  `CardDeck.cs(51,38)` references the missing
+  `TruthCardGame.Content.CardDeckDefinition`. The full Unity Action
+  binding/Timeline bridge remains deferred; no Unity bridge changes were made
+  in the Pre-Milestone C reliability stack. See
+  [`Docs/PreMilestoneC/10-final-regression.md`](Docs/PreMilestoneC/10-final-regression.md)
+  and do not infer human acceptance from older milestone reports.
+- Latest automated .NET gates: **139 Core tests passed**, **125 SQLite tests
+  passed, 1 skipped** (canonical-playback known skip), **11 profile tests
+  passed**, and **23 WPF tests passed**. The WPF host builds and launches.
 - Development rules: [`agents.md`](agents.md) · Unity CLI notes: [`unity-cli.md`](unity-cli.md)
 
 ## Milestone B — Cards, Profile, Selection (0.4)
