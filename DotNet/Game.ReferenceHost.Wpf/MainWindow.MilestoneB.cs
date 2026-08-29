@@ -129,6 +129,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     break;
             }
             if (selectedId != null) SelectCatalogEntry(selectedId);
+            if (CatalogEntryList.SelectedItem == null && CatalogEntryList.Items.Count > 0)
+                CatalogEntryList.SelectedIndex = 0;
         }
 
         private void OnCatalogSearchChanged(object sender, TextChangedEventArgs e) => BindCatalogEntries();
@@ -542,6 +544,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void OnDeleteCard(object sender, RoutedEventArgs e)
         {
             if (!(CardList.SelectedItem is CardDefinition card)) return;
+            var deletedIndex = CardList.SelectedIndex;
             if (MessageBox.Show(this, $"Delete card '{card.Title}'? Only card-owned data is removed.",
                 "Cards", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
 
@@ -552,6 +555,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 CardActionSequenceHost.Content = null;
                 LoadContent();
                 BindCardList();
+                if (CardList.Items.Count > 0)
+                    CardList.SelectedIndex = Math.Min(Math.Max(deletedIndex, 0), CardList.Items.Count - 1);
             });
         }
 

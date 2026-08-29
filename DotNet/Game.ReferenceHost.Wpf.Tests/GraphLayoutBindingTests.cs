@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
@@ -281,6 +282,89 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
                     "Catalog search must be hosted by the visible Catalogs drawer.");
                 Assert.That(IsVisualDescendant(search, sessions), Is.False,
                     "Catalog search must not be hidden with the Sessions drawer.");
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+
+        [Test]
+        public void LibraryReload_PreservesCardsAndCatalogsDrawer()
+        {
+            EnsureApplication();
+            var window = new MainWindow();
+            try
+            {
+                window.Show();
+                var bindLibrary = typeof(MainWindow).GetMethod("BindLibrary",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.That(bindLibrary, Is.Not.Null);
+
+                foreach (var pair in new[]
+                {
+                    (Button: "CardsLibraryTabButton", Panel: "CardsLibraryPanel"),
+                    (Button: "CatalogsLibraryTabButton", Panel: "CatalogsLibraryPanel"),
+                })
+                {
+                    ((Button)window.FindName(pair.Button)).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    bindLibrary.Invoke(window, null);
+
+                    Assert.That(((FrameworkElement)window.FindName(pair.Panel)).Visibility,
+                        Is.EqualTo(Visibility.Visible), pair.Panel + " should survive a content reload.");
+                    Assert.That(((FrameworkElement)window.FindName("SessionLibraryPanel")).Visibility,
+                        Is.EqualTo(Visibility.Collapsed));
+                }
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+
+        [Test]
+        public void CatalogLists_FillRemainingWidthInTwoStarColumns()
+        {
+            EnsureApplication();
+            var window = new MainWindow();
+            try
+            {
+                var lists = (Grid)window.FindName("CatalogListsPanel");
+                var editor = (FrameworkElement)window.FindName("CatalogEditorPanel");
+                var parent = (DockPanel)VisualTreeHelper.GetParent(lists);
+
+                Assert.That(parent.Children[parent.Children.Count - 1], Is.SameAs(lists),
+                    "The catalog lists must be the DockPanel fill child.");
+                Assert.That(DockPanel.GetDock(editor), Is.EqualTo(Dock.Bottom));
+                Assert.That(lists.ColumnDefinitions.Count, Is.EqualTo(2));
+                Assert.That(lists.ColumnDefinitions.All(column => column.Width.IsStar), Is.True);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+
+        [Test]
+        public void EveryDeletableLibraryList_HasAnItemDeleteContextMenu()
+        {
+            EnsureApplication();
+            var window = new MainWindow();
+            try
+            {
+                foreach (var pair in new[]
+                {
+                    (List: "SessionList", Header: "Delete Session"),
+                    (List: "PhaseList", Header: "Delete Phase"),
+                    (List: "CardList", Header: "Delete Card"),
+                    (List: "CatalogEntryList", Header: "Delete Catalog Entry"),
+                })
+                {
+                    var list = (ListBox)window.FindName(pair.List);
+                    var menu = list.ContextMenu;
+                    Assert.That(menu, Is.Not.Null);
+                    Assert.That(((MenuItem)menu.Items[0]).Header, Is.EqualTo(pair.Header));
+                }
             }
             finally
             {

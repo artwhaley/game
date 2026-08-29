@@ -1150,17 +1150,44 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void BindLibrary()
         {
+            // A content reload must not navigate the Library. Capture the
+            // currently visible drawer before rebinding its data sources.
+            var showPhases = PhaseLibraryPanel.Visibility == Visibility.Visible;
+            var showCards = CardsLibraryPanel.Visibility == Visibility.Visible;
+            var showCatalogs = CatalogsLibraryPanel.Visibility == Visibility.Visible;
+
             BindSessionList();
             BindPhaseList();
             BindCardList();
             BindCatalogs();
             BindSessionTypeBox();
-            SetLibraryMode(true);
+
+            if (showCatalogs) OnShowCatalogsLibrary(this, new RoutedEventArgs());
+            else if (showCards) OnShowCardsLibrary(this, new RoutedEventArgs());
+            else SetLibraryMode(!showPhases);
         }
 
         private void OnShowSessionLibrary(object sender, RoutedEventArgs e) => SetLibraryMode(true);
 
         private void OnShowPhaseLibrary(object sender, RoutedEventArgs e) => SetLibraryMode(false);
+
+        private void OnLibraryItemRightClick(object sender, MouseButtonEventArgs e)
+        {
+            if (!(sender is ListBox list) || !(e.OriginalSource is DependencyObject source)) return;
+            var item = ItemsControl.ContainerFromElement(list, source) as ListBoxItem;
+            if (item == null) return;
+            item.IsSelected = true;
+            item.Focus();
+        }
+
+        private void OnLibraryContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            if (!(sender is ListBox list) || !(Mouse.DirectlyOver is DependencyObject source) ||
+                !(ItemsControl.ContainerFromElement(list, source) is ListBoxItem))
+            {
+                e.Handled = true;
+            }
+        }
 
         private void SetLibraryMode(bool sessions)
         {

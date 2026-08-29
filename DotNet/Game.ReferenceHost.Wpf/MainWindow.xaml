@@ -403,7 +403,15 @@
                         </StackPanel>
                         <ListBox x:Name="SessionList" Style="{StaticResource DarkListBox}"
                                  ItemContainerStyle="{StaticResource DarkListBoxItem}"
-                                 SelectionChanged="OnSessionListChanged"/>
+                                 SelectionChanged="OnSessionListChanged"
+                                 PreviewMouseRightButtonDown="OnLibraryItemRightClick"
+                                 ContextMenuOpening="OnLibraryContextMenuOpening">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Delete Session" Click="OnDeleteSession"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                        </ListBox>
                     </DockPanel>
                     <DockPanel x:Name="PhaseLibraryPanel" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="3,0,0,0" Visibility="Collapsed">
                         <TextBlock DockPanel.Dock="Top" Text="Phases" FontWeight="Bold" Margin="2,0,2,4"
@@ -423,7 +431,15 @@
                         <ListBox x:Name="PhaseList" Style="{StaticResource DarkListBox}"
                                  ItemContainerStyle="{StaticResource DarkListBoxItem}"
                                  SelectionChanged="OnPhaseListChanged"
-                                 PreviewMouseMove="OnPhaseListMouseMove"/>
+                                 PreviewMouseMove="OnPhaseListMouseMove"
+                                 PreviewMouseRightButtonDown="OnLibraryItemRightClick"
+                                 ContextMenuOpening="OnLibraryContextMenuOpening">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Delete Phase" Click="OnDeletePhase"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                        </ListBox>
                     </DockPanel>
                     <DockPanel x:Name="CardsLibraryPanel" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="3,0,0,0" Visibility="Collapsed">
                         <TextBlock DockPanel.Dock="Top" Text="Cards" FontWeight="Bold" Margin="2,0,2,4"
@@ -442,7 +458,15 @@
                         </StackPanel>
                         <ListBox x:Name="CardList" Style="{StaticResource DarkListBox}"
                                  ItemContainerStyle="{StaticResource DarkListBoxItem}"
-                                 SelectionChanged="OnCardListChanged"/>
+                                 SelectionChanged="OnCardListChanged"
+                                 PreviewMouseRightButtonDown="OnLibraryItemRightClick"
+                                 ContextMenuOpening="OnLibraryContextMenuOpening">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Delete Card" Click="OnDeleteCard"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                        </ListBox>
                     </DockPanel>
                     <DockPanel x:Name="CatalogsLibraryPanel" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="3,0,0,0" Visibility="Collapsed">
                         <TextBlock DockPanel.Dock="Top" Text="Catalogs" FontWeight="Bold" Margin="2,0,2,4"
@@ -459,15 +483,6 @@
                             <TextBlock x:Name="CatalogUsageText" Text="" FontSize="10" Foreground="#FF9CCC65"
                                        TextWrapping="Wrap" Margin="0,4,0,0"/>
                         </StackPanel>
-                        <DockPanel>
-                            <ListBox x:Name="CatalogKindList" DockPanel.Dock="Left" Width="104"
-                                     Style="{StaticResource DarkListBox}"
-                                     ItemContainerStyle="{StaticResource DarkListBoxItem}"
-                                     SelectionChanged="OnCatalogKindChanged"/>
-                            <ListBox x:Name="CatalogEntryList" Style="{StaticResource DarkListBox}"
-                                     ItemContainerStyle="{StaticResource DarkListBoxItem}"
-                                     SelectionChanged="OnCatalogEntryChanged"/>
-                        </DockPanel>
                         <StackPanel x:Name="CatalogEditorPanel" DockPanel.Dock="Bottom" Margin="0,6,0,0" Visibility="Collapsed">
                             <TextBlock Text="Catalog entry" FontWeight="SemiBold" Foreground="#FFDDDDDD"/>
                             <TextBox x:Name="CatalogTitleBox" Style="{StaticResource DarkTextBox}" Padding="3,1" Margin="0,3,0,0"
@@ -483,6 +498,28 @@
                             <Button Content="Save entry" Click="OnSaveCatalogEntry" Padding="6,1" Margin="0,4,0,0"
                                     HorizontalAlignment="Left" Style="{StaticResource DarkButton}"/>
                         </StackPanel>
+                        <Grid x:Name="CatalogListsPanel">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="2*" MinWidth="84"/>
+                                <ColumnDefinition Width="3*" MinWidth="96"/>
+                            </Grid.ColumnDefinitions>
+                            <ListBox x:Name="CatalogKindList" Grid.Column="0" Margin="0,0,3,0"
+                                     Style="{StaticResource DarkListBox}"
+                                     ItemContainerStyle="{StaticResource DarkListBoxItem}"
+                                     SelectionChanged="OnCatalogKindChanged"/>
+                            <ListBox x:Name="CatalogEntryList" Grid.Column="1" Margin="3,0,0,0"
+                                     Style="{StaticResource DarkListBox}"
+                                     ItemContainerStyle="{StaticResource DarkListBoxItem}"
+                                     SelectionChanged="OnCatalogEntryChanged"
+                                     PreviewMouseRightButtonDown="OnLibraryItemRightClick"
+                                     ContextMenuOpening="OnLibraryContextMenuOpening">
+                                <ListBox.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Delete Catalog Entry" Click="OnDeleteCatalogEntry"/>
+                                    </ContextMenu>
+                                </ListBox.ContextMenu>
+                            </ListBox>
+                        </Grid>
                     </DockPanel>
                 </Grid>
             </DockPanel>
