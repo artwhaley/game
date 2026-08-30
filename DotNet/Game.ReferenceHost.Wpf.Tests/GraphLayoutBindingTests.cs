@@ -302,7 +302,7 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             card.Sequence.Instances.Add(new DialogInstanceDefinition { Id = "dialog", Text = "Hello" });
             card.Sequence.Instances.Add(new DelayInstanceDefinition { Id = "delay", DurationSeconds = 2f });
             card.Sequence.Instances.Add(new ToyActivityInstanceDefinition
-                { Id = "toy", CapabilityId = "vibrate", Intensity = .75f, DurationSeconds = 3f });
+                { Id = "toy", CapabilityId = "vibrate", PatternResourceId = "res-pat-50", DurationSeconds = 3f });
 
             var sequence = CardEditorSequenceHost.Build(card, content);
             var dialog = sequence.Rows.Single(row => row.TypeKey == ActionTypeKeys.Dialog);
@@ -315,8 +315,8 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             Assert.That(toy.HasStrictChoiceEditor, Is.True);
             Assert.That(toy.ChoiceOptions.Single().Id, Is.EqualTo("vibrate"));
             Assert.That(toy.TextValue, Is.EqualTo("vibrate"));
-            Assert.That(toy.NumberText, Is.EqualTo("0.75"));
-            Assert.That(toy.SecondaryNumberText, Is.EqualTo("3"));
+            Assert.That(toy.PatternValue, Is.EqualTo("res-pat-50"));
+            Assert.That(toy.NumberText, Is.EqualTo("3"));
         }
 
         [Test]

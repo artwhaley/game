@@ -516,12 +516,50 @@ namespace TruthCardGame.Core
         /// Return: pop the newest continuation; restore the exact frame (locus,
         /// PhaseRun with progress/RNG/history, chain). Temperatures stay current
         /// because they live in the shared context, untouched by transfers.
-        /// Empty stack is a clear runtime error. The session loop resumes the
-        /// frame via ResumeFromContinuationAsync on the next iteration.
+        /// The session loop resumes the frame via ResumeFromContinuationAsync on
+        /// the next iteration.
+        ///
+        /// A RETURN with an empty continuation stack means the outermost placed
+        /// phase finished with no caller frame to restore. It is a clean top-level
+        /// return, not a runtime error (Ticket 18 canonical): the session resumes
+        /// through the active placement's projected PhaseExit socket when one is
+        /// wired, otherwise the graph has nothing left to run and completes.
         /// </summary>
         private Task HandleReturnAsync(ActionExecutionContext context, CancellationToken cancellationToken)
         {
-            var frame = _stack.Pop(); // throws on empty with a clear message
+            if (_stack.IsEmpty)
+            {
+                var placement = _activeRun == null ? null : FindPlacement(_activeRun.PlacementNodeId);
+                string targetId = null;
+                if (placement != null)
+                {
+                    foreach (var output in placement.Outputs)
+                    {
+                        if (output.Kind == GraphPortKind.PhaseExit &&
+                            _edgeFromOutput.TryGetValue(output.Id, out targetId))
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                if (targetId == null)
+                {
+                    IsComplete = true;
+                    _stack.Clear();
+                    SessionCompleted?.Invoke();
+                }
+                else
+                {
+                    _activeRun = null;
+                    _activePhaseVm = null;
+                    _sessionNode = _nodesById[targetId];
+                    SessionNodeChanged?.Invoke(_sessionNode.Id);
+                }
+                return Task.CompletedTask;
+            }
+
+            var frame = _stack.Pop();
 
             if (frame.PhaseRun == null)
             {
@@ -580,7 +618,8 @@ namespace TruthCardGame.Core
                 baseContext.Catalog,
                 baseContext.Temperatures,
                 null, // no PhaseRun at session level
-                ActionOwnerScope.SessionDecisionOptionSequence);
+                ActionOwnerScope.SessionDecisionOptionSequence,
+                baseContext.DialogRng);
         }
 
         private async Task<SessionDecisionOptionDefinition> PromptForSessionDecisionAsync(

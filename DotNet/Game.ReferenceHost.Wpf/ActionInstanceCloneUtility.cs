@@ -30,12 +30,23 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case DialogInstanceDefinition dialog:
                     clone = new DialogInstanceDefinition { Text = dialog.Text };
                     break;
+                case DialogFromTagsInstanceDefinition dialogFromTags:
+                {
+                    var clonedTags = new DialogFromTagsInstanceDefinition();
+                    clonedTags.RequiredDialogTagIds.AddRange(dialogFromTags.RequiredDialogTagIds);
+                    clone = clonedTags;
+                    break;
+                }
                 case DelayInstanceDefinition delay:
                     clone = new DelayInstanceDefinition { DurationSeconds = delay.DurationSeconds };
                     break;
                 case ToyActivityInstanceDefinition toy:
                     clone = new ToyActivityInstanceDefinition
-                        { CapabilityId = toy.CapabilityId, Intensity = toy.Intensity, DurationSeconds = toy.DurationSeconds };
+                        { CapabilityId = toy.CapabilityId, PatternResourceId = toy.PatternResourceId, DurationSeconds = toy.DurationSeconds };
+                    break;
+                case ToySetPatternInstanceDefinition toySet:
+                    clone = new ToySetPatternInstanceDefinition
+                        { CapabilityId = toySet.CapabilityId, PatternResourceId = toySet.PatternResourceId };
                     break;
                 case PromptChoiceInstanceDefinition choice:
                 {

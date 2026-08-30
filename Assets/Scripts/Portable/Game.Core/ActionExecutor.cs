@@ -199,15 +199,21 @@ namespace TruthCardGame.Core
                     return ActionExecutionResult.Continue;
 
                 case DialogInstanceDefinition dialog:
-                    if (context.Services.Cutscene == null)
+                    if (context.Services.Dialog == null)
                     {
+                        // Missing dialog service is a logged safe no-op; the
+                        // text is preserved in the log. The Cutscene service is
+                        // NEVER used for dialog (host boundary, Ticket 06).
                         context.Services.Log.Warning(
-                            $"Dialog action '{instance.Id}' has no cutscene-style host service; logging text only.");
+                            $"Dialog action '{instance.Id}' has no dialog service; logging text only.");
                         context.Services.Log.Info(dialog.Text);
                         return ActionExecutionResult.Continue;
                     }
-                    await context.Services.Cutscene.PlayAsync(dialog.Text, cancellationToken);
+                    await context.Services.Dialog.ShowAsync(dialog.Text, cancellationToken);
                     return ActionExecutionResult.Continue;
+
+                case DialogFromTagsInstanceDefinition dialogFromTags:
+                    return await ExecuteDialogFromTagsAsync(dialogFromTags, context, cancellationToken);
 
                 case DelayInstanceDefinition delay:
                     if (delay.DurationSeconds > 0f)
@@ -221,7 +227,7 @@ namespace TruthCardGame.Core
                     if (context.Services.ToyActivity == null)
                     {
                         context.Services.Log.Warning(
-                            $"ToyActivity action '{instance.Id}' has no toy activity service; delaying only.");
+                            $"Timed Toy Pattern action '{instance.Id}' has no toy activity service; delaying only.");
                         if (toy.DurationSeconds > 0f)
                         {
                             await context.Services.Delay.DelayAsync(
@@ -229,8 +235,18 @@ namespace TruthCardGame.Core
                         }
                         return ActionExecutionResult.Continue;
                     }
-                    await context.Services.ToyActivity.PlayAsync(toy.CapabilityId, toy.Intensity,
+                    await context.Services.ToyActivity.PlayForAsync(toy.CapabilityId, toy.PatternResourceId,
                         TimeSpan.FromSeconds(Math.Max(0f, toy.DurationSeconds)), cancellationToken);
+                    return ActionExecutionResult.Continue;
+
+                case ToySetPatternInstanceDefinition toySet:
+                    if (context.Services.ToyActivity == null)
+                    {
+                        context.Services.Log.Warning(
+                            $"Set Toy Pattern action '{instance.Id}' has no toy activity service; logging only.");
+                        return ActionExecutionResult.Continue;
+                    }
+                    await context.Services.ToyActivity.SetPatternAsync(toySet.CapabilityId, toySet.PatternResourceId, cancellationToken);
                     return ActionExecutionResult.Continue;
 
                 case WaitForAllInstanceDefinition waitForAll:
@@ -244,6 +260,58 @@ namespace TruthCardGame.Core
                     throw new InvalidOperationException(
                         $"ActionExecutor: unsupported general action type '{instance.GetType().Name}'.");
             }
+        }
+
+        /// <summary>
+        /// Dialog From Tags (Ticket 06): selection happens synchronously and
+        /// deterministically BEFORE any host timing, so host pacing can never
+        /// reorder RNG consumption. Then the selected text goes through the
+        /// same IDialogService as direct Dialog.
+        /// </summary>
+        private async Task<ActionExecutionResult> ExecuteDialogFromTagsAsync(
+            DialogFromTagsInstanceDefinition instance, ActionExecutionContext context, CancellationToken cancellationToken)
+        {
+            var tagNames = DescribeTags(context.Catalog, instance.RequiredDialogTagIds);
+            context.Services.Log.Info(
+                $"DIALOG FROM TAGS [{instance.Id}] required tags: {tagNames} " +
+                $"(blocking={instance.IsBlocking})");
+
+            // Select first (consumes the dialog RNG exactly once, here).
+            var selection = DialogSnippetSelector.Select(
+                instance.RequiredDialogTagIds, context.Catalog.DialogSnippetsList, context.DialogRng);
+
+            context.Services.Log.Info(
+                $"DIALOG FROM TAGS [{instance.Id}] candidates={selection.Candidates.Count} " +
+                $"selected snippet '{selection.Snippet.Name}' [{selection.Snippet.Id}]");
+            context.Services.Log.Info($"DIALOG FROM TAGS [{instance.Id}] text: {selection.Snippet.Text}");
+
+            if (context.Services.Dialog == null)
+            {
+                context.Services.Log.Warning(
+                    $"DialogFromTags action '{instance.Id}' has no dialog service; logging text only.");
+                return ActionExecutionResult.Continue;
+            }
+            await context.Services.Dialog.ShowAsync(selection.Snippet.Text, cancellationToken);
+            return ActionExecutionResult.Continue;
+        }
+
+        /// <summary>Readable "title [id]" list for diagnostics; unknown ids stay loud-but-readable.</summary>
+        private static string DescribeTags(ContentCatalog catalog, IReadOnlyList<string> tagIds)
+        {
+            var parts = new List<string>();
+            foreach (var tagId in tagIds)
+            {
+                try
+                {
+                    var tag = catalog.DialogTagById(tagId);
+                    parts.Add($"'{tag.Title}' [{tag.Id}]");
+                }
+                catch
+                {
+                    parts.Add($"[unknown tag {tagId}]");
+                }
+            }
+            return string.Join(", ", parts);
         }
 
         private async Task<ActionExecutionResult> ExecutePromptChoiceAsync(
@@ -284,7 +352,8 @@ namespace TruthCardGame.Core
                 context.Catalog,
                 context.Temperatures,
                 context.PhaseProgress,
-                nestedScope);
+                nestedScope,
+                context.DialogRng);
             ActionSequenceScopeValidator.ValidatePromptChoiceDescendant(selected.Sequence, nestedScope);
             return await ExecuteSequenceAsync(selected.Sequence, nestedContext, cancellationToken, budget);
         }

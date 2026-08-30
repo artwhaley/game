@@ -11,10 +11,21 @@ namespace TruthCardGame.Core
     {
         private const uint SessionSelectionSalt = 0x51E55101u;
         private const uint PhaseRunCardSalt = 0xCA4D5EEDu;
+        private const uint DialogSelectionSalt = 0xD1A106u;
 
         public static IRandomSource CreateSessionSelection(int seed)
         {
             return new SystemRandomSource(DeriveSeed(seed, SessionSelectionSalt));
+        }
+
+        /// <summary>
+        /// Dedicated Dialog From Tags stream. Fixed salt keeps it independent
+        /// from Session selection and the PhaseRun/Card streams: adding or
+        /// removing dialog actions never perturbs card draw randomness.
+        /// </summary>
+        public static IRandomSource CreateDialogSelection(int seed)
+        {
+            return new SystemRandomSource(DeriveSeed(seed, DialogSelectionSalt));
         }
 
         public static PhaseRunRngFactory CreatePhaseRunFactory(int seed)

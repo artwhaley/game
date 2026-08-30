@@ -182,20 +182,21 @@ namespace TruthCardGame.Core.Tests
         public async Task DialogDelayAndToyActivity_UseConfiguredHostSemantics()
         {
             var delay = new FakeDelayService();
-            var cutscene = new FakeCutsceneService();
+            var dialog = new FakeDialogService();
             var toy = new FakeToyActivityService();
-            _services = new CoreServices(delay, _log, cutscene: cutscene, toyActivity: toy);
+            _services = new CoreServices(delay, _log, dialog: dialog, toyActivity: toy);
             var context = Context(ActionOwnerScope.CardSequence);
 
             await Run(_executor, context,
                 new DialogInstanceDefinition { Id = "dialog", Text = "Hello", IsBlocking = true },
                 new DelayInstanceDefinition { Id = "delay", DurationSeconds = 2f, IsBlocking = true },
                 new ToyActivityInstanceDefinition
-                    { Id = "toy", CapabilityId = "vibrate", Intensity = .75f, DurationSeconds = 3f, IsBlocking = true });
+                    { Id = "toy", CapabilityId = "vibrate", PatternResourceId = "res-pat-50", DurationSeconds = 3f, IsBlocking = true });
 
-            CollectionAssert.AreEqual(new[] { "Hello" }, cutscene.Started);
+            CollectionAssert.AreEqual(new[] { "Hello" }, dialog.Shown);
             Assert.That(delay.LastDelayCount, Is.EqualTo(1));
-            Assert.That(toy.Started.Single(), Is.EqualTo(("vibrate", .75f, TimeSpan.FromSeconds(3))));
+            Assert.That(toy.TimedStarted.Single(),
+                Is.EqualTo(("vibrate", "res-pat-50", TimeSpan.FromSeconds(3))));
         }
 
         [Test]

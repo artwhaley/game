@@ -82,8 +82,10 @@ namespace TruthCardGame.Core
             if (instance is IncrementProgressInstanceDefinition) return ActionTypeKeys.IncrementProgress;
             if (instance is ModifyTemperatureInstanceDefinition) return ActionTypeKeys.ModifyTemperature;
             if (instance is CutsceneInstanceDefinition) return ActionTypeKeys.Cutscene;
+            if (instance is DialogFromTagsInstanceDefinition) return ActionTypeKeys.DialogFromTags;
             if (instance is DialogInstanceDefinition) return ActionTypeKeys.Dialog;
             if (instance is DelayInstanceDefinition) return ActionTypeKeys.Delay;
+            if (instance is ToySetPatternInstanceDefinition) return ActionTypeKeys.ToySetPattern;
             if (instance is ToyActivityInstanceDefinition) return ActionTypeKeys.ToyActivity;
             if (instance is WaitForAllInstanceDefinition) return ActionTypeKeys.WaitForAll;
             if (instance is PromptChoiceInstanceDefinition) return ActionTypeKeys.PromptChoice;
@@ -180,12 +182,25 @@ namespace TruthCardGame.Core
                 TypeKey = ActionTypeKeys.Dialog,
                 DisplayLabel = "Dialog",
                 AuthoringCategory = "Activity/Host",
-                SearchKeywords = "dialog dialogue text speech",
+                SearchKeywords = "dialog dialogue text speech line",
                 LegalScopes = ActionOwnerScope.All,
                 BlockingConfigurable = true,
                 DefaultBlocking = true,
                 EditorDiscriminator = "Dialog",
                 DefaultInstance = () => new DialogInstanceDefinition { Id = "", Text = "", IsBlocking = true },
+            });
+
+            Add(new ActionTypeInfo
+            {
+                TypeKey = ActionTypeKeys.DialogFromTags,
+                DisplayLabel = "Dialog From Tags",
+                AuthoringCategory = "Activity/Host",
+                SearchKeywords = "dialog tags snippet random flavor",
+                LegalScopes = ActionOwnerScope.All,
+                BlockingConfigurable = true,
+                DefaultBlocking = true,
+                EditorDiscriminator = "DialogFromTags",
+                DefaultInstance = () => new DialogFromTagsInstanceDefinition { Id = "", IsBlocking = true },
             });
 
             Add(new ActionTypeInfo
@@ -204,15 +219,31 @@ namespace TruthCardGame.Core
             Add(new ActionTypeInfo
             {
                 TypeKey = ActionTypeKeys.ToyActivity,
-                DisplayLabel = "Toy Activity",
+                DisplayLabel = "Timed Toy Pattern",
                 AuthoringCategory = "Activity/Host",
-                SearchKeywords = "toy smart capability intensity duration",
+                SearchKeywords = "toy smart capability pattern duration timed",
                 LegalScopes = ActionOwnerScope.All,
                 BlockingConfigurable = true,
                 DefaultBlocking = true,
                 EditorDiscriminator = "ToyActivity",
                 DefaultInstance = () => new ToyActivityInstanceDefinition
-                    { Id = "", CapabilityId = "", Intensity = 1f, DurationSeconds = 1f, IsBlocking = true },
+                    { Id = "", CapabilityId = "", PatternResourceId = "", DurationSeconds = 10f, IsBlocking = true },
+            });
+
+            Add(new ActionTypeInfo
+            {
+                TypeKey = ActionTypeKeys.ToySetPattern,
+                DisplayLabel = "Set Toy Pattern",
+                AuthoringCategory = "Activity/Host",
+                SearchKeywords = "toy set pattern persistent capability",
+                // Persistent toy state is never a background Task: it returns
+                // promptly and survives Cards/Phases. Always nonblocking.
+                LegalScopes = ActionOwnerScope.All,
+                BlockingConfigurable = false,
+                DefaultBlocking = false,
+                EditorDiscriminator = "ToySetPattern",
+                DefaultInstance = () => new ToySetPatternInstanceDefinition
+                    { Id = "", CapabilityId = "", PatternResourceId = "", IsBlocking = false },
             });
 
             Add(new ActionTypeInfo

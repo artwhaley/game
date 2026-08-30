@@ -33,6 +33,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private CancellationTokenSource _autoCts;
         private bool _waitingForContinue;
         private int _seed;
+        private ToyActivityHostService _toyHost;
 
         /// <summary>The visible integer seed used for the next/restarted run.</summary>
         public int Seed
@@ -162,11 +163,16 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 _sessionCts = new CancellationTokenSource();
                 _waitingForContinue = false;
 
+                _toyHost?.Dispose();
+                _toyHost = new ToyActivityHostService();
+
                 var services = new CoreServices(
                     delay: new WpfGameDelay(),
                     log: new UiGameLog(Log),
                     prompts: new UiPromptService(this),
-                    cutscene: new UiCutsceneService(this));
+                    cutscene: new UiCutsceneService(this),
+                    toyActivity: _toyHost,
+                    dialog: new DialogHostService((text, ct) => ShowDialogAsync(text, ct), new UiGameLog(Log)));
 
                 _engine = new GameSessionEngine(_content, selected.Id, services, SpawnOptionsForRun(seed),
                     rngFactory: null, selectionProfile: LoadSelectionProfile());
@@ -562,6 +568,52 @@ namespace TruthCardGame.ReferenceHost.Wpf
             return completion.Task;
         }
 
+        /// <summary>
+        /// Dialog host boundary: presents one authored dialog line and waits for
+        /// the player to accept it (Direct Dialog and Dialog From Tags both flow
+        /// through here via DialogHostService).
+        /// </summary>
+        internal Task ShowDialogAsync(string text, CancellationToken ct)
+        {
+            var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            if (ct.CanBeCanceled)
+            {
+                var registration = ct.Register(() =>
+                {
+                    RunOnUi(ClearInteractionArea);
+                    completion.TrySetCanceled(ct);
+                });
+                completion.Task.ContinueWith(_ => registration.Dispose(), TaskScheduler.Default);
+            }
+
+            RunOnUi(() =>
+            {
+                ClearInteractionArea();
+                SetStatus("Dialog…");
+                InteractionArea.Children.Add(new TextBlock
+                {
+                    Text = text ?? "",
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 10)
+                });
+                var continueButton = new Button
+                {
+                    Content = "Continue",
+                    Width = 120,
+                    Height = 28
+                };
+                continueButton.Click += (_, _) =>
+                {
+                    ClearInteractionArea();
+                    completion.TrySetResult(true); // resolves exactly once
+                };
+                InteractionArea.Children.Add(continueButton);
+            });
+
+            return completion.Task;
+        }
+
         internal Task ShowCutsceneAsync(string resourceId, CancellationToken ct)
         {
             var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -680,6 +732,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             StopAuto();
             CancelSession();
+            _toyHost?.Dispose();
+            _toyHost = null;
             base.OnClosed(e);
         }
 

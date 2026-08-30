@@ -22,8 +22,12 @@ namespace TruthCardGame.Core
         private readonly Dictionary<string, ResourceDefinition> _resources;
         private readonly Dictionary<string, SessionTypeDefinition> _sessionTypes;
         private readonly Dictionary<string, TemperatureDefinition> _temperatures;
+        private readonly Dictionary<string, DialogTagDefinition> _dialogTags;
+        private readonly Dictionary<string, DialogSnippetDefinition> _dialogSnippets;
         private readonly IReadOnlyList<TemperatureDefinition> _temperaturesList;
         private readonly IReadOnlyList<SessionDefinition> _sessionsList;
+        private readonly IReadOnlyList<DialogTagDefinition> _dialogTagsList;
+        private readonly IReadOnlyList<DialogSnippetDefinition> _dialogSnippetsList;
 
         public ContentCatalog(GameContentDefinition content)
         {
@@ -35,12 +39,20 @@ namespace TruthCardGame.Core
             _resources = Index(content.Resources, "Resource", r => r.Id);
             _sessionTypes = Index(content.SessionTypes, "SessionType", t => t.Id);
             _temperatures = Index(content.Temperatures, "Temperature", t => t.Id);
+            _dialogTags = Index(content.DialogTags, "DialogTag", t => t.Id);
+            _dialogSnippets = Index(content.DialogSnippets, "DialogSnippet", s => s.Id);
             _temperaturesList = content.Temperatures == null
                 ? (IReadOnlyList<TemperatureDefinition>)new List<TemperatureDefinition>()
                 : content.Temperatures;
             _sessionsList = content.Sessions == null
                 ? (IReadOnlyList<SessionDefinition>)new List<SessionDefinition>()
                 : content.Sessions;
+            _dialogTagsList = content.DialogTags == null
+                ? (IReadOnlyList<DialogTagDefinition>)new List<DialogTagDefinition>()
+                : content.DialogTags;
+            _dialogSnippetsList = content.DialogSnippets == null
+                ? (IReadOnlyList<DialogSnippetDefinition>)new List<DialogSnippetDefinition>()
+                : content.DialogSnippets;
         }
 
         private static Dictionary<string, T> Index<T>(IReadOnlyList<T> entities, string typeName, Func<T, string> idOf) where T : class
@@ -114,6 +126,26 @@ namespace TruthCardGame.Core
 
         /// <summary>All temperature definitions in stable order (TemperatureState initialization).</summary>
         public IReadOnlyList<TemperatureDefinition> TemperaturesList => _temperaturesList;
+
+        public DialogTagDefinition DialogTagById(string id)
+        {
+            return Lookup(_dialogTags, "DialogTag", id);
+        }
+
+        public bool TryDialogTagById(string id, out DialogTagDefinition tag)
+        {
+            return _dialogTags.TryGetValue(id ?? "", out tag);
+        }
+        /// <summary>All Dialog Tags in stable order (WPF catalog + selector diagnostics).</summary>
+        public IReadOnlyList<DialogTagDefinition> DialogTagsList => _dialogTagsList;
+
+        public DialogSnippetDefinition DialogSnippetById(string id)
+        {
+            return Lookup(_dialogSnippets, "DialogSnippet", id);
+        }
+
+        /// <summary>All Dialog Snippets in stable order (DialogFromTags selection input).</summary>
+        public IReadOnlyList<DialogSnippetDefinition> DialogSnippetsList => _dialogSnippetsList;
 
         private static T Lookup<T>(Dictionary<string, T> index, string typeName, string id) where T : class
         {

@@ -33,6 +33,12 @@ namespace TruthCardGame.Content
         /// <summary>Authored Smart Toy capability definitions.</summary>
         public List<SmartToyCapabilityDefinition> SmartToyCapabilityDefinitions { get; set; } = new List<SmartToyCapabilityDefinition>();
 
+        /// <summary>Authored Dialog Tag catalog (Dialog From Tags selection domain).</summary>
+        public List<DialogTagDefinition> DialogTags { get; set; } = new List<DialogTagDefinition>();
+
+        /// <summary>Authored Dialog Snippet catalog (portable text content, NOT Resources).</summary>
+        public List<DialogSnippetDefinition> DialogSnippets { get; set; } = new List<DialogSnippetDefinition>();
+
         public List<SessionDefinition> Sessions { get; set; } = new List<SessionDefinition>();
         public List<PhaseDefinition> Phases { get; set; } = new List<PhaseDefinition>();
         public List<CardDefinition> Cards { get; set; } = new List<CardDefinition>();

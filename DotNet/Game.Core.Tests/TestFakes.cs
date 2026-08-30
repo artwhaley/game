@@ -170,13 +170,40 @@ namespace TruthCardGame.Core.Tests
 
     public sealed class FakeToyActivityService : IToyActivityService
     {
-        public readonly List<(string CapabilityId, float Intensity, TimeSpan Duration)> Started =
-            new List<(string CapabilityId, float Intensity, TimeSpan Duration)>();
+        public readonly List<(string CapabilityId, string PatternResourceId, TimeSpan Duration)> TimedStarted =
+            new List<(string CapabilityId, string PatternResourceId, TimeSpan Duration)>();
+        public readonly List<(string CapabilityId, string PatternResourceId)> SetPatterns =
+            new List<(string CapabilityId, string PatternResourceId)>();
+        public int StopAllCount;
 
-        public Task PlayAsync(string capabilityId, float intensity, TimeSpan duration,
+        public Task PlayForAsync(string capabilityId, string patternResourceId, TimeSpan duration,
             CancellationToken cancellationToken)
         {
-            Started.Add((capabilityId, intensity, duration));
+            TimedStarted.Add((capabilityId, patternResourceId, duration));
+            return Task.CompletedTask;
+        }
+
+        public Task SetPatternAsync(string capabilityId, string patternResourceId, CancellationToken cancellationToken)
+        {
+            SetPatterns.Add((capabilityId, patternResourceId));
+            return Task.CompletedTask;
+        }
+
+        public Task StopAllAsync()
+        {
+            StopAllCount++;
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>Dialog fake: records presented text; optionally gated for blocking tests.</summary>
+    public sealed class FakeDialogService : IDialogService
+    {
+        public readonly List<string> Shown = new List<string>();
+
+        public Task ShowAsync(string text, CancellationToken cancellationToken)
+        {
+            Shown.Add(text ?? "");
             return Task.CompletedTask;
         }
     }

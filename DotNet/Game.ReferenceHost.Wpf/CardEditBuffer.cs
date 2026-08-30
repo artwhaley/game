@@ -135,7 +135,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case ToyActivityInstanceDefinition toy:
                     return b is ToyActivityInstanceDefinition otherToy &&
                         string.Equals(toy.CapabilityId, otherToy.CapabilityId, StringComparison.Ordinal) &&
-                        toy.Intensity == otherToy.Intensity && toy.DurationSeconds == otherToy.DurationSeconds;
+                        string.Equals(toy.PatternResourceId, otherToy.PatternResourceId, StringComparison.Ordinal) &&
+                        toy.DurationSeconds == otherToy.DurationSeconds;
                 case PromptChoiceInstanceDefinition choice:
                     var otherChoice = b as PromptChoiceInstanceDefinition;
                     if (otherChoice == null ||
@@ -292,7 +293,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             ApplyRowValue(Sequence.Id, instanceId, textValue, numberValue);
         }
 
-        public void ApplyRowValue(string sequenceId, string instanceId, string textValue, float? numberValue)
+        public void ApplyRowValue(string sequenceId, string instanceId, string textValue, float? numberValue, string patternValue = null)
         {
             var sequence = FindSequence(sequenceId);
             var index = sequence?.Instances.FindIndex(instance => instance.Id == instanceId) ?? -1;
@@ -326,7 +327,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     break;
                 case ToyActivityInstanceDefinition toy:
                     toy.CapabilityId = textValue ?? "";
-                    if (numberValue.HasValue) toy.Intensity = numberValue.Value;
+                    if (patternValue != null) toy.PatternResourceId = patternValue;
                     break;
                 case PromptChoiceInstanceDefinition choice:
                     choice.Prompt = textValue ?? "";

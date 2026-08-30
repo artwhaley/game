@@ -57,6 +57,8 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 CoreMigrator.EnsureSchema(connection);
                 CatalogRepositories.CreateSmartToyCapability(connection,
                     new SmartToyCapabilityDefinition { Id = "vibrate", Title = "Vibration" });
+                ResourceRepository.Create(connection, new ResourceDefinition
+                    { Id = "res-pat-50", Kind = ResourceKinds.ToyPattern, Name = "Constant 50" });
                 var card = new CardDefinition { Id = "card-actions", Title = "Actions",
                     Sequence = new ActionSequenceDefinition { Id = "seq-actions" } };
                 card.Sequence.Instances.Add(new DialogInstanceDefinition
@@ -64,7 +66,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 card.Sequence.Instances.Add(new DelayInstanceDefinition
                     { Id = "delay", DurationSeconds = 2.5f, IsBlocking = true });
                 card.Sequence.Instances.Add(new ToyActivityInstanceDefinition
-                    { Id = "toy", CapabilityId = "vibrate", Intensity = .7f, DurationSeconds = 4f, IsBlocking = true });
+                    { Id = "toy", CapabilityId = "vibrate", PatternResourceId = "res-pat-50", DurationSeconds = 4f, IsBlocking = true });
                 card.Sequence.Instances.Add(new WaitForAllInstanceDefinition
                     { Id = "wait-all", IsBlocking = true });
                 CardRepository.Create(connection, card);
@@ -75,7 +77,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 Assert.That(((DelayInstanceDefinition)loaded.Instances[1]).DurationSeconds, Is.EqualTo(2.5f));
                 var toy = (ToyActivityInstanceDefinition)loaded.Instances[2];
                 Assert.That(toy.CapabilityId, Is.EqualTo("vibrate"));
-                Assert.That(toy.Intensity, Is.EqualTo(.7f));
+                Assert.That(toy.PatternResourceId, Is.EqualTo("res-pat-50"));
                 Assert.That(toy.DurationSeconds, Is.EqualTo(4f));
                 Assert.That(toy.IsBlocking, Is.True);
                 Assert.That(loaded.Instances[3], Is.TypeOf<WaitForAllInstanceDefinition>());

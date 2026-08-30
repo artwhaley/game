@@ -25,13 +25,23 @@ namespace TruthCardGame.Core
         /// <summary>Owner scope of the sequence being executed (registry guard).</summary>
         public ActionOwnerScope ActiveScope { get; }
 
+        /// <summary>
+        /// Session-scoped Dialog From Tags RNG (Ticket 05, domain
+        /// DialogSelection). Independent from Session selection and the
+        /// PhaseRun/Card streams; nested Action contexts share the same
+        /// instance so dialog draws stay one ordered session stream. Optional:
+        /// null only in hosts/tests that never execute DialogFromTags.
+        /// </summary>
+        public IRandomSource DialogRng { get; }
+
         public ActionExecutionContext(
             Player player,
             CoreServices services,
             ContentCatalog catalog,
             TemperatureState temperatures,
             PhaseProgressState phaseProgress,
-            ActionOwnerScope activeScope)
+            ActionOwnerScope activeScope,
+            IRandomSource dialogRng = null)
         {
             Player = player ?? throw new ArgumentNullException(nameof(player));
             Services = services ?? throw new ArgumentNullException(nameof(services));
@@ -39,6 +49,7 @@ namespace TruthCardGame.Core
             Temperatures = temperatures ?? throw new ArgumentNullException(nameof(temperatures));
             PhaseProgress = phaseProgress;
             ActiveScope = activeScope;
+            DialogRng = dialogRng;
         }
     }
 

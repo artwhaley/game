@@ -19,6 +19,7 @@ namespace TruthCardGame.Core
         private readonly CoreServices _services;
         private readonly BackgroundActionTracker _tracker;
         private readonly PhaseRunRngFactory _rngFactory;
+        private readonly IRandomSource _dialogRng;
         private readonly CardSelectionProfile _selectionProfile;
         private readonly int _executionBudget;
 
@@ -63,6 +64,7 @@ namespace TruthCardGame.Core
             _tracker = new BackgroundActionTracker(_services.Log);
             SpawnOptions = spawn ?? SessionSpawnOptions.Default;
             _rngFactory = rngFactory ?? SeededRandomDomains.CreatePhaseRunFactory(SpawnOptions.Seed);
+            _dialogRng = SeededRandomDomains.CreateDialogSelection(SpawnOptions.Seed);
             _selectionProfile = selectionProfile ?? new CardSelectionProfile();
             if (executionBudget <= 0) throw new ArgumentOutOfRangeException(nameof(executionBudget));
             _executionBudget = executionBudget;
@@ -106,6 +108,31 @@ namespace TruthCardGame.Core
         /// <summary>How many background actions are still running.</summary>
         public int PendingBackgroundCount => _tracker.ActiveCount;
 
+        /// <summary>
+        /// Single reusable shutdown path (Ticket 07): stops all toy output on
+        /// the host even when the gameplay token is already canceled — cleanup
+        /// uses its own token. Never throws; a host StopAll failure is logged
+        /// so it cannot hide an original runtime error. Idempotent.
+        /// </summary>
+        public async Task ShutdownAsync(string reason = "Session complete")
+        {
+            try
+            {
+                if (_services.ToyActivity != null)
+                {
+                    using (var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                    {
+                        await _services.ToyActivity.StopAllAsync();
+                    }
+                    _services.Log.Info($"TOY STOP ALL reason: {reason}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _services.Log.Error($"TOY STOP ALL failed during teardown ({reason}): {ex.Message}");
+            }
+        }
+
         // ---------- the explicit-yield operation ----------
 
         /// <summary>
@@ -139,7 +166,7 @@ namespace TruthCardGame.Core
             {
                 var vm = EnsureVm();
                 var context = new ActionExecutionContext(
-                    Player, _services, _catalog, Temperatures, null, ActionOwnerScope.All);
+                    Player, _services, _catalog, Temperatures, null, ActionOwnerScope.All, _dialogRng);
 
                 while (!vm.IsComplete)
                 {
@@ -151,6 +178,7 @@ namespace TruthCardGame.Core
                             return new AdvanceResult(AdvanceResultKind.WaitForContinue);
                         case SessionAdvanceOutcome.SessionCompleted:
                             IsComplete = true;
+                            await ShutdownAsync("Session complete");
                             return new AdvanceResult(AdvanceResultKind.SessionCompleted);
                         case SessionAdvanceOutcome.Error:
                             throw new GraphExecutionException(
@@ -162,7 +190,18 @@ namespace TruthCardGame.Core
                 }
 
                 IsComplete = true;
+                await ShutdownAsync("Session complete");
                 return new AdvanceResult(AdvanceResultKind.SessionCompleted);
+            }
+            catch (OperationCanceledException)
+            {
+                await ShutdownAsync("canceled");
+                throw;
+            }
+            catch (Exception)
+            {
+                await ShutdownAsync("runtime error");
+                throw;
             }
             finally
             {

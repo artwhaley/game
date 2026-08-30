@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.Linq;
 using TruthCardGame.Content;
 using TruthCardGame.Core;
 
@@ -86,7 +87,7 @@ namespace TruthCardGame.Content.Sqlite
         }
 
         public static void Update(DbConnection connection, string instanceId, string typeKey,
-            string textValue, float numberValue, float secondaryNumberValue = 0f)
+            string textValue, float numberValue, float secondaryNumberValue = 0f, string patternValue = null)
         {
             switch (typeKey)
             {
@@ -127,9 +128,17 @@ namespace TruthCardGame.Content.Sqlite
                     break;
                 case ActionTypeKeys.ToyActivity:
                     Sql.Execute(connection, null,
-                        "UPDATE action_instance_toy_activity SET capability_id = @text, intensity = @number, duration_seconds = @secondary WHERE action_instance_id = @id;",
-                        ("text", textValue ?? ""), ("number", (double)numberValue),
+                        "UPDATE action_instance_toy_activity SET capability_id = @text, pattern_resource_id = @pattern, duration_seconds = @secondary WHERE action_instance_id = @id;",
+                        ("text", textValue ?? ""), ("pattern", patternValue ?? ""),
                         ("secondary", (double)Math.Max(0f, secondaryNumberValue)), ("id", instanceId));
+                    break;
+                case ActionTypeKeys.ToySetPattern:
+                    Sql.Execute(connection, null,
+                        "UPDATE action_instance_toy_set_pattern SET capability_id = @text, pattern_resource_id = @pattern WHERE action_instance_id = @id;",
+                        ("text", textValue ?? ""), ("pattern", patternValue ?? ""), ("id", instanceId));
+                    break;
+                case ActionTypeKeys.DialogFromTags:
+                    ReplaceDialogFromTagRelations(connection, instanceId, patternValue);
                     break;
                 case ActionTypeKeys.PromptChoice:
                     Sql.Execute(connection, null,
@@ -148,6 +157,36 @@ namespace TruthCardGame.Content.Sqlite
                     break;
                 default:
                     throw new InvalidOperationException("ActionTypeRegistry: unsupported update key '" + typeKey + "'.");
+            }
+        }
+
+        /// <summary>Replaces the required-tag relations of a DialogFromTags instance (tag list, ';'-joined).</summary>
+        private static void ReplaceDialogFromTagRelations(DbConnection connection, string instanceId, string tagList)
+        {
+            var tagIds = (tagList ?? "")
+                .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(t => t.Trim())
+                .Where(t => t.Length > 0)
+                .ToList();
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    Sql.Execute(connection, transaction,
+                        "DELETE FROM action_instance_dialog_from_tag WHERE action_instance_id = @i;", ("i", instanceId));
+                    for (var i = 0; i < tagIds.Count; i++)
+                    {
+                        Sql.Execute(connection, transaction,
+                            "INSERT INTO action_instance_dialog_from_tag (action_instance_id, dialog_tag_id, ordinal) VALUES (@i, @tag, @ordinal);",
+                            ("i", instanceId), ("tag", tagIds[i]), ("ordinal", i));
+                    }
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
             }
         }
 

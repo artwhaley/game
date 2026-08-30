@@ -238,6 +238,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
         }
         public ActionParameterOption SelectedChoice =>
             ChoiceOptions.FirstOrDefault(option => string.Equals(option.Id, TextValue, StringComparison.Ordinal));
+
+        /// <summary>
+        /// Second choice field (Ticket 11): the Toy Pattern Resource for toy
+        /// actions, or the required-tag list (';'-joined) for DialogFromTags.
+        /// Kept as a plain bound field like PersistedTextValue.
+        /// </summary>
+        public string PatternValue { get; set; } = "";
+        public string PersistedPatternValue { get; set; }
+
         public string PersistedTextValue { get; set; }
         public string PersistedNumberText { get; set; }
         public string PersistedSecondaryNumberText { get; set; }
@@ -357,8 +366,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     break;
                 case ToyActivityInstanceDefinition toy:
                     toy.CapabilityId = TextValue ?? "";
-                    toy.Intensity = ParseNumber(NumberText);
-                    toy.DurationSeconds = Math.Max(0f, ParseNumber(SecondaryNumberText));
+                    toy.PatternResourceId = PatternValue ?? "";
+                    toy.DurationSeconds = Math.Max(0f, ParseNumber(NumberText));
+                    break;
+                case ToySetPatternInstanceDefinition toySet:
+                    toySet.CapabilityId = TextValue ?? "";
+                    toySet.PatternResourceId = PatternValue ?? "";
                     break;
                 case PromptChoiceInstanceDefinition choice:
                     choice.Prompt = TextValue ?? "";
@@ -1393,11 +1406,17 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case ToyActivityInstanceDefinition toy:
                 {
                     var toyCapabilityId = toy.CapabilityId;
-                    var toyIntensity = toy.Intensity;
+                    var toyPattern = toy.PatternResourceId;
                     var toyDuration = toy.DurationSeconds;
                     row.TextValue = toyCapabilityId;
-                    row.NumberText = toyIntensity.ToString("0.###", CultureInfo.InvariantCulture);
-                    row.SecondaryNumberText = toyDuration.ToString("0.###", CultureInfo.InvariantCulture);
+                    row.PatternValue = toyPattern;
+                    row.NumberText = toyDuration.ToString("0.###", CultureInfo.InvariantCulture);
+                    break;
+                }
+                case ToySetPatternInstanceDefinition toySet:
+                {
+                    row.TextValue = toySet.CapabilityId;
+                    row.PatternValue = toySet.PatternResourceId;
                     break;
                 }
                 case PromptChoiceInstanceDefinition choice:
@@ -1411,6 +1430,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     break;
             }
             row.PersistedTextValue = row.TextValue;
+            row.PersistedPatternValue = row.PatternValue;
             row.PersistedNumberText = row.NumberText;
             row.PersistedSecondaryNumberText = row.SecondaryNumberText;
             if (instance is PromptChoiceInstanceDefinition promptChoice)

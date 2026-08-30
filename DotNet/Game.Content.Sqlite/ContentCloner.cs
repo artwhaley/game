@@ -307,6 +307,34 @@ namespace TruthCardGame.Content.Sqlite
                 case CutsceneInstanceDefinition cutscene:
                     result = new CutsceneInstanceDefinition { ResourceId = cutscene.ResourceId };
                     break;
+                case DialogInstanceDefinition dialog:
+                    result = new DialogInstanceDefinition { Text = dialog.Text };
+                    break;
+                case DialogFromTagsInstanceDefinition dialogFromTags:
+                {
+                    var clone = new DialogFromTagsInstanceDefinition();
+                    clone.RequiredDialogTagIds.AddRange(dialogFromTags.RequiredDialogTagIds);
+                    result = clone;
+                    break;
+                }
+                case DelayInstanceDefinition delay:
+                    result = new DelayInstanceDefinition { DurationSeconds = delay.DurationSeconds };
+                    break;
+                case ToyActivityInstanceDefinition toy:
+                    result = new ToyActivityInstanceDefinition
+                    {
+                        CapabilityId = toy.CapabilityId,
+                        PatternResourceId = toy.PatternResourceId,
+                        DurationSeconds = toy.DurationSeconds,
+                    };
+                    break;
+                case ToySetPatternInstanceDefinition toySet:
+                    result = new ToySetPatternInstanceDefinition
+                    {
+                        CapabilityId = toySet.CapabilityId,
+                        PatternResourceId = toySet.PatternResourceId,
+                    };
+                    break;
                 case PromptChoiceInstanceDefinition choice:
                 {
                     var clone = new PromptChoiceInstanceDefinition { Prompt = choice.Prompt };

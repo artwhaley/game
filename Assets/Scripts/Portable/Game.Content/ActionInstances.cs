@@ -58,10 +58,21 @@ namespace TruthCardGame.Content
         public string ResourceId { get; set; } = "";
     }
 
-    /// <summary>Displays authored dialog through the temporary cutscene-style host fixture.</summary>
+    /// <summary>Displays one authored dialog line through IDialogService. Kept alongside DialogFromTags for unique authored lines.</summary>
     public sealed class DialogInstanceDefinition : ActionInstanceDefinition
     {
         public string Text { get; set; } = "";
+    }
+
+    /// <summary>
+    /// Picks one Dialog Snippet carrying ALL required tags (uniform random from
+    /// the dedicated DialogSelection RNG domain) and displays its Text through
+    /// the same IDialogService. Zero required tags or zero candidates are loud
+    /// content errors, never silent fallbacks.
+    /// </summary>
+    public sealed class DialogFromTagsInstanceDefinition : ActionInstanceDefinition
+    {
+        public List<string> RequiredDialogTagIds { get; } = new List<string>();
     }
 
     /// <summary>Waits for an authored number of seconds through the host clock.</summary>
@@ -70,12 +81,28 @@ namespace TruthCardGame.Content
         public float DurationSeconds { get; set; }
     }
 
-    /// <summary>Runs one configured smart-toy capability at an authored intensity and duration.</summary>
+    /// <summary>
+    /// Applies a Toy Pattern Resource to one Smart Toy capability for an authored
+    /// duration (Timed Toy Pattern). The pattern reference replaces the legacy
+    /// authored intensity; the host owns pattern interpretation.
+    /// </summary>
     public sealed class ToyActivityInstanceDefinition : ActionInstanceDefinition
     {
         public string CapabilityId { get; set; } = "";
-        public float Intensity { get; set; }
+        public string PatternResourceId { get; set; } = "";
         public float DurationSeconds { get; set; }
+    }
+
+    /// <summary>
+    /// Sets/replaces the persistent Toy Pattern state of one capability and
+    /// returns promptly. Always nonblocking (registry-guaranteed). The state
+    /// persists across Cards, Phases, GOTO/RETURN, Delay, and WaitForContinue;
+    /// it is never a background Task, so WaitForAll does not wait on it.
+    /// </summary>
+    public sealed class ToySetPatternInstanceDefinition : ActionInstanceDefinition
+    {
+        public string CapabilityId { get; set; } = "";
+        public string PatternResourceId { get; set; } = "";
     }
 
     /// <summary>Blocks sequence continuation until background actions already running complete.</summary>

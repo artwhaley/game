@@ -66,6 +66,8 @@ namespace TruthCardGame.Content.Sqlite
             content.KinkDefinitions.AddRange(LoadKinkDefinitions(connection));
             content.EquipmentDefinitions.AddRange(LoadEquipmentDefinitions(connection));
             content.SmartToyCapabilityDefinitions.AddRange(LoadSmartToyCapabilityDefinitions(connection));
+            content.DialogTags.AddRange(TableExists(connection, "dialog_tag_definition") ? LoadDialogTags(connection) : new List<DialogTagDefinition>());
+            content.DialogSnippets.AddRange(TableExists(connection, "dialog_snippet") ? LoadDialogSnippets(connection) : new List<DialogSnippetDefinition>());
             content.Cards.AddRange(LoadCards(connection, sequences));
             content.Phases.AddRange(LoadPhases(connection, sequences));
             content.Sessions.AddRange(LoadSessions(connection, sequences));
@@ -182,6 +184,41 @@ namespace TruthCardGame.Content.Sqlite
                     Name = reader.IsDBNull(2) ? "" : reader.GetString(2),
                 }));
             return resources;
+        }
+
+        private static List<DialogTagDefinition> LoadDialogTags(DbConnection connection)
+        {
+            var tags = new List<DialogTagDefinition>();
+            QueryAll(connection, "SELECT id, title, sort_order FROM dialog_tag_definition ORDER BY sort_order, id;",
+                reader => tags.Add(new DialogTagDefinition
+                {
+                    Id = reader.GetString(0),
+                    Title = reader.GetString(1),
+                    SortOrder = reader.GetInt32(2),
+                }));
+            return tags;
+        }
+
+        private static List<DialogSnippetDefinition> LoadDialogSnippets(DbConnection connection)
+        {
+            var snippets = new List<DialogSnippetDefinition>();
+            QueryAll(connection, "SELECT id, name, text, sort_order FROM dialog_snippet ORDER BY sort_order, id;",
+                reader => snippets.Add(new DialogSnippetDefinition
+                {
+                    Id = reader.GetString(0),
+                    Name = reader.GetString(1),
+                    Text = reader.GetString(2),
+                    SortOrder = reader.GetInt32(3),
+                }));
+
+            foreach (var snippet in snippets)
+            {
+                QueryAll(connection,
+                    "SELECT dialog_tag_id FROM dialog_snippet_tag WHERE dialog_snippet_id = @id ORDER BY ordinal;",
+                    reader => snippet.DialogTagIds.Add(reader.GetString(0)),
+                    Param("id", snippet.Id));
+            }
+            return snippets;
         }
 
         private static void LoadSessionWeighting(DbConnection connection, SessionDefinition session)
@@ -631,6 +668,14 @@ namespace TruthCardGame.Content.Sqlite
             return result;
         }
 
+        private static bool TableExists(DbConnection connection, string name)
+        {
+            var found = false;
+            QueryAll(connection, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = @n;",
+                reader => found = Convert.ToInt64(reader.GetValue(0)) > 0, Param("n", name));
+            return found;
+        }
+
         // ---- tags/helpers ----
 
         private static List<string> OrderedRelationIds(DbConnection connection, string sql, params (string Name, object Value)[] parameters)
@@ -893,15 +938,45 @@ namespace TruthCardGame.Content.Sqlite
                     case ActionType.ToyActivityV6:
                     {
                         string capability = null;
-                        double intensity = 0, duration = 0;
+                        string patternResource = null;
+                        double duration = 0;
                         QueryOne(_connection,
-                            "SELECT capability_id, intensity, duration_seconds FROM action_instance_toy_activity WHERE action_instance_id = @i;",
-                            reader => { capability = reader.GetString(0); intensity = reader.GetDouble(1); duration = reader.GetDouble(2); },
+                            "SELECT capability_id, pattern_resource_id, duration_seconds FROM action_instance_toy_activity WHERE action_instance_id = @i;",
+                            reader => { capability = reader.GetString(0); patternResource = reader.GetString(1); duration = reader.GetDouble(2); },
                             Param("i", instanceId));
                         RequireSubtypeRow(capability != null, sequenceId, instanceId, type);
                         return new ToyActivityInstanceDefinition { Id = instanceId, IsBlocking = blocking,
-                            CapabilityId = capability, Intensity = Convert.ToSingle(intensity),
+                            CapabilityId = capability, PatternResourceId = patternResource,
                             DurationSeconds = Convert.ToSingle(duration) };
+                    }
+
+                    case ActionType.ToySetPatternV8:
+                    {
+                        string capability = null;
+                        string patternResource = null;
+                        QueryOne(_connection,
+                            "SELECT capability_id, pattern_resource_id FROM action_instance_toy_set_pattern WHERE action_instance_id = @i;",
+                            reader => { capability = reader.GetString(0); patternResource = reader.GetString(1); },
+                            Param("i", instanceId));
+                        RequireSubtypeRow(capability != null, sequenceId, instanceId, type);
+                        return new ToySetPatternInstanceDefinition { Id = instanceId, IsBlocking = false,
+                            CapabilityId = capability, PatternResourceId = patternResource };
+                    }
+
+                    case ActionType.DialogFromTagsV8:
+                    {
+                        var exists = false;
+                        QueryOne(_connection, "SELECT COUNT(*) FROM action_instance_dialog_from_tags WHERE action_instance_id = @i;",
+                            reader => exists = Convert.ToInt64(reader.GetValue(0)) > 0,
+                            Param("i", instanceId));
+                        RequireSubtypeRow(exists, sequenceId, instanceId, type);
+
+                        var fromTags = new DialogFromTagsInstanceDefinition { Id = instanceId, IsBlocking = blocking };
+                        QueryAll(_connection,
+                            "SELECT dialog_tag_id FROM action_instance_dialog_from_tag WHERE action_instance_id = @i ORDER BY ordinal;",
+                            reader => fromTags.RequiredDialogTagIds.Add(reader.GetString(0)),
+                            Param("i", instanceId));
+                        return fromTags;
                     }
 
                     case ActionType.PromptChoiceV2:

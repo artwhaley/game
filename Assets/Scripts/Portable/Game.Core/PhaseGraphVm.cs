@@ -551,7 +551,8 @@ namespace TruthCardGame.Core
                 baseContext.Catalog,
                 baseContext.Temperatures,
                 run.Progress,
-                scope);
+                scope,
+                baseContext.DialogRng);
         }
     }
 }

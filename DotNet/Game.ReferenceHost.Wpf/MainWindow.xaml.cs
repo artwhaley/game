@@ -223,12 +223,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     return;
                 }
                 if (field != nameof(ActionRowData.TextValue) && field != nameof(ActionRowData.NumberText) &&
-                    field != nameof(ActionRowData.SecondaryNumberText)) return;
+                    field != nameof(ActionRowData.SecondaryNumberText) && field != nameof(ActionRowData.PatternValue)) return;
                 PushOrMerge(new UpdateActionInstanceCommand(OpenConnection, row.InstanceId, row.TypeKey,
                     row.PersistedTextValue, ParseFloat(row.PersistedNumberText),
                     row.TextValue, ParseFloat(row.NumberText), ParseFloat(row.PersistedSecondaryNumberText),
-                    ParseFloat(row.SecondaryNumberText)));
+                    ParseFloat(row.SecondaryNumberText), row.PersistedPatternValue, row.PatternValue));
                 row.PersistedTextValue = row.TextValue;
+                row.PersistedPatternValue = row.PatternValue;
                 row.PersistedNumberText = row.NumberText;
                 row.PersistedSecondaryNumberText = row.SecondaryNumberText;
             };
@@ -242,12 +243,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     return;
                 }
                 if (field != nameof(ActionRowData.TextValue) && field != nameof(ActionRowData.NumberText) &&
-                    field != nameof(ActionRowData.SecondaryNumberText)) return;
+                    field != nameof(ActionRowData.SecondaryNumberText) && field != nameof(ActionRowData.PatternValue)) return;
                 PushOrMerge(new UpdateActionInstanceCommand(OpenConnection, row.InstanceId, row.TypeKey,
                     row.PersistedTextValue, ParseFloat(row.PersistedNumberText),
                     row.TextValue, ParseFloat(row.NumberText), ParseFloat(row.PersistedSecondaryNumberText),
-                    ParseFloat(row.SecondaryNumberText)));
+                    ParseFloat(row.SecondaryNumberText), row.PersistedPatternValue, row.PatternValue));
                 row.PersistedTextValue = row.TextValue;
+                row.PersistedPatternValue = row.PatternValue;
                 row.PersistedNumberText = row.NumberText;
                 row.PersistedSecondaryNumberText = row.SecondaryNumberText;
             };

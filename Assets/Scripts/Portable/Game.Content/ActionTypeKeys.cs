@@ -19,8 +19,10 @@ namespace TruthCardGame.Content
         public const string ModifyTemperature = "modify_temperature";
         public const string Cutscene = "cutscene";
         public const string Dialog = "dialog";
+        public const string DialogFromTags = "dialog_from_tags";
         public const string Delay = "delay";
         public const string ToyActivity = "toy_activity";
+        public const string ToySetPattern = "toy_set_pattern";
         public const string WaitForAll = "wait_for_all";
         public const string PromptChoice = "prompt_choice";
         public const string WaitForContinue = "wait_for_continue";

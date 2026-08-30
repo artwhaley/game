@@ -254,9 +254,17 @@ namespace TruthCardGame.Content.Sqlite
                     break;
                 case ToyActivityInstanceDefinition toy:
                     Sql.Execute(connection, transaction,
-                        "UPDATE action_instance_toy_activity SET capability_id = @capability, intensity = @intensity, duration_seconds = @duration WHERE action_instance_id = @i;",
-                        ("capability", toy.CapabilityId ?? ""), ("intensity", (double)toy.Intensity),
+                        "UPDATE action_instance_toy_activity SET capability_id = @capability, pattern_resource_id = @pattern, duration_seconds = @duration WHERE action_instance_id = @i;",
+                        ("capability", toy.CapabilityId ?? ""), ("pattern", toy.PatternResourceId ?? ""),
                         ("duration", (double)Math.Max(0f, toy.DurationSeconds)), ("i", instance.Id));
+                    break;
+                case ToySetPatternInstanceDefinition toySet:
+                    Sql.Execute(connection, transaction,
+                        "UPDATE action_instance_toy_set_pattern SET capability_id = @capability, pattern_resource_id = @pattern WHERE action_instance_id = @i;",
+                        ("capability", toySet.CapabilityId ?? ""), ("pattern", toySet.PatternResourceId ?? ""), ("i", instance.Id));
+                    break;
+                case DialogFromTagsInstanceDefinition dialogFromTags:
+                    SyncDialogFromTagRelations(connection, transaction, instance.Id, dialogFromTags.RequiredDialogTagIds);
                     break;
                 case PromptChoiceInstanceDefinition choice:
                     Sql.Execute(connection, transaction,
@@ -421,9 +429,27 @@ namespace TruthCardGame.Content.Sqlite
 
                 case ToyActivityInstanceDefinition toy:
                     Sql.Execute(connection, transaction,
-                        "INSERT INTO action_instance_toy_activity (action_instance_id, capability_id, intensity, duration_seconds) VALUES (@i, @capability, @intensity, @duration);",
+                        "INSERT INTO action_instance_toy_activity (action_instance_id, capability_id, pattern_resource_id, duration_seconds) VALUES (@i, @capability, @pattern, @duration);",
                         ("i", instance.Id), ("capability", toy.CapabilityId ?? ""),
-                        ("intensity", (double)toy.Intensity), ("duration", (double)Math.Max(0f, toy.DurationSeconds)));
+                        ("pattern", toy.PatternResourceId ?? ""), ("duration", (double)Math.Max(0f, toy.DurationSeconds)));
+                    break;
+
+                case ToySetPatternInstanceDefinition toySet:
+                    Sql.Execute(connection, transaction,
+                        "INSERT INTO action_instance_toy_set_pattern (action_instance_id, capability_id, pattern_resource_id) VALUES (@i, @capability, @pattern);",
+                        ("i", instance.Id), ("capability", toySet.CapabilityId ?? ""), ("pattern", toySet.PatternResourceId ?? ""));
+                    break;
+
+                case DialogFromTagsInstanceDefinition dialogFromTags:
+                    Sql.Execute(connection, transaction,
+                        "INSERT INTO action_instance_dialog_from_tags (action_instance_id) VALUES (@i);",
+                        ("i", instance.Id));
+                    for (var tagOrdinal = 0; tagOrdinal < dialogFromTags.RequiredDialogTagIds.Count; tagOrdinal++)
+                    {
+                        Sql.Execute(connection, transaction,
+                            "INSERT INTO action_instance_dialog_from_tag (action_instance_id, dialog_tag_id, ordinal) VALUES (@i, @tag, @ordinal);",
+                            ("i", instance.Id), ("tag", dialogFromTags.RequiredDialogTagIds[tagOrdinal]), ("ordinal", tagOrdinal));
+                    }
                     break;
 
                 case PromptChoiceInstanceDefinition choice:
@@ -478,6 +504,39 @@ namespace TruthCardGame.Content.Sqlite
             }
         }
 
+        /// <summary>
+        /// Stable-ID diff for DialogFromTags required-tag relations: surviving
+        /// (instance, tag) pairs keep their rows; only removed tags are deleted;
+        /// new tags are appended preserving authored order where possible.
+        /// </summary>
+        private static void SyncDialogFromTagRelations(DbConnection connection, DbTransaction transaction,
+            string instanceId, IList<string> desired)
+        {
+            desired = desired ?? new List<string>();
+            var existing = new Dictionary<string, int>();
+            Sql.QueryAll(connection, transaction,
+                "SELECT dialog_tag_id, ordinal FROM action_instance_dialog_from_tag WHERE action_instance_id = @i;",
+                reader => existing[reader.GetString(0)] = reader.GetInt32(1), ("i", instanceId));
+
+            foreach (var stored in existing.Keys)
+            {
+                if (!desired.Contains(stored))
+                {
+                    Sql.Execute(connection, transaction,
+                        "DELETE FROM action_instance_dialog_from_tag WHERE action_instance_id = @i AND dialog_tag_id = @tag;",
+                        ("i", instanceId), ("tag", stored));
+                }
+            }
+
+            for (var ordinal = 0; ordinal < desired.Count; ordinal++)
+            {
+                if (existing.ContainsKey(desired[ordinal])) continue;
+                Sql.Execute(connection, transaction,
+                    "INSERT INTO action_instance_dialog_from_tag (action_instance_id, dialog_tag_id, ordinal) VALUES (@i, @tag, @ordinal);",
+                    ("i", instanceId), ("tag", desired[ordinal]), ("ordinal", ordinal));
+            }
+        }
+
         private static void WriteOptionSequence(
             DbConnection connection, DbTransaction transaction,
             string choiceInstanceId, PromptChoiceOptionDefinition option, int optionOrdinal)
@@ -513,6 +572,8 @@ namespace TruthCardGame.Content.Sqlite
             if (instance is DialogInstanceDefinition) return ActionType.DialogV6;
             if (instance is DelayInstanceDefinition) return ActionType.DelayV6;
             if (instance is ToyActivityInstanceDefinition) return ActionType.ToyActivityV6;
+            if (instance is ToySetPatternInstanceDefinition) return ActionType.ToySetPatternV8;
+            if (instance is DialogFromTagsInstanceDefinition) return ActionType.DialogFromTagsV8;
             if (instance is PromptChoiceInstanceDefinition) return ActionType.PromptChoiceV2;
             if (instance is WaitForContinueInstanceDefinition) return ActionType.WaitForContinueV2;
             if (instance is WaitForAllInstanceDefinition) return ActionType.WaitForAllV8;
