@@ -43,11 +43,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public bool HasNumberEditor { get; set; }
         public bool HasSecondaryNumberEditor { get; set; }
         public bool HasChoiceEditor { get; set; }
+        public bool HasSecondaryChoiceEditor { get; set; }
+        public bool HasDialogTagEditor { get; set; }
+        public bool HasBlockingEditor { get; set; }
         public bool IsChoiceEditable { get; set; }
         public string TextLabel { get; set; }
         public string NumberLabel { get; set; }
         public string SecondaryNumberLabel { get; set; }
         public string ChoiceLabel { get; set; }
+        public string SecondaryChoiceLabel { get; set; }
         public bool IsReadOnlyDisplay { get; set; }
     }
 
@@ -77,41 +81,50 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 [ActionTypeKeys.Debug] = new ActionEditorDescriptor
                 {
                     TypeKey = ActionTypeKeys.Debug, HasTextEditor = true, HasNumberEditor = true,
-                    TextLabel = "Message", NumberLabel = "Delay"
+                    TextLabel = "Message", NumberLabel = "Delay", HasBlockingEditor = true
                 },
                 [ActionTypeKeys.StatIncrease] = new ActionEditorDescriptor
                 {
                     TypeKey = ActionTypeKeys.StatIncrease, HasChoiceEditor = true, IsChoiceEditable = true,
-                    HasNumberEditor = true, ChoiceLabel = "Stat", NumberLabel = "Amount"
+                    HasNumberEditor = true, ChoiceLabel = "Stat", NumberLabel = "Amount", HasBlockingEditor = true
                 },
                 [ActionTypeKeys.IncrementProgress] = new ActionEditorDescriptor
                 {
                     TypeKey = ActionTypeKeys.IncrementProgress, HasNumberEditor = true,
-                    NumberLabel = "Amount"
+                    NumberLabel = "Amount", HasBlockingEditor = true
                 },
                 [ActionTypeKeys.ModifyTemperature] = new ActionEditorDescriptor
                 {
                     TypeKey = ActionTypeKeys.ModifyTemperature, HasChoiceEditor = true, HasNumberEditor = true,
-                    ChoiceLabel = "Temperature", NumberLabel = "Delta"
+                    ChoiceLabel = "Temperature", NumberLabel = "Delta", HasBlockingEditor = true
                 },
                 [ActionTypeKeys.Cutscene] = new ActionEditorDescriptor
                 {
                     TypeKey = ActionTypeKeys.Cutscene, HasChoiceEditor = true,
-                    ChoiceLabel = "Resource"
+                    ChoiceLabel = "Resource", HasBlockingEditor = true
                 },
                 [ActionTypeKeys.Dialog] = new ActionEditorDescriptor
                 {
-                    TypeKey = ActionTypeKeys.Dialog, HasTextEditor = true, TextLabel = "Dialog"
+                    TypeKey = ActionTypeKeys.Dialog, HasTextEditor = true, TextLabel = "Dialog", HasBlockingEditor = true
+                },
+                [ActionTypeKeys.DialogFromTags] = new ActionEditorDescriptor
+                {
+                    TypeKey = ActionTypeKeys.DialogFromTags, HasDialogTagEditor = true, HasBlockingEditor = true
                 },
                 [ActionTypeKeys.Delay] = new ActionEditorDescriptor
                 {
-                    TypeKey = ActionTypeKeys.Delay, HasNumberEditor = true, NumberLabel = "Duration"
+                    TypeKey = ActionTypeKeys.Delay, HasNumberEditor = true, NumberLabel = "Duration", HasBlockingEditor = true
                 },
                 [ActionTypeKeys.ToyActivity] = new ActionEditorDescriptor
                 {
                     TypeKey = ActionTypeKeys.ToyActivity, HasChoiceEditor = true, ChoiceLabel = "Capability",
-                    HasNumberEditor = true, NumberLabel = "Intensity",
-                    HasSecondaryNumberEditor = true, SecondaryNumberLabel = "Duration"
+                    HasSecondaryChoiceEditor = true, SecondaryChoiceLabel = "Toy Pattern",
+                    HasNumberEditor = true, NumberLabel = "Duration", HasBlockingEditor = true
+                },
+                [ActionTypeKeys.ToySetPattern] = new ActionEditorDescriptor
+                {
+                    TypeKey = ActionTypeKeys.ToySetPattern, HasChoiceEditor = true, ChoiceLabel = "Capability",
+                    HasSecondaryChoiceEditor = true, SecondaryChoiceLabel = "Toy Pattern"
                 },
                 [ActionTypeKeys.PromptChoice] = new ActionEditorDescriptor
                 {
@@ -167,7 +180,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
             ObservableCollection<ActionRowData> rows = null,
             IEnumerable<ActionParameterOption> statOptions = null,
             IEnumerable<ActionParameterOption> toyCapabilityOptions = null,
-            bool isPromptChoiceDescendant = false)
+            bool isPromptChoiceDescendant = false,
+            IEnumerable<ActionParameterOption> toyPatternOptions = null,
+            IEnumerable<RelationChoice> dialogTagOptions = null)
         {
             OwnerNode = ownerNode;
             SequenceId = sequenceId ?? "";
@@ -176,6 +191,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             StatOptions = new List<ActionParameterOption>(statOptions ?? Enumerable.Empty<ActionParameterOption>());
             ResourceOptions = new List<ActionParameterOption>(resourceOptions ?? Enumerable.Empty<ActionParameterOption>());
             ToyCapabilityOptions = new List<ActionParameterOption>(toyCapabilityOptions ?? Enumerable.Empty<ActionParameterOption>());
+            ToyPatternOptions = new List<ActionParameterOption>(toyPatternOptions ?? Enumerable.Empty<ActionParameterOption>());
+            DialogTagOptions = new List<RelationChoice>(dialogTagOptions ?? Enumerable.Empty<RelationChoice>());
             ExitOptions = new List<ExitOption>(exitOptions ?? Enumerable.Empty<ExitOption>());
             IsPromptChoiceDescendant = isPromptChoiceDescendant;
             Rows = rows ?? new ObservableCollection<ActionRowData>();
@@ -200,6 +217,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public List<ActionParameterOption> StatOptions { get; }
         public List<ActionParameterOption> ResourceOptions { get; }
         public List<ActionParameterOption> ToyCapabilityOptions { get; }
+        public List<ActionParameterOption> ToyPatternOptions { get; }
+        public List<RelationChoice> DialogTagOptions { get; }
         public List<ExitOption> ExitOptions { get; }
 
         public ICollectionView ActionTypePickerView { get; private set; }
@@ -242,6 +261,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 cutscene.ResourceId = ResourceOptions[0].Id;
             if (instance is ToyActivityInstanceDefinition toy && ToyCapabilityOptions.Count > 0)
                 toy.CapabilityId = ToyCapabilityOptions[0].Id;
+            if (instance is ToyActivityInstanceDefinition timedToy && ToyPatternOptions.Count > 0)
+                timedToy.PatternResourceId = ToyPatternOptions[0].Id;
+            if (instance is ToySetPatternInstanceDefinition setToy)
+            {
+                if (ToyCapabilityOptions.Count > 0) setToy.CapabilityId = ToyCapabilityOptions[0].Id;
+                if (ToyPatternOptions.Count > 0) setToy.PatternResourceId = ToyPatternOptions[0].Id;
+            }
             if (instance is PromptChoiceInstanceDefinition choice)
             {
                 for (var i = 0; i < 2; i++)

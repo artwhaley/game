@@ -5,7 +5,7 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
 ## Status
 
 - **SQLite is the canonical source of content truth** at `Content/GameContent.db`
-  (schema v5), owned by the provider-neutral `Game.Content.Sqlite` project.
+  (schema v8), owned by the provider-neutral `Game.Content.Sqlite` project.
   Sessions compose **reusable Phases through a Session/Phase graph model**
   (nodes + edges + Action Instances) — the PhaseSlot/slot-candidate era is
   gone except as migration history. The **Nodify WPF Graph Workbench**
@@ -53,20 +53,22 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   dropdown of authored stat keys; Modify Temperature uses the configured
   Temperature definitions dropdown. Dual-field action rows snapshot all
   persisted values before hydrating bound editor fields, so rebuilding the
-  Card editor after Save cannot reset authored IDs or numeric amounts. Schema v6 adds
-  Dialog (text + blocking), Delay (duration + blocking), and Toy Activity
-  (configured Smart Toy Capability + intensity + duration + blocking, default
-  blocking). Dialog currently uses the same temporary host presentation as a
-  Cutscene. Card duplication recursively assigns fresh IDs to the owned action
-  sequence, every PromptChoice option sequence, and every nested action.
-  Schema v7 adds searchable slash-delimited folders to Cards only. The Cards
-  drawer filters by folder and searches titles, stable IDs, and folder paths;
-  the buffered Card editor saves folder moves in the same undoable edit.
-  Wait For All is an always-blocking snapshot barrier for currently running
-  nonblocking actions and is intentionally unavailable inside PromptChoice
-  descendant sequences. The action editor labels its insertion surface,
-  separates authored rows visually, and preserves configured strict dropdown
-  values while an editor is rebuilt.
+  Card editor after Save cannot reset authored IDs or numeric amounts. Schema v6
+  adds Dialog (text + blocking), Delay (duration + blocking), and the configured
+  toy actions. Schema v7 adds searchable slash-delimited folders to Cards only.
+  Schema v8 adds reusable Resource, Dialog Tag, and Dialog Snippet catalogs,
+  plus Set Toy Pattern, Timed Toy Pattern, and Dialog From Tags. Dialog currently
+  uses the same temporary host presentation as a Cutscene. Card duplication
+  recursively assigns fresh IDs to the owned action sequence, every PromptChoice
+  option sequence, and every nested action. The Cards drawer searches titles,
+  stable IDs, and folder paths; the buffered Card editor saves folder moves in
+  the same undoable edit. Wait For All is an always-blocking snapshot barrier
+  for currently running nonblocking actions and is intentionally unavailable
+  inside PromptChoice descendant sequences. A top-level Return with no
+  continuation is a loud runtime/content error; terminal paths use an explicit
+  end action. The action editor labels its insertion surface, separates
+  authored rows visually, and preserves configured strict dropdown values while
+  an editor is rebuilt.
   See [`Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md`](Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md).
 - Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core` +
   `Game.Profile`, .NET Standard 2.1) that both Unity and the WPF hosts run —
@@ -75,19 +77,17 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   [Extraction milestone](#extraction-milestone-01) below.
 - Editor builders generate scenes + starter content — no manual wiring.
 - Unity 6000.5.9f1 is pinned. The Ticket 10 batch check reached script
-  compilation but currently fails on existing Unity-side drift:
-  `CardDeck.cs(51,38)` references the missing
-  `TruthCardGame.Content.CardDeckDefinition`. The full Unity Action
-  binding/Timeline bridge remains deferred; no Unity bridge changes were made
-  in the Pre-Milestone C reliability stack. See
-  [`Docs/PreMilestoneC/10-final-regression.md`](Docs/PreMilestoneC/10-final-regression.md)
+  compilation; the known stale `CardDeck` conversion reference was removed.
+  The shared source builds cleanly, but a full Unity editor batch compile
+  remains unverified in this environment. The full Unity Action binding/Timeline
+  bridge remains deferred. See
+  [`Docs/FinalPreMilestoneC/FINAL-REPORT.md`](Docs/FinalPreMilestoneC/FINAL-REPORT.md)
   and do not infer human acceptance from older milestone reports.
-- Latest automated non-canonical .NET gates: **142 Core tests passed**, **125
-  SQLite tests passed**, **11 profile tests passed**, and **32 WPF tests
-  passed**. The canonical DB still passes integrity and foreign-key checks; its
-  authored-content presence assertion is currently inapplicable because the
-  active DB contains zero Sessions and zero Cards. The WPF host builds and
-  launches.
+- Latest automated .NET gates: **161 Core tests passed**, **134 SQLite tests
+  passed**, **11 profile tests passed**, and **36 WPF tests passed** (**342
+  total**). The canonical DB is schema v8, passes integrity and foreign-key
+  checks, and contains the authored fixture's 1 Session, 1 Phase, and 3 Cards.
+  The WPF host was built and launched for the human canary.
 - Development rules: [`agents.md`](agents.md) · Unity CLI notes: [`unity-cli.md`](unity-cli.md)
 
 ## Milestone B — Cards, Profile, Selection (0.4)
@@ -197,12 +197,13 @@ architecture; the graph model in milestone 0.3 superseded it — v1 data is
 migrated, not taught.)
 
 - `DotNet/Game.Content.Sqlite` — provider-neutral (any `DbConnection`):
-  schema v1→v5 migrations, snapshot loader, empty-DB initializer, granular
+  schema v1→v8 migrations, snapshot loader, empty-DB initializer, granular
   authoring repositories (Session / Phase / graph nodes and edges / exits /
   decision options / action instances / cards + relations / catalogs /
   weighting), and the seed tool.
 - `Content/GameContent.db` — the committed canonical DB, seeded from the Unity
-  sample content and migrated to the current schema version. Guarded by tests:
+  sample content and migrated to the current schema version. It currently
+  retains the authored fixture's 1 Session, 1 Phase, and 3 Cards. Guarded by tests:
   it must always load and pass `integrity_check` / `foreign_key_check`, and
   contains **no per-user state** (authored Kink/Equipment/Capability
   *catalogs* are content; the user's preferences/ownership live only in the

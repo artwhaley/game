@@ -330,7 +330,11 @@ namespace TruthCardGame.Core
 
                     case ReturnNodeDefinition returnNodeInstance:
                         run.CurrentNode = returnNodeInstance;
-                        return PhaseAdvanceResult.Transferred(ActionExecutionResult.ReturnTransfer);
+                        return PhaseAdvanceResult.Transferred(new ActionExecutionResult
+                        {
+                            Transfer = ActionTransfer.Return,
+                            OriginId = returnNodeInstance.Id ?? "",
+                        });
 
                     case PhaseEntryNodeDefinition entryNode:
                         node = FollowNormal(run, entryNode);

@@ -87,8 +87,15 @@ namespace TruthCardGame.Content.Sqlite
         }
 
         public static void Update(DbConnection connection, string instanceId, string typeKey,
-            string textValue, float numberValue, float secondaryNumberValue = 0f, string patternValue = null)
+            string textValue, float numberValue, float secondaryNumberValue = 0f, string patternValue = null,
+            bool? blocking = null)
         {
+            if (blocking.HasValue)
+            {
+                Sql.Execute(connection, null,
+                    "UPDATE action_instance SET is_blocking = @blocking WHERE id = @id;",
+                    ("blocking", blocking.Value ? 1 : 0), ("id", instanceId));
+            }
             switch (typeKey)
             {
                 case ActionTypeKeys.Debug:

@@ -68,7 +68,9 @@ namespace TruthCardGame.Core.Tests
                 new ModifyTemperatureInstanceDefinition(),
                 new CutsceneInstanceDefinition(),
                 new DialogInstanceDefinition(),
+                new DialogFromTagsInstanceDefinition(),
                 new DelayInstanceDefinition(),
+                new ToySetPatternInstanceDefinition(),
                 new ToyActivityInstanceDefinition(),
                 new PromptChoiceInstanceDefinition(),
                 new WaitForContinueInstanceDefinition(),
@@ -352,6 +354,54 @@ namespace TruthCardGame.Core.Tests
             await run;
 
             Assert.IsTrue(_log.Entries.Exists(entry => entry.Contains("after barrier")));
+        }
+
+        [Test]
+        public async Task SetToyPattern_IsAcknowledgedInline_AndIsNotTracked()
+        {
+            var toy = new GatedToyActivityService();
+            _services = new CoreServices(new FakeDelayService(), _log, toyActivity: toy);
+            var context = Context(ActionOwnerScope.CardSequence);
+            var run = Run(_executor, context,
+                new ToySetPatternInstanceDefinition
+                {
+                    Id = "set-pattern", CapabilityId = "vibrate", PatternResourceId = "res-pat-50"
+                },
+                new StatIncreaseInstanceDefinition { Id = "after-set", StatKey = "courage", Amount = 1f });
+
+            await Task.Yield();
+            Assert.That(run.IsCompleted, Is.False, "the next action waits for host acknowledgement");
+            Assert.That(_tracker.ActiveCount, Is.EqualTo(0), "persistent toy state is not background work");
+            Assert.That(_player.Stats.Get("courage"), Is.EqualTo(0));
+
+            toy.SetAcknowledgement.TrySetResult(true);
+            await run;
+            Assert.That(toy.SetCount, Is.EqualTo(1));
+            Assert.That(_player.Stats.Get("courage"), Is.EqualTo(1));
+        }
+
+        [Test]
+        public async Task NonblockingTimedToy_IsTracked_AndWaitForAllDrainsIt()
+        {
+            var toy = new GatedToyActivityService();
+            _services = new CoreServices(new FakeDelayService(), _log, toyActivity: toy);
+            var context = Context(ActionOwnerScope.CardSequence);
+            var run = Run(_executor, context,
+                new ToyActivityInstanceDefinition
+                {
+                    Id = "timed-toy", CapabilityId = "vibrate", PatternResourceId = "res-pat-50",
+                    DurationSeconds = 2f, IsBlocking = false
+                },
+                new WaitForAllInstanceDefinition { Id = "wait-for-toy" });
+
+            await Task.Yield();
+            Assert.That(toy.TimedCount, Is.EqualTo(1));
+            Assert.That(_tracker.ActiveCount, Is.EqualTo(1));
+            Assert.That(run.IsCompleted, Is.False);
+
+            toy.TimedAcknowledgement.TrySetResult(true);
+            await run;
+            Assert.That(_tracker.ActiveCount, Is.EqualTo(0));
         }
 
         [Test]

@@ -84,7 +84,7 @@ namespace TruthCardGame.Content.Samples
                     new CardTagDefinition { Id = CardTagDare, Title = "Dare", SortOrder = 4 },
                     new CardTagDefinition { Id = CardTagEnding, Title = "Ending", SortOrder = 5 },
                 },
-                Resources = { new ResourceDefinition { Id = ResourceCutsceneIntro, Name = "A Familiar Face" } },
+                Resources = { new ResourceDefinition { Id = ResourceCutsceneIntro, Kind = ResourceKinds.Cutscene, Name = "A Familiar Face" } },
             };
 
             content.Cards.Add(BuildCardAEncouragingStart());

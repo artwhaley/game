@@ -137,6 +137,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         string.Equals(toy.CapabilityId, otherToy.CapabilityId, StringComparison.Ordinal) &&
                         string.Equals(toy.PatternResourceId, otherToy.PatternResourceId, StringComparison.Ordinal) &&
                         toy.DurationSeconds == otherToy.DurationSeconds;
+                case ToySetPatternInstanceDefinition toySet:
+                    return b is ToySetPatternInstanceDefinition otherSet &&
+                        string.Equals(toySet.CapabilityId, otherSet.CapabilityId, StringComparison.Ordinal) &&
+                        string.Equals(toySet.PatternResourceId, otherSet.PatternResourceId, StringComparison.Ordinal);
+                case DialogFromTagsInstanceDefinition dialogFromTags:
+                    return b is DialogFromTagsInstanceDefinition otherDialogFromTags &&
+                        IdListsEqual(dialogFromTags.RequiredDialogTagIds, otherDialogFromTags.RequiredDialogTagIds);
                 case PromptChoiceInstanceDefinition choice:
                     var otherChoice = b as PromptChoiceInstanceDefinition;
                     if (otherChoice == null ||
@@ -328,6 +335,18 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case ToyActivityInstanceDefinition toy:
                     toy.CapabilityId = textValue ?? "";
                     if (patternValue != null) toy.PatternResourceId = patternValue;
+                    break;
+                case ToySetPatternInstanceDefinition toySet:
+                    toySet.CapabilityId = textValue ?? "";
+                    if (patternValue != null) toySet.PatternResourceId = patternValue;
+                    break;
+                case DialogFromTagsInstanceDefinition dialogFromTags:
+                    dialogFromTags.RequiredDialogTagIds.Clear();
+                    foreach (var id in (patternValue ?? "").Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var trimmed = id.Trim();
+                        if (trimmed.Length > 0) dialogFromTags.RequiredDialogTagIds.Add(trimmed);
+                    }
                     break;
                 case PromptChoiceInstanceDefinition choice:
                     choice.Prompt = textValue ?? "";

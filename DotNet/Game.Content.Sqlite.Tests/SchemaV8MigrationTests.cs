@@ -76,6 +76,8 @@ namespace TruthCardGame.Content.Sqlite.Tests
             SeedLegacyToyRow("toy-1", "vibrate", 0.5, 10);
             SeedLegacyToyRow("toy-2", "vibrate", 0.5, 20);
             SeedLegacyToyRow("toy-3", "vibrate", 1.0, 5);
+            SeedLegacyToyRow("toy-4", "vibrate", 0.501, 5);
+            SeedLegacyToyRow("toy-5", "vibrate", 0.504, 5);
             Sql.Execute(_connection, null, "PRAGMA foreign_keys = ON;");
 
             using (var transaction = _connection.BeginTransaction())
@@ -84,10 +86,12 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 transaction.Commit();
             }
 
-            // Two distinct intensities -> exactly two deterministic Resources.
+            // Five rows contain four distinct exact intensity values. The two
+            // close values intentionally collide under friendly rounding.
             var patterns = ResourceRepository.List(_connection)
                 .FindAll(r => r.Kind == ResourceKinds.ToyPattern);
-            Assert.That(patterns.Count, Is.EqualTo(2), "one constant-pattern Resource per distinct intensity");
+            Assert.That(patterns.Count, Is.EqualTo(4), "one constant-pattern Resource per distinct exact intensity");
+            Assert.That(patterns.Select(p => p.Id).Distinct().Count(), Is.EqualTo(4));
 
             var byId = new Dictionary<string, string>();
             foreach (var p in patterns) byId[p.Id] = p.Name ?? "";
@@ -101,7 +105,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
             var toys = new List<ToyActivityInstanceDefinition>();
             foreach (var card in content.Cards)
                 CollectToys(card.Sequence, toys);
-            Assert.That(toys.Count, Is.EqualTo(3), "all three legacy toy rows survive");
+            Assert.That(toys.Count, Is.EqualTo(5), "all legacy toy rows survive");
             foreach (var t in toys)
             {
                 Assert.That(t.PatternResourceId, Is.Not.Null.And.Not.Empty, "pattern reference assigned");

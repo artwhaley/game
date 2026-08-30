@@ -85,7 +85,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         // ---------- Ticket 11: catalogs ----------
 
-        private static readonly string[] MilestoneBCatalogKinds = { "Session Types", "Card Tags", "Kinks", "Equipment", "Smart Toys" };
+        private static readonly string[] MilestoneBCatalogKinds =
+        {
+            "Session Types", "Card Tags", "Kinks", "Equipment", "Smart Toys",
+            "Dialog Tags", "Dialog Snippets"
+        };
 
         private string SelectedCatalogKind => CatalogKindList.SelectedItem as string;
 
@@ -110,7 +114,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var kind = SelectedCatalogKind;
             var selectedId = CatalogEntryId(CatalogEntryList.SelectedItem);
             var query = (CatalogSearchBox?.Text ?? "").Trim();
-            CatalogEntryList.DisplayMemberPath = nameof(CardTagDefinition.Title);
+            CatalogEntryList.DisplayMemberPath = kind == "Dialog Snippets"
+                ? nameof(DialogSnippetDefinition.Name) : nameof(CardTagDefinition.Title);
             switch (kind)
             {
                 case "Session Types":
@@ -128,6 +133,19 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case "Smart Toys":
                     CatalogEntryList.ItemsSource = _vm.Content.SmartToyCapabilityDefinitions.Where(t => MatchesCatalog(t.Id, t.Title, null, t.Category, query)).OrderBy(t => t.SortOrder).ToList();
                     break;
+                case "Dialog Tags":
+                    CatalogEntryList.ItemsSource = _vm.Content.DialogTags.Where(t => MatchesCatalog(t.Id, t.Title, null, null, query)).OrderBy(t => t.SortOrder).ToList();
+                    break;
+                case "Dialog Snippets":
+                {
+                    var dialogTagNames = _vm.Content.DialogTags.ToDictionary(tag => tag.Id, tag => tag.Title ?? "");
+                    CatalogEntryList.ItemsSource = _vm.Content.DialogSnippets
+                        .Where(t => MatchesCatalog(t.Id, t.Name, t.Text,
+                            string.Join(" ", (t.DialogTagIds ?? new List<string>())
+                                .Select(id => dialogTagNames.TryGetValue(id, out var name) ? name : id)), query))
+                        .OrderBy(t => t.SortOrder).ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase).ToList();
+                    break;
+                }
             }
             if (selectedId != null) SelectCatalogEntry(selectedId);
             if (CatalogEntryList.SelectedItem == null && CatalogEntryList.Items.Count > 0)
@@ -150,6 +168,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (entry is KinkDefinition kink) return kink.Id;
             if (entry is EquipmentDefinition equipment) return equipment.Id;
             if (entry is SmartToyCapabilityDefinition capability) return capability.Id;
+            if (entry is DialogTagDefinition dialogTag) return dialogTag.Id;
+            if (entry is DialogSnippetDefinition dialogSnippet) return dialogSnippet.Id;
             return null;
         }
 
@@ -168,19 +188,38 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 CatalogEditorPanel.Visibility = entry == null ? Visibility.Collapsed : Visibility.Visible;
                 if (entry == null) return;
                 CatalogTitleBox.Text = CatalogTitle(entry);
-                CatalogDescriptionBox.Visibility = entry is KinkDefinition ? Visibility.Visible : Visibility.Collapsed;
-                CatalogCategoryBox.Visibility = entry is EquipmentDefinition || entry is SmartToyCapabilityDefinition
-                    ? Visibility.Visible : Visibility.Collapsed;
-                CatalogCapabilityPicker.Visibility = entry is SessionTypeDefinition ? Visibility.Visible : Visibility.Collapsed;
-                CatalogDescriptionBox.Text = (entry as KinkDefinition)?.Description ?? "";
+                var isKink = entry is KinkDefinition;
+                var isSnippet = entry is DialogSnippetDefinition;
+                var isCategory = entry is EquipmentDefinition || entry is SmartToyCapabilityDefinition;
+                var isSessionType = entry is SessionTypeDefinition;
+                var isDialogSnippet = entry is DialogSnippetDefinition;
+                CatalogDescriptionLabel.Text = isSnippet ? "Text" : "Description";
+                CatalogDescriptionLabel.Visibility = isKink || isSnippet ? Visibility.Visible : Visibility.Collapsed;
+                CatalogDescriptionBox.Visibility = isKink || isSnippet ? Visibility.Visible : Visibility.Collapsed;
+                CatalogCategoryLabel.Visibility = isCategory ? Visibility.Visible : Visibility.Collapsed;
+                CatalogCategoryBox.Visibility = isCategory ? Visibility.Visible : Visibility.Collapsed;
+                CatalogCapabilityLabel.Text = isDialogSnippet ? "Dialog tags" : "Required Smart Toy capabilities";
+                CatalogCapabilityLabel.Visibility = isSessionType || isDialogSnippet ? Visibility.Visible : Visibility.Collapsed;
+                CatalogCapabilityPicker.Visibility = isSessionType || isDialogSnippet ? Visibility.Visible : Visibility.Collapsed;
+                CatalogDescriptionBox.Text = (entry as KinkDefinition)?.Description
+                    ?? (entry as DialogSnippetDefinition)?.Text ?? "";
                 CatalogCategoryBox.Text = (entry as EquipmentDefinition)?.Category
                     ?? (entry as SmartToyCapabilityDefinition)?.Category ?? "";
-                CatalogCapabilityPicker.SetItems(
-                    _vm.Content.SmartToyCapabilityDefinitions.Select(capability => new RelationChoice
+                var relationItems = isDialogSnippet
+                    ? _vm.Content.DialogTags.Select(tag => new RelationChoice
+                    {
+                        Id = tag.Id, DisplayName = tag.Title
+                    })
+                    : _vm.Content.SmartToyCapabilityDefinitions.Select(capability => new RelationChoice
                     {
                         Id = capability.Id, DisplayName = capability.Title
-                    }),
-                    (entry as SessionTypeDefinition)?.RequiredCapabilityIds ?? Enumerable.Empty<string>());
+                    });
+                IEnumerable<string> selectedRelations = Enumerable.Empty<string>();
+                if (isDialogSnippet)
+                    selectedRelations = ((DialogSnippetDefinition)entry).DialogTagIds;
+                else if (entry is SessionTypeDefinition sessionType)
+                    selectedRelations = sessionType.RequiredCapabilityIds;
+                CatalogCapabilityPicker.SetItems(relationItems, selectedRelations);
             }
             finally
             {
@@ -195,6 +234,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (entry is KinkDefinition kink) return kink.Title;
             if (entry is EquipmentDefinition equipment) return equipment.Title;
             if (entry is SmartToyCapabilityDefinition capability) return capability.Title;
+            if (entry is DialogTagDefinition dialogTag) return dialogTag.Title;
+            if (entry is DialogSnippetDefinition dialogSnippet) return dialogSnippet.Name;
             return "";
         }
 
@@ -210,6 +251,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 return new CatalogEntryEdit { Kind = CatalogKinds.Equipment, Id = equipment.Id, Title = equipment.Title, Category = equipment.Category, SortOrder = equipment.SortOrder };
             if (entry is SmartToyCapabilityDefinition capability)
                 return new CatalogEntryEdit { Kind = CatalogKinds.SmartToyCapability, Id = capability.Id, Title = capability.Title, Category = capability.Category, SortOrder = capability.SortOrder };
+            if (entry is DialogTagDefinition dialogTag)
+                return new CatalogEntryEdit { Kind = CatalogKinds.DialogTag, Id = dialogTag.Id, Title = dialogTag.Title, SortOrder = dialogTag.SortOrder };
+            if (entry is DialogSnippetDefinition dialogSnippet)
+                return new CatalogEntryEdit { Kind = CatalogKinds.DialogSnippet, Id = dialogSnippet.Id, Title = dialogSnippet.Name, Description = dialogSnippet.Text,
+                    SortOrder = dialogSnippet.SortOrder, DialogTagIds = new List<string>(dialogSnippet.DialogTagIds) };
             return null;
         }
 
@@ -228,7 +274,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 Kind = oldValue.Kind, Id = oldValue.Id, Title = CatalogTitleBox.Text?.Trim() ?? "",
                 Description = CatalogDescriptionBox.Text ?? "", Category = CatalogCategoryBox.Text?.Trim() ?? "",
-                SortOrder = oldValue.SortOrder, RequiredCapabilityIds = CatalogCapabilityPicker.SelectedIds.ToList()
+                SortOrder = oldValue.SortOrder, RequiredCapabilityIds = CatalogCapabilityPicker.SelectedIds.ToList(),
+                DialogTagIds = CatalogCapabilityPicker.SelectedIds.ToList()
             };
             if (string.IsNullOrWhiteSpace(newValue.Title))
             {
@@ -255,6 +302,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (entry is KinkDefinition kink) { kink.Title = value.Title; kink.Description = value.Description; return; }
             if (entry is EquipmentDefinition equipment) { equipment.Title = value.Title; equipment.Category = value.Category; return; }
             if (entry is SmartToyCapabilityDefinition capability) { capability.Title = value.Title; capability.Category = value.Category; }
+            if (entry is DialogTagDefinition dialogTag) { dialogTag.Title = value.Title; return; }
+            if (entry is DialogSnippetDefinition dialogSnippet)
+            {
+                dialogSnippet.Name = value.Title; dialogSnippet.Text = value.Description ?? "";
+                dialogSnippet.DialogTagIds.Clear();
+                dialogSnippet.DialogTagIds.AddRange(value.DialogTagIds ?? new List<string>());
+            }
         }
 
         private void UpdateCatalogUsageText()
@@ -297,6 +351,17 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         text = $"Required by {count} card(s)/session type(s).";
                     }
                     break;
+                case "Dialog Tags":
+                    if (CatalogEntryList.SelectedItem is DialogTagDefinition dialogTag)
+                    {
+                        var count = WithConnectionResult(connection => DialogCatalogRepository.GetTagUsage(connection, dialogTag.Id).TotalReferences);
+                        text = $"Referenced by {count} snippet/action(s).";
+                    }
+                    break;
+                case "Dialog Snippets":
+                    if (CatalogEntryList.SelectedItem is DialogSnippetDefinition dialogSnippet)
+                        text = $"Uses {dialogSnippet.DialogTagIds.Count} dialog tag(s).";
+                    break;
             }
             CatalogUsageText.Text = text;
         }
@@ -309,6 +374,30 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
             var id = StableIds.New();
             var kindKey = CatalogKindOf(kind);
+            if (kindKey == CatalogKinds.DialogSnippet)
+            {
+                var snippet = new DialogSnippetDefinition { Id = id, Name = title, Text = "" };
+                PushOrMergeWithReload(new CreateDialogSnippetCommand(OpenConnection, snippet), () =>
+                {
+                    _vm.Content.DialogSnippets.Add(snippet);
+                    BindCatalogEntries();
+                    SelectCatalogEntry(id);
+                    StatusText.Text = $"Created dialog snippet '{title}'.";
+                });
+                return;
+            }
+            if (kindKey == CatalogKinds.DialogTag)
+            {
+                var tag = new DialogTagDefinition { Id = id, Title = title };
+                PushOrMergeWithReload(new CreateDialogTagCommand(OpenConnection, tag), () =>
+                {
+                    _vm.Content.DialogTags.Add(tag);
+                    BindCatalogEntries();
+                    SelectCatalogEntry(id);
+                    StatusText.Text = $"Created dialog tag '{title}'.";
+                });
+                return;
+            }
             PushOrMergeWithReload(new CreateCatalogEntryCommand(OpenConnection, kindKey, id, title), () =>
             {
                 // Mirror the DB row into the in-memory snapshot (the same
@@ -343,6 +432,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case CatalogKinds.SmartToyCapability:
                     _vm.Content.SmartToyCapabilityDefinitions.Add(new SmartToyCapabilityDefinition { Id = id, Title = title });
                     break;
+                case CatalogKinds.DialogTag:
+                    _vm.Content.DialogTags.Add(new DialogTagDefinition { Id = id, Title = title });
+                    break;
+                case CatalogKinds.DialogSnippet:
+                    _vm.Content.DialogSnippets.Add(new DialogSnippetDefinition { Id = id, Name = title });
+                    break;
             }
         }
 
@@ -365,6 +460,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case CatalogKinds.SmartToyCapability:
                     _vm.Content.SmartToyCapabilityDefinitions.RemoveAll(t => t.Id == id);
                     break;
+                case CatalogKinds.DialogTag:
+                    _vm.Content.DialogTags.RemoveAll(t => t.Id == id);
+                    break;
+                case CatalogKinds.DialogSnippet:
+                    _vm.Content.DialogSnippets.RemoveAll(t => t.Id == id);
+                    break;
             }
         }
 
@@ -377,7 +478,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     CatalogEntryList.Items[i] is CardTagDefinition tag && tag.Id == id ||
                     CatalogEntryList.Items[i] is KinkDefinition kink && kink.Id == id ||
                     CatalogEntryList.Items[i] is EquipmentDefinition equipment && equipment.Id == id ||
-                    CatalogEntryList.Items[i] is SmartToyCapabilityDefinition capability && capability.Id == id)
+                    CatalogEntryList.Items[i] is SmartToyCapabilityDefinition capability && capability.Id == id ||
+                    CatalogEntryList.Items[i] is DialogTagDefinition dialogTag && dialogTag.Id == id ||
+                    CatalogEntryList.Items[i] is DialogSnippetDefinition dialogSnippet && dialogSnippet.Id == id)
                 {
                     CatalogEntryList.SelectedIndex = i;
                     return;
@@ -394,6 +497,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case "Kinks": return CatalogKinds.Kink;
                 case "Equipment": return CatalogKinds.Equipment;
                 case "Smart Toys": return CatalogKinds.SmartToyCapability;
+                case "Dialog Tags": return CatalogKinds.DialogTag;
+                case "Dialog Snippets": return CatalogKinds.DialogSnippet;
                 default: throw new InvalidOperationException("Unknown catalog kind '" + uiKind + "'.");
             }
         }
@@ -432,6 +537,16 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     id = capability.Id; title = capability.Title;
                     usage = WithConnectionResult(connection => CatalogRepositories.CountSmartToyCapabilityUsage(connection, id));
                     break;
+                case "Dialog Tags":
+                    if (!(CatalogEntryList.SelectedItem is DialogTagDefinition dialogTag)) return;
+                    id = dialogTag.Id; title = dialogTag.Title;
+                    usage = WithConnectionResult(connection => DialogCatalogRepository.GetTagUsage(connection, id).TotalReferences);
+                    break;
+                case "Dialog Snippets":
+                    if (!(CatalogEntryList.SelectedItem is DialogSnippetDefinition dialogSnippet)) return;
+                    id = dialogSnippet.Id; title = dialogSnippet.Name;
+                    usage = 0;
+                    break;
                 default:
                     return;
             }
@@ -448,12 +563,44 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
 
             var kindKey = CatalogKindOf(kind);
-            PushOrMergeWithReload(new DeleteCatalogEntryCommand(OpenConnection, kindKey, id, title), () =>
+            IAuthoringCommand deleteCommand;
+            if (kindKey == CatalogKinds.DialogTag)
+                deleteCommand = new DeleteDialogTagCommand(OpenConnection, (DialogTagDefinition)CatalogEntryList.SelectedItem);
+            else if (kindKey == CatalogKinds.DialogSnippet)
+                deleteCommand = new DeleteDialogSnippetCommand(OpenConnection, (DialogSnippetDefinition)CatalogEntryList.SelectedItem);
+            else
+                deleteCommand = new DeleteCatalogEntryCommand(OpenConnection, kindKey, id, title);
+            PushOrMergeWithReload(deleteCommand, () =>
             {
                 RemoveCatalogEntryFromContent(kindKey, id);
                 BindCatalogEntries();
                 BindSessionTypeBox();
                 StatusText.Text = $"Deleted '{title}'.";
+            });
+        }
+
+        private void OnDuplicateCatalogEntry(object sender, RoutedEventArgs e)
+        {
+            if (!(CatalogEntryList.SelectedItem is DialogSnippetDefinition source))
+            {
+                StatusText.Text = "Only dialog snippets can be duplicated.";
+                return;
+            }
+
+            var clone = new DialogSnippetDefinition
+            {
+                Id = StableIds.New(),
+                Name = (source.Name ?? "Snippet") + " (copy)",
+                Text = source.Text ?? "",
+                SortOrder = source.SortOrder
+            };
+            clone.DialogTagIds.AddRange(source.DialogTagIds ?? new List<string>());
+            PushOrMergeWithReload(new CreateDialogSnippetCommand(OpenConnection, clone), () =>
+            {
+                _vm.Content.DialogSnippets.Add(clone);
+                BindCatalogEntries();
+                SelectCatalogEntry(clone.Id);
+                StatusText.Text = $"Duplicated dialog snippet '{source.Name}'.";
             });
         }
 
@@ -807,7 +954,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     if (_syncingCardEditor) return;
                     if (args.PropertyName != nameof(ActionRowData.TextValue) &&
                         args.PropertyName != nameof(ActionRowData.NumberText) &&
-                        args.PropertyName != nameof(ActionRowData.SecondaryNumberText)) return;
+                        args.PropertyName != nameof(ActionRowData.SecondaryNumberText) &&
+                        args.PropertyName != nameof(ActionRowData.PatternValue) &&
+                        args.PropertyName != nameof(ActionRowData.IsBlocking)) return;
                     UpdateCardDirtyText();
                 };
                 foreach (var option in row.PromptOptions)
@@ -1140,7 +1289,17 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 .ToList();
             var stats = ConfiguredActionParameters.StatOptions(content);
             var resources = content.Resources
+                .Where(r => string.Equals(r.Kind, ResourceKinds.Cutscene, StringComparison.OrdinalIgnoreCase))
                 .Select(r => new ActionParameterOption { Id = r.Id, Name = string.IsNullOrEmpty(r.Name) ? r.Id : r.Name })
+                .ToList();
+            var toyPatterns = content.Resources
+                .Where(r => string.Equals(r.Kind, ResourceKinds.ToyPattern, StringComparison.OrdinalIgnoreCase))
+                .Select(r => new ActionParameterOption { Id = r.Id, Name = string.IsNullOrEmpty(r.Name) ? r.Id : r.Name })
+                .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var dialogTags = content.DialogTags
+                .Select(t => new RelationChoice { Id = t.Id, DisplayName = string.IsNullOrEmpty(t.Title) ? t.Id : t.Title })
+                .OrderBy(t => t.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             var toyCapabilities = content.SmartToyCapabilityDefinitions
                 .Select(c => new ActionParameterOption { Id = c.Id, Name = string.IsNullOrEmpty(c.Title) ? c.Id : c.Title })
@@ -1148,7 +1307,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             node.ActionSequence = new ActionSequenceEditorViewModel(node, sequence?.Id,
                 ActionOwnerScope.CardSequence, sequence?.Instances,
                 temperatures, resources, new List<ExitOption>(), statOptions: stats,
-                toyCapabilityOptions: toyCapabilities);
+                toyCapabilityOptions: toyCapabilities, toyPatternOptions: toyPatterns,
+                dialogTagOptions: dialogTags);
             return node.ActionSequence;
         }
     }

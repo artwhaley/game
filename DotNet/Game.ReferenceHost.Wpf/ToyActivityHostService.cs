@@ -13,7 +13,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
     /// playable Tasks for DisplayTimed. A single background monitor loop ticks
     /// the simulator and completes timed Tasks on natural expiry, supersession,
     /// or teardown. SetPattern never runs a background Task. StopAll clears all
-    /// capabilities even when the calling token is already canceled.
+    /// capabilities and waits for the monitor to exit unless cleanup is canceled.
     /// </summary>
     public sealed class ToyActivityHostService : IToyActivityService, IDisposable
     {
@@ -93,8 +93,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
         }
 
-        public Task StopAllAsync()
+        public async Task StopAllAsync(CancellationToken cancellationToken)
         {
+            Task monitor;
             lock (_gate)
             {
                 _stopped = true;
@@ -106,13 +107,17 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 }
                 _pendingByCapability.Clear();
                 _cts?.Cancel();
-                return Task.CompletedTask;
+                monitor = _monitor;
             }
+            if (monitor == null || monitor.IsCompleted) return;
+            var canceled = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            if (await Task.WhenAny(monitor, canceled) != monitor) return;
+            await monitor;
         }
 
         public void Dispose()
         {
-            StopAllAsync().GetAwaiter().GetResult();
+            StopAllAsync(CancellationToken.None).GetAwaiter().GetResult();
             _cts?.Dispose();
         }
 

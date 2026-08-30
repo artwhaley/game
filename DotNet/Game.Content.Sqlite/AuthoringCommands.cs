@@ -1061,16 +1061,20 @@ namespace TruthCardGame.Content.Sqlite
         private float _newSecondaryNumber;
         private readonly string _oldPattern;
         private string _newPattern;
+        private readonly bool? _oldBlocking;
+        private bool? _newBlocking;
 
         public UpdateActionInstanceCommand(Func<DbConnection> conn, string instanceId, string typeKey,
             string oldText, float oldNumber, string newText, float newNumber,
             float oldSecondaryNumber = 0f, float newSecondaryNumber = 0f,
-            string oldPattern = null, string newPattern = null) : base(conn)
+            string oldPattern = null, string newPattern = null,
+            bool? oldBlocking = null, bool? newBlocking = null) : base(conn)
         {
             _instanceId = instanceId; _typeKey = typeKey; _oldText = oldText; _oldNumber = oldNumber;
             _newText = newText; _newNumber = newNumber;
             _oldSecondaryNumber = oldSecondaryNumber; _newSecondaryNumber = newSecondaryNumber;
             _oldPattern = oldPattern; _newPattern = newPattern;
+            _oldBlocking = oldBlocking; _newBlocking = newBlocking;
         }
 
         public override string Name => "Edit action";
@@ -1080,12 +1084,13 @@ namespace TruthCardGame.Content.Sqlite
             if (incoming is UpdateActionInstanceCommand update && update._instanceId == _instanceId && update._typeKey == _typeKey)
             {
                 _newText = update._newText; _newNumber = update._newNumber;
-                _newSecondaryNumber = update._newSecondaryNumber; _newPattern = update._newPattern; return true;
+                _newSecondaryNumber = update._newSecondaryNumber; _newPattern = update._newPattern;
+                _newBlocking = update._newBlocking; return true;
             }
             return false;
         }
-        protected override void ExecuteCore(DbConnection connection) => ActionInstanceRepository.Update(connection, _instanceId, _typeKey, _newText, _newNumber, _newSecondaryNumber, _newPattern);
-        protected override void UndoCore(DbConnection connection) => ActionInstanceRepository.Update(connection, _instanceId, _typeKey, _oldText, _oldNumber, _oldSecondaryNumber, _oldPattern);
+        protected override void ExecuteCore(DbConnection connection) => ActionInstanceRepository.Update(connection, _instanceId, _typeKey, _newText, _newNumber, _newSecondaryNumber, _newPattern, _newBlocking);
+        protected override void UndoCore(DbConnection connection) => ActionInstanceRepository.Update(connection, _instanceId, _typeKey, _oldText, _oldNumber, _oldSecondaryNumber, _oldPattern, _oldBlocking);
     }
 
     /// <summary>Swaps adjacent Action Instance ordinals.</summary>
@@ -1596,6 +1601,9 @@ namespace TruthCardGame.Content.Sqlite
                 case CatalogKinds.SmartToyCapability:
                     CatalogRepositories.CreateSmartToyCapability(connection, new SmartToyCapabilityDefinition { Id = _id, Title = _title });
                     break;
+                case CatalogKinds.DialogTag:
+                    DialogCatalogRepository.CreateTag(connection, new DialogTagDefinition { Id = _id, Title = _title });
+                    break;
                 default:
                     throw new InvalidOperationException("Unknown catalog kind '" + _kind + "'.");
             }
@@ -1610,6 +1618,7 @@ namespace TruthCardGame.Content.Sqlite
                 case CatalogKinds.Kink: Sql.Execute(connection, null, "DELETE FROM kink_definition WHERE id = @id;", ("id", _id)); break;
                 case CatalogKinds.Equipment: Sql.Execute(connection, null, "DELETE FROM equipment_definition WHERE id = @id;", ("id", _id)); break;
                 case CatalogKinds.SmartToyCapability: Sql.Execute(connection, null, "DELETE FROM smart_toy_capability_definition WHERE id = @id;", ("id", _id)); break;
+                case CatalogKinds.DialogTag: DialogCatalogRepository.DeleteTagIfUnused(connection, _id); break;
             }
         }
     }
@@ -1637,6 +1646,7 @@ namespace TruthCardGame.Content.Sqlite
                 case CatalogKinds.Kink: Sql.Execute(connection, null, "DELETE FROM kink_definition WHERE id = @id;", ("id", _id)); break;
                 case CatalogKinds.Equipment: Sql.Execute(connection, null, "DELETE FROM equipment_definition WHERE id = @id;", ("id", _id)); break;
                 case CatalogKinds.SmartToyCapability: Sql.Execute(connection, null, "DELETE FROM smart_toy_capability_definition WHERE id = @id;", ("id", _id)); break;
+                case CatalogKinds.DialogTag: DialogCatalogRepository.DeleteTagIfUnused(connection, _id); break;
             }
         }
 
@@ -1660,6 +1670,9 @@ namespace TruthCardGame.Content.Sqlite
                     break;
                 case CatalogKinds.SmartToyCapability:
                     CatalogRepositories.CreateSmartToyCapability(connection, new SmartToyCapabilityDefinition { Id = _id, Title = _title });
+                    break;
+                case CatalogKinds.DialogTag:
+                    DialogCatalogRepository.CreateTag(connection, new DialogTagDefinition { Id = _id, Title = _title });
                     break;
             }
         }
@@ -1700,6 +1713,7 @@ namespace TruthCardGame.Content.Sqlite
                 case CatalogKinds.Kink: Sql.Execute(connection, null, "UPDATE kink_definition SET title = @t WHERE id = @id;", ("t", (object)title ?? DBNull.Value), ("id", _id)); break;
                 case CatalogKinds.Equipment: Sql.Execute(connection, null, "UPDATE equipment_definition SET title = @t WHERE id = @id;", ("t", (object)title ?? DBNull.Value), ("id", _id)); break;
                 case CatalogKinds.SmartToyCapability: Sql.Execute(connection, null, "UPDATE smart_toy_capability_definition SET title = @t WHERE id = @id;", ("t", (object)title ?? DBNull.Value), ("id", _id)); break;
+                case CatalogKinds.DialogTag: DialogCatalogRepository.RenameTag(connection, _id, title); break;
             }
         }
     }
@@ -1755,6 +1769,19 @@ namespace TruthCardGame.Content.Sqlite
                         Id = value.Id, Title = value.Title, Category = value.Category, SortOrder = value.SortOrder
                     });
                     break;
+                case CatalogKinds.DialogTag:
+                    DialogCatalogRepository.RenameTag(connection, value.Id, value.Title);
+                    break;
+                case CatalogKinds.DialogSnippet:
+                {
+                    var snippet = new DialogSnippetDefinition
+                    {
+                        Id = value.Id, Name = value.Title, Text = value.Description ?? "", SortOrder = value.SortOrder
+                    };
+                    snippet.DialogTagIds.AddRange(value.DialogTagIds ?? new List<string>());
+                    DialogCatalogRepository.UpdateSnippet(connection, snippet);
+                    break;
+                }
                 default:
                     throw new InvalidOperationException("Unknown catalog kind '" + value.Kind + "'.");
             }
@@ -1771,6 +1798,7 @@ namespace TruthCardGame.Content.Sqlite
         public string Category { get; set; }
         public int SortOrder { get; set; }
         public List<string> RequiredCapabilityIds { get; set; } = new List<string>();
+        public List<string> DialogTagIds { get; set; } = new List<string>();
     }
 
     /// <summary>Creates a Card with the default owned sequence (WaitForContinue + IncrementProgress +10).</summary>
@@ -2111,5 +2139,7 @@ namespace TruthCardGame.Content.Sqlite
         public const string Kink = "kink";
         public const string Equipment = "equipment";
         public const string SmartToyCapability = "smart-toy-capability";
+        public const string DialogTag = "dialog-tag";
+        public const string DialogSnippet = "dialog-snippet";
     }
 }

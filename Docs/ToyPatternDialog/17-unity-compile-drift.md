@@ -2,40 +2,32 @@
 
 ## Scope
 
-Ticket 17 was to repair any compile drift the stack's portable-Core changes may
-have introduced into the Unity editor scripts (`Assets/Scripts`, excluding the
-shared `Portable/` tree).
+Ticket 17 repaired compile drift introduced or exposed by the portable-Core
+changes in the Unity editor scripts (`Assets/Scripts`, excluding the shared
+`Portable/` tree).
 
-## Result: no drift found (static audit)
+## Result: stale reference repaired; editor compile remains unverified
 
-The `.NET` solution compiles **all** portable `Game.Core` and `Game.Content`
-sources (the `Game.Core.csproj` and `Game.Content.csproj` include the
-`Assets/Scripts/Portable/**` trees directly), so the entire changed surface is
-already compiled and green by `dotnet build Game.Workbench.sln`.
+The shared .NET solution compiles all portable `Game.Core` and `Game.Content`
+sources, and the full solution build is green. A static audit of the
+non-portable Unity scripts found one stale conversion reference:
 
-A static audit of the **non-portable** Unity scripts found no references to the
-changed portable surface:
-
-- The only non-portable consumer of the changed types is
-  `Assets/Scripts/Game/GameManager.cs`. It builds a `CoreServices` using the
-  optional-slots (`dialog` and `toyActivity` left null, which the portable Core
-  explicitly supports with tested missing-service no-ops) and drives only the
-  stable `GameSessionEngine` surface — no drift.
-- No `.Intensity` reference remains anywhere in `Assets/Scripts` (the removed
-  toy `Intensity` field).
+- `Assets/Scripts/Cards/CardDeck.cs` contained an obsolete
+  `ToDefinition(UnityContentGraphBuilder)` conversion referencing the missing
+  `TruthCardGame.Content.CardDeckDefinition`. That method was removed; the
+  current `CardDeck` no longer references the missing type.
+- The changed Unity-facing portable surface has no remaining `.Intensity`
+  references in `Assets/Scripts`.
 - No non-portable Unity code constructs `ActionExecutionContext`,
   `SessionGraphVm`, or `PhaseGraphVm` directly; request paths route through
   `GameSessionEngine`.
-- `Assets/Scripts/Cards/CardDeck.cs` builds `CardDeckDefinition` only and does
-  not touch toy/dialog types.
-- `Assets/Scripts/Portable/**` is the shared compile surface already verified by
-  the .NET build and the 158 Core tests.
+- `Assets/Scripts/Portable/**` is the shared compile surface verified by the
+  .NET build and the 161 Core tests.
 
 ## Deferred
 
-Full Unity **batch-mode** editor compile (`unity -batchmode -quit` over the
-project) is not run here: it launches the editor, imports assets, and mutates
-`Library/` (a heavyweight, side-effecting operation with possible licensing and
-NID), and `agents.md` rule 4 requires asking before driving the editor /
-installing pipeline tooling. The static drift audit above plus the green shared
-compile are the verifiable, low-risk evidence for this ticket.
+Full Unity **batch-mode** editor compilation (`unity -batchmode -quit`) was not
+run here. It launches the editor, imports assets, and mutates `Library/`; the
+editor-side acceptance gate remains a human/environment verification step.
+The static audit, stale-reference repair, and green shared compile are the
+verifiable results for this ticket.

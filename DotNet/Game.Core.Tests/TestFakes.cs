@@ -189,11 +189,38 @@ namespace TruthCardGame.Core.Tests
             return Task.CompletedTask;
         }
 
-        public Task StopAllAsync()
+        public Task StopAllAsync(CancellationToken cancellationToken)
         {
             StopAllCount++;
             return Task.CompletedTask;
         }
+    }
+
+    public sealed class GatedToyActivityService : IToyActivityService
+    {
+        public readonly TaskCompletionSource<bool> SetAcknowledgement =
+            new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource<bool> TimedAcknowledgement =
+            new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource<bool> StopAcknowledgement =
+            new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int SetCount;
+        public int TimedCount;
+
+        public Task PlayForAsync(string capabilityId, string patternResourceId, TimeSpan duration,
+            CancellationToken cancellationToken)
+        {
+            TimedCount++;
+            return TimedAcknowledgement.Task;
+        }
+
+        public Task SetPatternAsync(string capabilityId, string patternResourceId, CancellationToken cancellationToken)
+        {
+            SetCount++;
+            return SetAcknowledgement.Task;
+        }
+
+        public Task StopAllAsync(CancellationToken cancellationToken) => StopAcknowledgement.Task;
     }
 
     /// <summary>Dialog fake: records presented text; optionally gated for blocking tests.</summary>

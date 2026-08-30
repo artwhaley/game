@@ -192,6 +192,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private string _textValue;
         private string _numberText;
         private string _secondaryNumberText;
+        private string _patternValue;
+        private bool _isBlocking;
         private bool _isExpanded = true;
         private List<ActionParameterOption> _phaseChoiceOptions;
 
@@ -239,13 +241,44 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public ActionParameterOption SelectedChoice =>
             ChoiceOptions.FirstOrDefault(option => string.Equals(option.Id, TextValue, StringComparison.Ordinal));
 
+        public IEnumerable<ActionParameterOption> PatternOptions => Sequence?.ToyPatternOptions ?? Enumerable.Empty<ActionParameterOption>();
+        public ActionParameterOption SelectedPatternChoice =>
+            PatternOptions.FirstOrDefault(option => string.Equals(option.Id, PatternValue, StringComparison.Ordinal));
+        public IEnumerable<RelationChoice> DialogTagOptions => Sequence?.DialogTagOptions ?? Enumerable.Empty<RelationChoice>();
+
         /// <summary>
         /// Second choice field (Ticket 11): the Toy Pattern Resource for toy
         /// actions, or the required-tag list (';'-joined) for DialogFromTags.
         /// Kept as a plain bound field like PersistedTextValue.
         /// </summary>
-        public string PatternValue { get; set; } = "";
+        public string PatternValue
+        {
+            get => _patternValue;
+            set
+            {
+                if (_patternValue == value) return;
+                _patternValue = value ?? "";
+                SyncDefinition();
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PatternValue)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedPatternChoice)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ValidationMessage)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDanger)));
+            }
+        }
         public string PersistedPatternValue { get; set; }
+
+        public bool IsBlocking
+        {
+            get => _isBlocking;
+            set
+            {
+                if (_isBlocking == value) return;
+                _isBlocking = value;
+                if (Definition != null) Definition.IsBlocking = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsBlocking)));
+            }
+        }
+        public bool PersistedIsBlocking { get; set; }
 
         public string PersistedTextValue { get; set; }
         public string PersistedNumberText { get; set; }
@@ -258,6 +291,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public bool HasChoiceEditor => Editor.HasChoiceEditor;
         public bool HasStrictChoiceEditor => Editor.HasChoiceEditor && !Editor.IsChoiceEditable;
         public bool HasEditableChoiceEditor => Editor.HasChoiceEditor && Editor.IsChoiceEditable;
+        public bool HasSecondaryChoiceEditor => Editor.HasSecondaryChoiceEditor;
+        public bool HasDialogTagEditor => Editor.HasDialogTagEditor;
+        public bool HasBlockingEditor => Editor.HasBlockingEditor;
         public bool IsDanger => !string.IsNullOrEmpty(ValidationMessage);
 
         public string ValidationMessage
@@ -282,6 +318,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 if (TypeKey == ActionTypeKeys.ToyActivity &&
                     (string.IsNullOrWhiteSpace(TextValue) || !ParameterOptions.Any(option => option.Id == TextValue)))
                     return "Select an existing Toy Capability.";
+                if ((TypeKey == ActionTypeKeys.ToyActivity || TypeKey == ActionTypeKeys.ToySetPattern) &&
+                    (string.IsNullOrWhiteSpace(PatternValue) || !PatternOptions.Any(option => option.Id == PatternValue)))
+                    return "Select an existing Toy Pattern Resource.";
+                if (TypeKey == ActionTypeKeys.DialogFromTags &&
+                    (string.IsNullOrWhiteSpace(PatternValue) || PatternValue.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Length == 0))
+                    return "Select at least one Dialog Tag.";
                 return null;
             }
         }
@@ -372,6 +414,14 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case ToySetPatternInstanceDefinition toySet:
                     toySet.CapabilityId = TextValue ?? "";
                     toySet.PatternResourceId = PatternValue ?? "";
+                    break;
+                case DialogFromTagsInstanceDefinition dialogFromTags:
+                    dialogFromTags.RequiredDialogTagIds.Clear();
+                    foreach (var tag in (PatternValue ?? "").Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var id = tag.Trim();
+                        if (id.Length > 0) dialogFromTags.RequiredDialogTagIds.Add(id);
+                    }
                     break;
                 case PromptChoiceInstanceDefinition choice:
                     choice.Prompt = TextValue ?? "";
@@ -639,6 +689,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public List<ActionParameterOption> TemperatureOptions { get; private set; } = new List<ActionParameterOption>();
         public List<ActionParameterOption> StatOptions { get; private set; } = new List<ActionParameterOption>();
         public List<ActionParameterOption> ResourceOptions { get; private set; } = new List<ActionParameterOption>();
+        public List<ActionParameterOption> ToyPatternOptions { get; private set; } = new List<ActionParameterOption>();
+        public List<RelationChoice> DialogTagOptions { get; private set; } = new List<RelationChoice>();
         public List<ActionParameterOption> ToyCapabilityOptions { get; private set; } = new List<ActionParameterOption>();
 
         public PendingConnectionViewModel PendingConnection { get; }
@@ -735,6 +787,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
             ResourceOptions = (content?.Resources ?? new List<ResourceDefinition>())
                 .Where(item => string.Equals(item.Kind, "cutscene", StringComparison.OrdinalIgnoreCase))
                 .Select(item => new ActionParameterOption { Id = item.Id, Name = string.IsNullOrEmpty(item.Name) ? item.Id : item.Name })
+                .ToList();
+            ToyPatternOptions = (content?.Resources ?? new List<ResourceDefinition>())
+                .Where(item => string.Equals(item.Kind, ResourceKinds.ToyPattern, StringComparison.OrdinalIgnoreCase))
+                .Select(item => new ActionParameterOption { Id = item.Id, Name = string.IsNullOrEmpty(item.Name) ? item.Id : item.Name })
+                .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            DialogTagOptions = (content?.DialogTags ?? new List<DialogTagDefinition>())
+                .Select(item => new RelationChoice { Id = item.Id, DisplayName = string.IsNullOrEmpty(item.Title) ? item.Id : item.Title })
+                .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             ToyCapabilityOptions = (content?.SmartToyCapabilityDefinitions ?? new List<SmartToyCapabilityDefinition>())
                 .Select(item => new ActionParameterOption { Id = item.Id, Name = string.IsNullOrEmpty(item.Title) ? item.Id : item.Title })
@@ -1072,6 +1133,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         TemperatureOptions,
                         ResourceOptions,
                         ToyCapabilityOptions,
+                        ToyPatternOptions,
+                        DialogTagOptions,
                         _ => new List<ExitOption>());
                 }
                 var input = new ConnectorViewModel { Id = node.Id + "-input", Title = "" };
@@ -1294,7 +1357,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         ActionOwnerScope.PhaseActionSequence,
                         actionNode.Sequence?.Instances,
                         TemperatureOptions, ResourceOptions, ExitOptionsFor(phase), vm.ActionRows,
-                        StatOptions, ToyCapabilityOptions);
+                        StatOptions, ToyCapabilityOptions, false, ToyPatternOptions, DialogTagOptions);
                 }
                 if (node is PhaseDecisionNodeDefinition phaseDecision)
                 {
@@ -1307,6 +1370,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         TemperatureOptions,
                         ResourceOptions,
                         ToyCapabilityOptions,
+                        ToyPatternOptions,
+                        DialogTagOptions,
                         _ => ExitOptionsFor(phase));
                 }
                 var input = new ConnectorViewModel { Id = node.Id + "-input", Title = "" };
@@ -1357,13 +1422,14 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 Ordinal = ordinal,
                 TypeKey = info.TypeKey,
                 DisplayLabel = info.DisplayLabel,
+                IsBlocking = instance.IsBlocking,
                 ParameterOptions = info.TypeKey == ActionTypeKeys.StatIncrease
                     ? sequence.StatOptions
                     : info.TypeKey == ActionTypeKeys.ModifyTemperature ? sequence.TemperatureOptions
                     : info.TypeKey == ActionTypeKeys.Cutscene ? sequence.ResourceOptions : new List<ActionParameterOption>(),
                 ExitOptions = sequence.ExitOptions,
             };
-            if (info.TypeKey == ActionTypeKeys.ToyActivity)
+            if (info.TypeKey == ActionTypeKeys.ToyActivity || info.TypeKey == ActionTypeKeys.ToySetPattern)
                 row.ParameterOptions = sequence.ToyCapabilityOptions;
             switch (instance)
             {
@@ -1419,6 +1485,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     row.PatternValue = toySet.PatternResourceId;
                     break;
                 }
+                case DialogFromTagsInstanceDefinition dialogFromTags:
+                    row.PatternValue = string.Join(";", dialogFromTags.RequiredDialogTagIds ?? new List<string>());
+                    break;
                 case PromptChoiceInstanceDefinition choice:
                     row.TextValue = choice.Prompt;
                     break;
@@ -1433,6 +1502,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             row.PersistedPatternValue = row.PatternValue;
             row.PersistedNumberText = row.NumberText;
             row.PersistedSecondaryNumberText = row.SecondaryNumberText;
+            row.PersistedIsBlocking = row.IsBlocking;
             if (instance is PromptChoiceInstanceDefinition promptChoice)
             {
                 foreach (var option in promptChoice.Options)
@@ -1449,7 +1519,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         new ObservableCollection<ActionRowData>(),
                         sequence.StatOptions,
                         sequence.ToyCapabilityOptions,
-                        true)
+                        true,
+                        sequence.ToyPatternOptions,
+                        sequence.DialogTagOptions)
                     {
                         OptionId = option.Id,
                     };
@@ -1522,6 +1594,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             IEnumerable<ActionParameterOption> temperatureOptions,
             IEnumerable<ActionParameterOption> resourceOptions,
             IEnumerable<ActionParameterOption> toyCapabilityOptions,
+            IEnumerable<ActionParameterOption> toyPatternOptions,
+            IEnumerable<RelationChoice> dialogTagOptions,
             Func<string, List<ExitOption>> exitOptionsFor)
         {
             vm.DecisionScope = scope;
@@ -1545,7 +1619,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     exitOptionsFor(optionIdOf(option)),
                     row.ActionRows,
                     statOptions,
-                    toyCapabilityOptions)
+                    toyCapabilityOptions,
+                    false,
+                    toyPatternOptions,
+                    dialogTagOptions)
                 {
                     OptionId = row.OptionId,
                 };

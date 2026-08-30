@@ -111,8 +111,8 @@ namespace TruthCardGame.Core
         /// <summary>
         /// Single reusable shutdown path (Ticket 07): stops all toy output on
         /// the host even when the gameplay token is already canceled — cleanup
-        /// uses its own token. Never throws; a host StopAll failure is logged
-        /// so it cannot hide an original runtime error. Idempotent.
+        /// uses its own token. Never throws; a host StopAll failure or timeout is
+        /// logged so it cannot hide an original runtime error. Idempotent.
         /// </summary>
         public async Task ShutdownAsync(string reason = "Session complete")
         {
@@ -122,7 +122,15 @@ namespace TruthCardGame.Core
                 {
                     using (var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
                     {
-                        await _services.ToyActivity.StopAllAsync();
+                        var stopTask = _services.ToyActivity.StopAllAsync(cleanupCts.Token);
+                        var timeoutTask = Task.Delay(Timeout.InfiniteTimeSpan, cleanupCts.Token);
+                        var completed = await Task.WhenAny(stopTask, timeoutTask);
+                        if (completed != stopTask)
+                        {
+                            _services.Log.Error($"TOY STOP ALL timed out during teardown ({reason}).");
+                            return;
+                        }
+                        await stopTask;
                     }
                     _services.Log.Info($"TOY STOP ALL reason: {reason}");
                 }

@@ -361,7 +361,7 @@ namespace TruthCardGame.Core
                     break;
 
                 case ActionTransfer.Return:
-                    await HandleReturnAsync(context, cancellationToken);
+                    await HandleReturnAsync(transfer, context, cancellationToken);
                     break;
 
                 case ActionTransfer.EndSession:
@@ -519,44 +519,20 @@ namespace TruthCardGame.Core
         /// The session loop resumes the frame via ResumeFromContinuationAsync on
         /// the next iteration.
         ///
-        /// A RETURN with an empty continuation stack means the outermost placed
-        /// phase finished with no caller frame to restore. It is a clean top-level
-        /// return, not a runtime error (Ticket 18 canonical): the session resumes
-        /// through the active placement's projected PhaseExit socket when one is
-        /// wired, otherwise the graph has nothing left to run and completes.
+        /// A RETURN with an empty continuation stack is malformed content. The
+        /// author must wire an explicit PhaseGoto to a PhaseExit or use
+        /// SessionEnd for a terminal path; RETURN never invents a fallback.
         /// </summary>
-        private Task HandleReturnAsync(ActionExecutionContext context, CancellationToken cancellationToken)
+        private Task HandleReturnAsync(ActionExecutionResult transfer, ActionExecutionContext context, CancellationToken cancellationToken)
         {
             if (_stack.IsEmpty)
             {
-                var placement = _activeRun == null ? null : FindPlacement(_activeRun.PlacementNodeId);
-                string targetId = null;
-                if (placement != null)
-                {
-                    foreach (var output in placement.Outputs)
-                    {
-                        if (output.Kind == GraphPortKind.PhaseExit &&
-                            _edgeFromOutput.TryGetValue(output.Id, out targetId))
-                        {
-                            break;
-                        }
-                    }
-                }
-
-                if (targetId == null)
-                {
-                    IsComplete = true;
-                    _stack.Clear();
-                    SessionCompleted?.Invoke();
-                }
-                else
-                {
-                    _activeRun = null;
-                    _activePhaseVm = null;
-                    _sessionNode = _nodesById[targetId];
-                    SessionNodeChanged?.Invoke(_sessionNode.Id);
-                }
-                return Task.CompletedTask;
+                var phaseId = _activeRun?.PhaseId ?? "<none>";
+                var nodeId = _activeRun?.CurrentNode?.Id ?? "<none>";
+                var origin = string.IsNullOrEmpty(transfer?.OriginId) ? nodeId : transfer.OriginId;
+                throw new InvalidOperationException(
+                    $"Session '{_session.Id}' Phase '{phaseId}' RETURN '{origin}' completed with an empty continuation stack. " +
+                    "Wire an explicit PhaseGoto to a PhaseExit or use SessionEnd for a terminal path.");
             }
 
             var frame = _stack.Pop();

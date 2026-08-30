@@ -44,23 +44,5 @@ namespace TruthCardGame
             return result;
         }
 
-        /// <summary>
-        /// Shallow conversion: ordered CardIds referencing collected Cards.
-        /// Dense lists — null card entries are skipped, not position-preserved.
-        /// </summary>
-        public TruthCardGame.Content.CardDeckDefinition ToDefinition(UnityContentGraphBuilder builder)
-        {
-            var definition = new TruthCardGame.Content.CardDeckDefinition { Id = id, Title = name };
-            if (cards != null)
-            {
-                foreach (var card in cards)
-                {
-                    if (card == null) continue;
-                    builder?.CollectCard(card);
-                    definition.CardIds.Add(card.Id);
-                }
-            }
-            return definition;
-        }
     }
 }

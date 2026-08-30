@@ -132,7 +132,6 @@ namespace TruthCardGame.Tests
 
             var content = new GameContentDefinition
             {
-                Deck = new CardDeckDefinition { Id = "deck-smoke", CardIds = { card.Id } },
                 Sessions = { session },
                 Phases = { phase },
                 Cards = { card },

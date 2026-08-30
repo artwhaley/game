@@ -42,7 +42,7 @@ namespace TruthCardGame.Content.Sqlite
                 var key = row.Intensity;
                 if (resourceByIntensity.ContainsKey(key)) continue;
 
-                var resourceId = "res-toy-const-" + FormatIntensity(key);
+                var resourceId = "res-toy-const-bits-" + FormatIntensity(key);
                 Sql.Execute(connection, transaction,
                     "INSERT OR IGNORE INTO resource (id, kind, name) VALUES (@id, @kind, @name);",
                     ("id", resourceId),
@@ -96,7 +96,10 @@ namespace TruthCardGame.Content.Sqlite
 
         private static string FormatIntensity(double intensity)
         {
-            return intensity.ToString("0.##", CultureInfo.InvariantCulture);
+            // Friendly decimal formatting is not an identity: 0.501 and 0.504
+            // both collapse to the same rounded label. Use exact IEEE-754 bits
+            // for deterministic, collision-free legacy resource IDs.
+            return BitConverter.DoubleToInt64Bits(intensity).ToString("X16", CultureInfo.InvariantCulture);
         }
     }
 }

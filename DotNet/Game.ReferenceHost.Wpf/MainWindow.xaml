@@ -83,6 +83,37 @@
                                                     </Style>
                                                 </ComboBox.Style>
                                             </ComboBox>
+                                            <ComboBox Padding="2,0" Width="110" Margin="2,0,2,0"
+                                                      ItemsSource="{Binding PatternOptions}" DisplayMemberPath="Name"
+                                                      SelectedItem="{Binding SelectedPatternChoice, Mode=OneWay}"
+                                                      SelectionChanged="OnActionPatternChoiceChanged"
+                                                      ToolTip="Toy Pattern Resource">
+                                                <ComboBox.Style>
+                                                    <Style TargetType="ComboBox" BasedOn="{StaticResource DarkComboBox}">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasSecondaryChoiceEditor}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ComboBox.Style>
+                                            </ComboBox>
+                                            <vm:RelationPickerControl Width="150" Margin="2,0,2,0"
+                                                                      SelectionChanged="OnActionDialogTagsChanged"
+                                                                      Loaded="OnActionDialogTagPickerLoaded"
+                                                                      DataContextChanged="OnActionDialogTagPickerDataContextChanged">
+                                                <vm:RelationPickerControl.Style>
+                                                    <Style TargetType="vm:RelationPickerControl">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasDialogTagEditor}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </vm:RelationPickerControl.Style>
+                                            </vm:RelationPickerControl>
                                             <ComboBox Padding="2,0" Width="92" Margin="2,0,2,0"
                                                       ItemsSource="{Binding ChoiceOptions}" DisplayMemberPath="Name"
                                                       IsEditable="True" IsTextSearchEnabled="True"
@@ -129,6 +160,21 @@
                                                     </Style>
                                                 </TextBox.Style>
                                             </TextBox>
+                                            <CheckBox Content="Blocking" Margin="4,0,3,0" VerticalAlignment="Center"
+                                                      Foreground="#FFB0B0B0" IsChecked="{Binding IsBlocking, Mode=OneWay}"
+                                                      Checked="OnActionBlockingChanged" Unchecked="OnActionBlockingChanged"
+                                                      ToolTip="Wait for this action to finish before continuing">
+                                                <CheckBox.Style>
+                                                    <Style TargetType="CheckBox">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasBlockingEditor}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </CheckBox.Style>
+                                            </CheckBox>
                                             <TextBox Padding="2,0" Width="48" Margin="2,0,2,0"
                                                      Text="{Binding SecondaryNumberText, Mode=OneWay}"
                                                      TextChanged="OnActionSecondaryNumberChanged"
@@ -512,6 +558,8 @@
                             <StackPanel Orientation="Horizontal">
                                 <Button Content="New" Click="OnNewCatalogEntry" Padding="6,1" Margin="0,0,3,0"
                                         Style="{StaticResource DarkButton}" ToolTip="Create a definition of the selected kind"/>
+                                <Button Content="Duplicate" Click="OnDuplicateCatalogEntry" Padding="6,1" Margin="0,0,3,0"
+                                        Style="{StaticResource DarkButton}" ToolTip="Duplicate the selected dialog snippet"/>
                                 <Button Content="Delete" Click="OnDeleteCatalogEntry" Padding="6,1" Margin="0,0,3,0"
                                         Style="{StaticResource DarkButton}" ToolTip="Delete the selected definition (blocked while referenced)"/>
                             </StackPanel>
@@ -522,21 +570,28 @@
                             <TextBlock Text="Catalog entry" FontWeight="SemiBold" Foreground="#FFDDDDDD"/>
                             <TextBox x:Name="CatalogTitleBox" Style="{StaticResource DarkTextBox}" Padding="3,1" Margin="0,3,0,0"
                                      TextChanged="OnCatalogEditorChanged" ToolTip="Stable-ID catalog title"/>
+                            <TextBlock x:Name="CatalogDescriptionLabel" Text="Description" FontSize="10" Foreground="#FFB0B0B0"
+                                       Margin="0,4,0,0" Visibility="Collapsed"/>
                             <TextBox x:Name="CatalogDescriptionBox" Style="{StaticResource DarkTextBox}" Padding="3,1" Margin="0,3,0,0"
-                                     Height="46" TextWrapping="Wrap" AcceptsReturn="True" TextChanged="OnCatalogEditorChanged"
-                                     ToolTip="Kink description"/>
+                                     Height="72" TextWrapping="Wrap" AcceptsReturn="True" TextChanged="OnCatalogEditorChanged"
+                                     Visibility="Collapsed" ToolTip="Kink or dialog snippet text"/>
+                            <TextBlock x:Name="CatalogCategoryLabel" Text="Category" FontSize="10" Foreground="#FFB0B0B0"
+                                       Margin="0,4,0,0" Visibility="Collapsed"/>
                             <TextBox x:Name="CatalogCategoryBox" Style="{StaticResource DarkTextBox}" Padding="3,1" Margin="0,3,0,0"
-                                     TextChanged="OnCatalogEditorChanged" ToolTip="Equipment or Smart Toy category"/>
+                                     Visibility="Collapsed" TextChanged="OnCatalogEditorChanged" ToolTip="Equipment or Smart Toy category"/>
+                            <TextBlock x:Name="CatalogCapabilityLabel" Text="Required Smart Toy capabilities" FontSize="10" Foreground="#FFB0B0B0"
+                                       Margin="0,4,0,0" Visibility="Collapsed"/>
                             <vm:RelationPickerControl x:Name="CatalogCapabilityPicker" Margin="0,3,0,0"
+                                                      Visibility="Collapsed"
                                                       SelectionChanged="OnCatalogEditorChanged"
                                                       ToolTip="Required Smart Toy capabilities for a Session Type"/>
                             <Button Content="Save entry" Click="OnSaveCatalogEntry" Padding="6,1" Margin="0,4,0,0"
                                     HorizontalAlignment="Left" Style="{StaticResource DarkButton}"/>
                         </StackPanel>
-                        <Grid x:Name="CatalogListsPanel">
+                        <Grid x:Name="CatalogListsPanel" HorizontalAlignment="Stretch">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="2*" MinWidth="84"/>
-                                <ColumnDefinition Width="3*" MinWidth="96"/>
+                                <ColumnDefinition Width="*" MinWidth="120"/>
+                                <ColumnDefinition Width="*" MinWidth="160"/>
                             </Grid.ColumnDefinitions>
                             <ListBox x:Name="CatalogKindList" Grid.Column="0" Margin="0,0,3,0"
                                      Style="{StaticResource DarkListBox}"
@@ -748,10 +803,15 @@
                 <Border DockPanel.Dock="Bottom" x:Name="ActionBrowserPanel" Height="250" Background="#FF1F1F22"
                         BorderBrush="#FF3A3A3E" BorderThickness="0,1,0,0" Padding="6,5">
                     <StackPanel>
-                        <TextBlock Text="Action Browser" FontWeight="SemiBold" Foreground="#FFDDDDDD"/>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Actions" Click="OnShowActionBrowser" Padding="5,1" Margin="0,0,3,0" Style="{StaticResource DarkButton}"/>
+                            <Button Content="Resources" Click="OnShowResourceBrowser" Padding="5,1" Style="{StaticResource DarkButton}"/>
+                        </StackPanel>
+                        <StackPanel x:Name="ActionBrowserContent">
+                        <TextBlock Text="Add Action: drag an action name into a sequence" FontWeight="SemiBold" Foreground="#FFDDDDDD" Margin="0,3,0,0"/>
                         <TextBox x:Name="ActionBrowserSearchBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
                                  TextChanged="OnActionBrowserSearchChanged" ToolTip="Search actions by name or keyword"/>
-                        <ListBox x:Name="ActionBrowserList" Height="180" Margin="0,4,0,0"
+                        <ListBox x:Name="ActionBrowserList" Height="150" Margin="0,4,0,0"
                                  Style="{StaticResource DarkListBox}" ItemContainerStyle="{StaticResource DarkListBoxItem}"
                                  DisplayMemberPath="DisplayLabel" MouseLeftButtonDown="OnActionDragStart"
                                  PreviewMouseMove="OnActionBrowserMouseMove"
@@ -762,8 +822,46 @@
                                 </ItemsPanelTemplate>
                             </ListBox.ItemsPanel>
                         </ListBox>
-                        <TextBlock Text="Double-click or drag an action into a sequence. Scope-invalid drops are rejected."
+                        <TextBlock Text="Drag an action name into a sequence. Scope-invalid drops are rejected."
                                    TextWrapping="Wrap" FontSize="9" Foreground="#FF808080" Margin="0,3,0,0"/>
+                        </StackPanel>
+                        <StackPanel x:Name="ResourceBrowserContent" Visibility="Collapsed">
+                            <TextBlock Text="Resources" FontWeight="SemiBold" Foreground="#FFDDDDDD" Margin="0,3,0,0"/>
+                            <TextBox x:Name="ResourceBrowserSearchBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
+                                     TextChanged="OnResourceBrowserSearchChanged" ToolTip="Search resources by name or stable ID"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                <ComboBox x:Name="ResourceKindFilter" Style="{StaticResource DarkComboBox}" Padding="3,1" Width="105"
+                                          SelectionChanged="OnResourceKindFilterChanged"/>
+                                <Button Content="New" Click="OnNewResource" Padding="5,1" Margin="3,0,0,0" Style="{StaticResource DarkButton}"/>
+                                <Button Content="Rename" Click="OnRenameResource" Padding="5,1" Margin="3,0,0,0" Style="{StaticResource DarkButton}"/>
+                                <Button Content="Delete" Click="OnDeleteResource" Padding="5,1" Margin="3,0,0,0" Style="{StaticResource DarkButton}"/>
+                            </StackPanel>
+                            <ListBox x:Name="ResourceBrowserList" Height="150" Margin="0,4,0,0"
+                                     Style="{StaticResource DarkListBox}" ItemContainerStyle="{StaticResource DarkListBoxItem}"
+                                     PreviewMouseLeftButtonDown="OnResourceDragStart"
+                                     PreviewMouseMove="OnResourceBrowserMouseMove"
+                                     PreviewMouseRightButtonDown="OnResourceRightClick"
+                                     ContextMenuOpening="OnResourceContextMenuOpening">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="1,0">
+                                            <TextBlock Text="{Binding Name}" Foreground="#FFDDDDDD" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Kind}" FontSize="9" Foreground="#FF9CCC65"/>
+                                            <TextBlock Text="{Binding Id}" FontSize="8" FontFamily="Consolas"
+                                                       Foreground="#FF808080" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                                <ListBox.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Rename Resource" Click="OnRenameResource"/>
+                                        <MenuItem Header="Delete Resource" Click="OnDeleteResource"/>
+                                    </ContextMenu>
+                                </ListBox.ContextMenu>
+                            </ListBox>
+                            <TextBlock Text="Drag a resource onto a compatible action row to assign it."
+                                       TextWrapping="Wrap" FontSize="9" Foreground="#FF808080" Margin="0,3,0,0"/>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
                 <!-- ScrollViewer: the card editor stacks a lot vertically; the

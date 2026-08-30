@@ -2,48 +2,50 @@
 
 ## Status
 
-The canonical DB `Content/GameContent.db` is migrated to **core schema version 8**
+The canonical DB `Content/GameContent.db` is at **core schema version 8**
 (`toy-pattern-dialog-catalog`). The migration ran through the normal app path
 (`ConnectionInitializer` + `CoreMigrator.EnsureSchema`), one transaction per
-migration, at `2026-08-30T03:26:35Z`. No data was dropped or reset; the
-migration is additive DDL plus an in-transaction data transformation
-(`Migration8Transform`) that rebuilds legacy intensity-based `toy_activity`
-rows into the `pattern_resource_id` shape.
+migration. The database was already user-dirty and authored before this stack;
+its authored content was preserved.
 
 ## Safety record
 
-- The DB was user-dirty before this stack and remains uncommitted; no reset,
-  checkout, or stash was ever used on it.
-- Pre-v8 byte-for-byte backup (recorded in `00-baseline.md` and the prior
-  `Docs/PreMilestoneC/09-canonical-db-preflight.md`):
-  `C:\Users\artwh\OneDrive\Documents\game\pre-milestone-c-reliability-backups\GameContent-20260829-010005.db`
-  — SHA-256 `38031CDEF64CE13F610E5450E9BF6068E209EACC4B24DEE02CA4D57C66AD0F87`.
+- No reset, checkout, or stash was used on the canonical database.
+- The earlier pre-v8 backup remains recorded in the historical checkpoint.
+- Before the final terminal-fixture repair, a byte-for-byte backup was created
+  at:
+  `C:\Users\artwh\AppData\Local\Temp\GameContent.db.final-pre-c.20260830-155912.bak`.
 
-## Post-v8 canonical state
+## Final canonical state
 
 - Ledger: `core_schema_migration` max version = **8**.
 - `PRAGMA integrity_check`: `ok`.
 - `PRAGMA foreign_key_check`: zero rows.
-- Counts:
-  - `resource` = 1 (the existing cutscene Resource).
-  - `smart_toy_capability_definition` = 1.
-  - `dialog_tag_definition` = 0, `dialog_snippet` = 0 (catalog ready to author).
-  - `action_instance_toy_activity` = 0, `action_instance_toy_set_pattern` = 0.
-- SHA-256 (canonical, post-v8): `685CB0C72486FE96F177AE0B0C70099CCA9313B40FA11450C1FFABD32256C6CC`
-  - size 708,608 bytes.
+- Counts: sessions = 1, phases = 1, cards = 3; resources = 1;
+  dialog tags = 0; dialog snippets = 0; smart toy capabilities = 1.
+- `action_instance_toy_activity` = 0 and
+  `action_instance_toy_set_pattern` = 0.
+- SHA-256:
+  `E3CDD1E5686E36B015054B9E009A2C021173EBE7DBF2E7F63A6C3B0033DE67E6`.
+- Size: 708,608 bytes.
+- No `GameContent.db-wal` or `GameContent.db-shm` companion files are present.
 
-## Why automated proof already covers this
+The one existing top-level Return fixture was converted to an explicit End
+Session action so the authored session remains present while obeying the
+corrected runtime contract. No disposable canary content was left in the
+canonical database.
 
-- `CanonicalDatabaseTests.MigratesCopy_ToCurrentMigration` migrates a copy of
-  the canonical DB all the way to v8 and re-verifies integrity + FK: green.
-- `SchemaV8MigrationTests` cover the additive DDL, the legacy-intensity data
-  transformation, the dialog `RequiredDialogTagIds` relation, and the new
-  tables/repositories: green.
-- SQLite suite total: **134 passed**.
+## Automated proof
 
-## Human canonical canary
+`CanonicalDatabaseTests.MigratesCopy_ToCurrentMigration` migrates a copy of the
+canonical DB to v8 and verifies integrity and foreign keys. `SchemaV8MigrationTests`
+cover the additive DDL, collision-safe legacy toy transformation, dialog tag
+relations, and new repositories. SQLite suite total: **134 passed**; full
+solution total: **342 passed**.
 
-Pending (unchanged from prior record): the interactive Workbench pass — author a
-toy-pattern Resource, a dialog Tag + Snippet, a `Timed Toy Pattern` /
-`Set Toy Pattern` / `Dialog From Tags` action, save, reopen, confirm persistence,
-then delete the disposable authored item. No human pass is claimed here.
+## Human canary
+
+The WPF host is running for the interactive authoring canary. The canary is
+not claimed complete until a human authors and reopens a disposable toy-pattern
+Resource, Dialog Tag, Dialog Snippet, and the new actions, then deletes the
+disposable items.

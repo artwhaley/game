@@ -206,6 +206,7 @@ namespace TruthCardGame.Content.Sqlite
         private static void ReplaceSnippetTags(DbConnection connection, DbTransaction transaction,
             string snippetId, IReadOnlyList<string> tagIds)
         {
+            tagIds = tagIds ?? new List<string>();
             Sql.Execute(connection, transaction,
                 "DELETE FROM dialog_snippet_tag WHERE dialog_snippet_id = @id;", ("id", snippetId));
             for (var i = 0; i < tagIds.Count; i++)

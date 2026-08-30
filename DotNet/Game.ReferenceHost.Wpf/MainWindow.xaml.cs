@@ -223,15 +223,18 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     return;
                 }
                 if (field != nameof(ActionRowData.TextValue) && field != nameof(ActionRowData.NumberText) &&
-                    field != nameof(ActionRowData.SecondaryNumberText) && field != nameof(ActionRowData.PatternValue)) return;
+                    field != nameof(ActionRowData.SecondaryNumberText) && field != nameof(ActionRowData.PatternValue) &&
+                    field != nameof(ActionRowData.IsBlocking)) return;
                 PushOrMerge(new UpdateActionInstanceCommand(OpenConnection, row.InstanceId, row.TypeKey,
                     row.PersistedTextValue, ParseFloat(row.PersistedNumberText),
                     row.TextValue, ParseFloat(row.NumberText), ParseFloat(row.PersistedSecondaryNumberText),
-                    ParseFloat(row.SecondaryNumberText), row.PersistedPatternValue, row.PatternValue));
+                    ParseFloat(row.SecondaryNumberText), row.PersistedPatternValue, row.PatternValue,
+                    row.PersistedIsBlocking, row.IsBlocking));
                 row.PersistedTextValue = row.TextValue;
                 row.PersistedPatternValue = row.PatternValue;
                 row.PersistedNumberText = row.NumberText;
                 row.PersistedSecondaryNumberText = row.SecondaryNumberText;
+                row.PersistedIsBlocking = row.IsBlocking;
             };
 
             _vm.SessionGraph.ActionChanged += (node, row, field) =>
@@ -243,15 +246,18 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     return;
                 }
                 if (field != nameof(ActionRowData.TextValue) && field != nameof(ActionRowData.NumberText) &&
-                    field != nameof(ActionRowData.SecondaryNumberText) && field != nameof(ActionRowData.PatternValue)) return;
+                    field != nameof(ActionRowData.SecondaryNumberText) && field != nameof(ActionRowData.PatternValue) &&
+                    field != nameof(ActionRowData.IsBlocking)) return;
                 PushOrMerge(new UpdateActionInstanceCommand(OpenConnection, row.InstanceId, row.TypeKey,
                     row.PersistedTextValue, ParseFloat(row.PersistedNumberText),
                     row.TextValue, ParseFloat(row.NumberText), ParseFloat(row.PersistedSecondaryNumberText),
-                    ParseFloat(row.SecondaryNumberText), row.PersistedPatternValue, row.PatternValue));
+                    ParseFloat(row.SecondaryNumberText), row.PersistedPatternValue, row.PatternValue,
+                    row.PersistedIsBlocking, row.IsBlocking));
                 row.PersistedTextValue = row.TextValue;
                 row.PersistedPatternValue = row.PatternValue;
                 row.PersistedNumberText = row.NumberText;
                 row.PersistedSecondaryNumberText = row.SecondaryNumberText;
+                row.PersistedIsBlocking = row.IsBlocking;
             };
 
             _vm.PhaseGraph.DecisionPromptChanged += node =>
@@ -612,6 +618,49 @@ namespace TruthCardGame.ReferenceHost.Wpf
             row.TextValue = option.Id ?? "";
         }
 
+        private void OnActionPatternChoiceChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!(sender is ComboBox combo) || !(combo.DataContext is ActionRowData row)) return;
+            if (!combo.IsKeyboardFocusWithin && !combo.IsDropDownOpen) return;
+            if (combo.SelectedItem is ActionParameterOption option)
+                row.PatternValue = option.Id ?? "";
+        }
+
+        private void OnActionBlockingChanged(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is CheckBox check) || !(check.DataContext is ActionRowData row)) return;
+            if (!check.IsKeyboardFocusWithin) return;
+            row.IsBlocking = check.IsChecked == true;
+        }
+
+        private void OnActionDialogTagPickerLoaded(object sender, RoutedEventArgs e)
+        {
+            ConfigureActionDialogTagPicker(sender as RelationPickerControl);
+        }
+
+        private void OnActionDialogTagPickerDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            ConfigureActionDialogTagPicker(sender as RelationPickerControl);
+        }
+
+        private static void ConfigureActionDialogTagPicker(RelationPickerControl picker)
+        {
+            if (picker?.DataContext is ActionRowData row)
+            {
+                var ids = (row.PatternValue ?? "")
+                    .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(value => value.Trim())
+                    .Where(value => value.Length > 0);
+                picker.SetItems(row.DialogTagOptions, ids);
+            }
+        }
+
+        private void OnActionDialogTagsChanged(object sender, RoutedEventArgs e)
+        {
+            if (!(sender is RelationPickerControl picker) || !(picker.DataContext is ActionRowData row)) return;
+            row.PatternValue = string.Join(";", picker.SelectedIds);
+        }
+
         private void OnActionTextChanged(object sender, TextChangedEventArgs e)
         {
             if (!(sender is Control control) || control.Visibility != Visibility.Visible ||
@@ -692,12 +741,42 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             var targetSequence = (sender as FrameworkElement)?.DataContext as ActionSequenceEditorViewModel;
             var targetIndex = targetSequence?.Rows.Count ?? 0;
-            if (sender is FrameworkElement targetElement && targetElement.DataContext is ActionRowData targetRow)
+            ActionRowData targetRow = null;
+            if (sender is FrameworkElement targetElement && targetElement.DataContext is ActionRowData row)
             {
-                targetSequence = targetRow.Sequence;
+                targetRow = row;
+                targetSequence = row.Sequence;
                 targetIndex = targetSequence.Rows.IndexOf(targetRow);
             }
             if (targetSequence == null) return;
+
+            if (e.Data.GetDataPresent(typeof(ResourceDefinition)))
+            {
+                var resource = (ResourceDefinition)e.Data.GetData(typeof(ResourceDefinition));
+                if (targetRow == null || resource == null)
+                {
+                    StatusText.Text = "Drop the resource onto an authored action row.";
+                    e.Handled = true;
+                    return;
+                }
+                if (resource.Kind.Equals(ResourceKinds.Cutscene, StringComparison.OrdinalIgnoreCase) &&
+                    targetRow.TypeKey == ActionTypeKeys.Cutscene)
+                {
+                    targetRow.TextValue = resource.Id;
+                    e.Handled = true;
+                    return;
+                }
+                if (resource.Kind.Equals(ResourceKinds.ToyPattern, StringComparison.OrdinalIgnoreCase) &&
+                    (targetRow.TypeKey == ActionTypeKeys.ToyActivity || targetRow.TypeKey == ActionTypeKeys.ToySetPattern))
+                {
+                    targetRow.PatternValue = resource.Id;
+                    e.Handled = true;
+                    return;
+                }
+                StatusText.Text = "Resource kind is incompatible with this action row.";
+                e.Handled = true;
+                return;
+            }
 
             if (e.Data.GetDataPresent(typeof(ActionTypeChoice)))
             {

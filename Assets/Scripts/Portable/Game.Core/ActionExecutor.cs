@@ -119,8 +119,27 @@ namespace TruthCardGame.Core
             {
                 // Transfer mechanics land with the graph VM; reduce to the request now.
                 var flow = ReduceFlow(instance, info.TypeKey);
+                flow.OriginId = instance.Id ?? "";
                 context.Services.Log.Info($"ACTION FINISHED {info.DisplayLabel} [{instance.Id}] -> {flow.Transfer}");
                 return flow;
+            }
+
+            // Set Toy Pattern changes persistent host state and must complete
+            // inline. It is nonblocking from the graph's point of view, but it
+            // is not a background task and must never be observed by WaitForAll.
+            if (instance is ToySetPatternInstanceDefinition)
+            {
+                try
+                {
+                    var result = await ExecuteAsync(instance, context, cancellationToken, budget);
+                    context.Services.Log.Info($"ACTION FINISHED {info.DisplayLabel} [{instance.Id}]");
+                    return result;
+                }
+                catch (Exception ex)
+                {
+                    context.Services.Log.Error($"ACTION FAILED {info.DisplayLabel} [{instance.Id}]: {ex.Message}");
+                    throw;
+                }
             }
 
             if (!instance.IsBlocking)

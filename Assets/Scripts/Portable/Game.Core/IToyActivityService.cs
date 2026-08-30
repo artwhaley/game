@@ -33,6 +33,6 @@ namespace TruthCardGame.Core
         Task SetPatternAsync(string capabilityId, string patternResourceId, CancellationToken cancellationToken);
 
         /// <summary>Stops/releases all active toy output (lifecycle safety).</summary>
-        Task StopAllAsync();
+        Task StopAllAsync(CancellationToken cancellationToken);
     }
 }

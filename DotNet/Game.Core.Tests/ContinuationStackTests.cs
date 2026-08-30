@@ -447,10 +447,10 @@ namespace TruthCardGame.Core.Tests
             StringAssert.Contains("Unwired phase exit", result.ErrorMessage);
         }
 
-        // ---------- 8. Top-level (empty-stack) return completes cleanly ----------
+        // ---------- 8. Top-level (empty-stack) return is a content error ----------
 
         [Test]
-        public async Task ReturnWithEmptyStack_CompletesCleanly()
+        public async Task ReturnWithEmptyStack_IsRuntimeError()
         {
             var a = Phase("A", Entry("n-a-entry"), new ReturnNodeDefinition { Id = "n-a-return" });
             a.Exits.Add(Exit("A", "Complete"));
@@ -467,15 +467,13 @@ namespace TruthCardGame.Core.Tests
             session.Graph.Nodes.Add(refA);
             session.Graph.Nodes.Add(end);
             session.Graph.Edges.Add(SessionEdge("n-start-out", "n-refA"));
-            session.Graph.Edges.Add(SessionEdge("n-refA-a", "n-end"));
 
             var vm = Session(session, a);
             var result = await vm.AdvanceAsync(Context(), CancellationToken.None);
 
-            // The placed phase's Return resolves through the placement's
-            // projected PhaseExit socket into the following End session node, so
-            // the session completes cleanly rather than erroring on an empty stack.
-            Assert.AreEqual(SessionAdvanceOutcome.SessionCompleted, result.Outcome);
+            Assert.AreEqual(SessionAdvanceOutcome.Error, result.Outcome);
+            StringAssert.Contains("empty continuation stack", result.ErrorMessage);
+            StringAssert.Contains("s8", result.ErrorMessage);
         }
     }
 }

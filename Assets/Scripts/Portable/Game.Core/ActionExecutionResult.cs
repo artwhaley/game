@@ -52,6 +52,9 @@ namespace TruthCardGame.Core
     {
         public ActionTransfer Transfer { get; set; } = ActionTransfer.None;
 
+        /// <summary>Source action/node id for diagnostics on transfer failures.</summary>
+        public string OriginId { get; set; } = "";
+
         /// <summary>PhaseGoto target (PhaseExit stable id).</summary>
         public string PhaseExitId { get; set; } = "";
 
