@@ -170,6 +170,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
     {
         private string _searchText = "";
         private string _selectedActionTypeKey;
+        private ActionRowData _selectionAnchor;
         private readonly ObservableCollection<ActionTypeChoice> _pickerChoices = new ObservableCollection<ActionTypeChoice>();
 
         public ActionSequenceEditorViewModel(GraphNodeViewModel ownerNode, string sequenceId,
@@ -182,7 +183,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             IEnumerable<ActionParameterOption> toyCapabilityOptions = null,
             bool isPromptChoiceDescendant = false,
             IEnumerable<ActionParameterOption> toyPatternOptions = null,
-            IEnumerable<RelationChoice> dialogTagOptions = null)
+            IEnumerable<RelationChoice> dialogTagOptions = null,
+            string sourcePhaseId = null)
         {
             OwnerNode = ownerNode;
             SequenceId = sequenceId ?? "";
@@ -195,6 +197,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             DialogTagOptions = new List<RelationChoice>(dialogTagOptions ?? Enumerable.Empty<RelationChoice>());
             ExitOptions = new List<ExitOption>(exitOptions ?? Enumerable.Empty<ExitOption>());
             IsPromptChoiceDescendant = isPromptChoiceDescendant;
+            SourcePhaseId = sourcePhaseId ?? "";
             Rows = rows ?? new ObservableCollection<ActionRowData>();
             foreach (var instance in instances ?? Enumerable.Empty<ActionInstanceDefinition>())
                 Rows.Add(PhaseGraphViewModel.ToActionRow(this, instance, Rows.Count));
@@ -207,6 +210,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public string ScopeLabel => OwnerScope == ActionOwnerScope.SessionDecisionOptionSequence ? "Session option actions" : "Actions";
         public bool IsSessionDecisionOption => OwnerScope == ActionOwnerScope.SessionDecisionOptionSequence;
         public bool IsPromptChoiceDescendant { get; }
+        /// <summary>Reusable Phase owner for PhaseGoto same-Phase Block policy.</summary>
+        public string SourcePhaseId { get; }
         public string IdentityPrefix => string.IsNullOrEmpty(OptionId)
             ? OwnerNode?.Id
             : OwnerNode?.Id + "-" + OptionId;
@@ -220,6 +225,47 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public List<ActionParameterOption> ToyPatternOptions { get; }
         public List<RelationChoice> DialogTagOptions { get; }
         public List<ExitOption> ExitOptions { get; }
+
+        public IEnumerable<ActionRowData> SelectedRows => Rows.Where(row => row.IsSelected);
+
+        public void ClearSelection()
+        {
+            foreach (var row in Rows) row.IsSelected = false;
+        }
+
+        public void SelectOnly(ActionRowData row)
+        {
+            ClearSelection();
+            if (row != null) { row.IsSelected = true; _selectionAnchor = row; }
+        }
+
+        public void ToggleSelection(ActionRowData row)
+        {
+            if (row != null) { row.IsSelected = !row.IsSelected; _selectionAnchor = row; }
+        }
+
+        public void SelectRange(ActionRowData row)
+        {
+            if (row == null) return;
+            var index = Rows.IndexOf(row);
+            if (index < 0) return;
+            var anchor = Rows.IndexOf(_selectionAnchor);
+            if (anchor < 0) anchor = index;
+            var from = Math.Min(anchor, index);
+            var to = Math.Max(anchor, index);
+            ClearSelection();
+            for (var i = from; i <= to; i++) Rows[i].IsSelected = true;
+            _selectionAnchor = row;
+        }
+
+        public void SelectRowsByIds(IEnumerable<string> ids)
+        {
+            var wanted = new HashSet<string>(ids ?? Enumerable.Empty<string>(), StringComparer.Ordinal);
+            ClearSelection();
+            foreach (var row in Rows)
+                if (wanted.Contains(row.InstanceId)) row.IsSelected = true;
+            _selectionAnchor = Rows.FirstOrDefault(row => row.IsSelected);
+        }
 
         public ICollectionView ActionTypePickerView { get; private set; }
 

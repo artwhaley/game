@@ -26,7 +26,8 @@
              insertion surface; authored rows below it are visually distinct. -->
         <DataTemplate x:Key="ActionSequenceTemplate">
             <Border Background="#FF26262A" BorderBrush="#FF3A3A3E" BorderThickness="1"
-                    CornerRadius="2" Margin="0,3,0,0" Padding="3" AllowDrop="True" Drop="OnActionDrop">
+                    CornerRadius="2" Margin="0,3,0,0" Padding="3" AllowDrop="True"
+                    DragOver="OnActionDragOver" Drop="OnActionDrop">
                 <StackPanel>
                     <TextBlock Text="{Binding ScopeLabel}" FontSize="10" Foreground="#FFB0B0B0"/>
                     <Border Background="#FF202124" BorderBrush="#FF3A3A3E" BorderThickness="1"
@@ -41,18 +42,29 @@
                         </ComboBox>
                         <Button Content="+ Action" Click="OnAddActionInstance" Padding="5,1" Margin="3,0,0,0"
                                 Style="{StaticResource DarkButton}" ToolTip="Append the selected Action Type"/>
+                        <Button Content="Save Selection as Block" Click="OnSaveSelectedActionBlock" Padding="5,1" Margin="6,0,0,0"
+                                Style="{StaticResource DarkButton}" ToolTip="Save the selected Action rows as an editor template"/>
+                        <Button Content="Save Sequence as Block" Click="OnSaveEntireActionBlock" Padding="5,1" Margin="3,0,0,0"
+                                Style="{StaticResource DarkButton}" ToolTip="Save the whole ActionSequence as an editor template"/>
                         </StackPanel>
                     </Border>
                     <ItemsControl ItemsSource="{Binding Rows}" Margin="0,3,0,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border Padding="2" Margin="0,1,0,1" AllowDrop="True" Drop="OnActionDrop">
+                                <Border Padding="2" Margin="0,1,0,1" AllowDrop="True"
+                                        DragOver="OnActionDragOver" Drop="OnActionDrop"
+                                        PreviewMouseLeftButtonDown="OnActionRowMouseDown"
+                                        ContextMenuOpening="OnActionRowContextMenuOpening">
                                     <Border.Style>
                                         <Style TargetType="Border">
                                             <Setter Property="Background" Value="#FF263B55"/>
                                             <Setter Property="BorderBrush" Value="#FF4B78A8"/>
                                             <Setter Property="BorderThickness" Value="1"/>
                                             <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                    <Setter Property="Background" Value="#FF0968B2"/>
+                                                    <Setter Property="BorderBrush" Value="#FF2F89C7"/>
+                                                </DataTrigger>
                                                 <DataTrigger Binding="{Binding IsDanger}" Value="True">
                                                     <Setter Property="Background" Value="#FF45272A"/>
                                                     <Setter Property="BorderBrush" Value="#FFFF6B6B"/>
@@ -61,6 +73,12 @@
                                             </Style.Triggers>
                                         </Style>
                                     </Border.Style>
+                                    <Border.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Insert Action Block Before..." Click="OnInsertActionBlockBefore"/>
+                                            <MenuItem Header="Insert Action Block After..." Click="OnInsertActionBlockAfter"/>
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
                                     <StackPanel>
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding DisplayLabel}" Width="78" FontSize="10"
@@ -946,6 +964,7 @@
                     <StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <Button Content="Actions" Click="OnShowActionBrowser" Padding="5,1" Margin="0,0,3,0" Style="{StaticResource DarkButton}"/>
+                            <Button Content="Blocks" Click="OnShowBlocksBrowser" Padding="5,1" Margin="0,0,3,0" Style="{StaticResource DarkButton}"/>
                             <Button Content="Resources" Click="OnShowResourceBrowser" Padding="5,1" Style="{StaticResource DarkButton}"/>
                         </StackPanel>
                         <StackPanel x:Name="ActionBrowserContent">
@@ -965,6 +984,32 @@
                         </ListBox>
                         <TextBlock Text="Drag an action name into a sequence. Scope-invalid drops are rejected."
                                    TextWrapping="Wrap" FontSize="9" Foreground="#FF808080" Margin="0,3,0,0"/>
+                        </StackPanel>
+                        <StackPanel x:Name="BlocksBrowserContent" Visibility="Collapsed">
+                            <TextBlock Text="Action Blocks" FontWeight="SemiBold" Foreground="#FFDDDDDD" Margin="0,3,0,0"/>
+                            <TextBox x:Name="BlocksSearchBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
+                                     TextChanged="OnActionBlockSearchChanged" ToolTip="Search Action Blocks by name"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                <Button Content="Rename" Click="OnRenameActionBlock" Padding="5,1" Margin="0,0,3,0" Style="{StaticResource DarkButton}"/>
+                                <Button Content="Delete" Click="OnDeleteActionBlock" Padding="5,1" Style="{StaticResource DarkButton}"/>
+                            </StackPanel>
+                            <ListBox x:Name="BlocksBrowserList" Height="150" Margin="0,4,0,0"
+                                     Style="{StaticResource DarkListBox}" ItemContainerStyle="{StaticResource DarkListBoxItem}"
+                                     DisplayMemberPath="DisplayText"
+                                     PreviewMouseLeftButtonDown="OnActionBlockBrowserMouseDown"
+                                     PreviewMouseMove="OnActionBlockBrowserMouseMove"
+                                     PreviewMouseRightButtonDown="OnActionBlockRightClick"
+                                     ContextMenuOpening="OnActionBlockContextMenuOpening"
+                                     AllowDrop="False">
+                                <ListBox.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Rename" Click="OnRenameActionBlock"/>
+                                        <MenuItem Header="Delete" Click="OnDeleteActionBlock"/>
+                                    </ContextMenu>
+                                </ListBox.ContextMenu>
+                            </ListBox>
+                            <TextBlock Text="Drag a block into any ActionSequence, or use an authored row's context menu."
+                                       TextWrapping="Wrap" FontSize="9" Foreground="#FF808080" Margin="0,3,0,0"/>
                         </StackPanel>
                         <StackPanel x:Name="ResourceBrowserContent" Visibility="Collapsed">
                             <TextBlock Text="Resources" FontWeight="SemiBold" Foreground="#FFDDDDDD" Margin="0,3,0,0"/>

@@ -364,6 +364,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             if (!_stack.CanUndo) return;
             if (!CanApplyCatalogMutation(_stack.NextUndo, undo: true)) return;
+            var isInMemoryEdit = _stack.NextUndo is InMemorySequenceCommand;
             try
             {
                 _stack.Undo();
@@ -373,13 +374,14 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 MessageBox.Show(this, "Undo failed:\n\n" + ex.Message,
                     "Undo", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
-            ReloadAllFromDb();
+            if (!isInMemoryEdit) ReloadAllFromDb();
         }
 
         private void Redo()
         {
             if (!_stack.CanRedo) return;
             if (!CanApplyCatalogMutation(_stack.NextRedo, undo: false)) return;
+            var isInMemoryEdit = _stack.NextRedo is InMemorySequenceCommand;
             try
             {
                 _stack.Redo();
@@ -389,7 +391,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 MessageBox.Show(this, "Redo failed:\n\n" + ex.Message,
                     "Redo", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
-            ReloadAllFromDb();
+            if (!isInMemoryEdit) ReloadAllFromDb();
         }
 
         private void OnWindowPreviewKeyDown(object sender, KeyEventArgs e)
@@ -789,6 +791,16 @@ namespace TruthCardGame.ReferenceHost.Wpf
             RunActionDrag(element, new DataObject(typeof(ActionRowData), row), DragDropEffects.Copy | DragDropEffects.Move);
         }
 
+        private void OnActionDragOver(object sender, DragEventArgs e)
+        {
+            e.Effects = e.Data.GetDataPresent(typeof(ActionBlockBrowserItem)) ||
+                        e.Data.GetDataPresent(typeof(ActionTypeChoice)) ||
+                        e.Data.GetDataPresent(typeof(ActionRowData)) ||
+                        e.Data.GetDataPresent(typeof(ResourceDefinition))
+                ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Handled = true;
+        }
+
         private void RunActionDrag(DependencyObject source, DataObject data, DragDropEffects effects)
         {
             if (_actionDragInProgress) return;
@@ -815,6 +827,17 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 targetIndex = targetSequence.Rows.IndexOf(targetRow);
             }
             if (targetSequence == null) return;
+
+            if (e.Data.GetDataPresent(typeof(ActionBlockBrowserItem)))
+            {
+                var block = e.Data.GetData(typeof(ActionBlockBrowserItem)) as ActionBlockBrowserItem;
+                if (block != null)
+                {
+                    InsertActionBlock(block.Block, targetSequence, targetIndex);
+                    e.Handled = true;
+                }
+                return;
+            }
 
             if (e.Data.GetDataPresent(typeof(ResourceDefinition)))
             {
@@ -1698,6 +1721,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 _hydratingSessionViewport = true;
                 _vm.SelectedSession.Graph = graph;
                 _vm.SessionGraph.LoadFromDefinition(_vm.SelectedSession, filled, viewport);
+                ApplyPendingActionSelection(_vm.SessionGraph);
                 Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() =>
                 {
                     if (hydrationGeneration != _sessionViewportHydrationGeneration) return;
@@ -1739,6 +1763,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 var hydrationGeneration = ++_phaseViewportHydrationGeneration;
                 _hydratingPhaseViewport = true;
                 _vm.PhaseGraph.LoadFromDefinition(_vm.SelectedPhase, filled, viewport);
+                ApplyPendingActionSelection(_vm.PhaseGraph);
                 Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() =>
                 {
                     if (hydrationGeneration != _phaseViewportHydrationGeneration) return;

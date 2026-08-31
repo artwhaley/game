@@ -195,6 +195,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private string _patternValue;
         private bool _isBlocking;
         private bool _isExpanded = true;
+        private bool _isSelected;
         private List<ActionParameterOption> _phaseChoiceOptions;
 
         public GraphNodeViewModel Owner { get; set; }
@@ -207,6 +208,16 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public string DisplayLabel { get; set; }
         public ObservableCollection<PromptChoiceOptionRowData> PromptOptions { get; } = new ObservableCollection<PromptChoiceOptionRowData>();
         public bool IsPromptChoice => Definition is PromptChoiceInstanceDefinition;
+        public bool IsSelected
+        {
+            get => _isSelected;
+            set
+            {
+                if (_isSelected == value) return;
+                _isSelected = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
+            }
+        }
         public bool IsExpanded
         {
             get => _isExpanded;
@@ -1380,7 +1391,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         ActionOwnerScope.PhaseActionSequence,
                         actionNode.Sequence?.Instances,
                         TemperatureOptions, ResourceOptions, ExitOptionsFor(phase), vm.ActionRows,
-                        StatOptions, ToyCapabilityOptions, false, ToyPatternOptions, DialogTagOptions);
+                         StatOptions, ToyCapabilityOptions, false, ToyPatternOptions, DialogTagOptions, phase.Id);
                 }
                 if (node is PhaseDecisionNodeDefinition phaseDecision)
                 {
@@ -1395,7 +1406,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         ToyCapabilityOptions,
                         ToyPatternOptions,
                         DialogTagOptions,
-                        _ => ExitOptionsFor(phase));
+                         _ => ExitOptionsFor(phase), phase.Id);
                 }
                 var input = new ConnectorViewModel { Id = node.Id + "-input", Title = "" };
                 input.Owner = vm;
@@ -1549,7 +1560,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         sequence.ToyCapabilityOptions,
                         true,
                         sequence.ToyPatternOptions,
-                        sequence.DialogTagOptions)
+                        sequence.DialogTagOptions,
+                        sequence.SourcePhaseId)
                     {
                         OptionId = option.Id,
                     };
@@ -1624,7 +1636,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             IEnumerable<ActionParameterOption> toyCapabilityOptions,
             IEnumerable<ActionParameterOption> toyPatternOptions,
             IEnumerable<RelationChoice> dialogTagOptions,
-            Func<string, List<ExitOption>> exitOptionsFor)
+             Func<string, List<ExitOption>> exitOptionsFor,
+             string sourcePhaseId = null)
         {
             vm.DecisionScope = scope;
             vm.DecisionPrompt = prompt ?? "";
@@ -1649,8 +1662,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     statOptions,
                     toyCapabilityOptions,
                     false,
-                    toyPatternOptions,
-                    dialogTagOptions)
+                     toyPatternOptions,
+                     dialogTagOptions,
+                     sourcePhaseId)
                 {
                     OptionId = row.OptionId,
                 };

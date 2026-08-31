@@ -65,6 +65,8 @@ namespace TruthCardGame.Content.Sqlite.Tests
             Assert.IsTrue(TableExists(_connection, "phase_card_any_tag"));
             Assert.IsTrue(TableExists(_connection, "session_card_weighting"));
             Assert.IsTrue(TableExists(_connection, "session_type_required_smart_toy_capability"));
+            // v10 editor-only Action Block templates:
+            Assert.IsTrue(TableExists(_connection, "wpf_action_block"));
             // v5 drops the superseded v1 structures:
             Assert.IsFalse(TableExists(_connection, "phase_slot"));
             Assert.IsFalse(TableExists(_connection, "card_deck"));

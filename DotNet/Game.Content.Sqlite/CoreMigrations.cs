@@ -12,6 +12,8 @@ namespace TruthCardGame.Content.Sqlite
     /// in-transaction legacy-content transformation; obsolete v1 tables remain
     /// physically present but unused (see the v2 script header). v4 changes
     /// PhaseGoto assignment to nullable so Unassigned is a first-class state.
+    /// v10 adds editor-only WPF Action Block templates; runtime action models
+    /// remain unchanged.
     /// </summary>
     public static class CoreMigrations
     {
@@ -51,7 +53,9 @@ namespace TruthCardGame.Content.Sqlite
                 Migration8Transform.Transform),
             new CoreMigration(9, "card-folder-hierarchy",
                 LoadEmbeddedScript("SQLITE-SCHEMA-V9-CARD-FOLDER-HIERARCHY.sql"),
-                Migration9Transform.Transform)
+                Migration9Transform.Transform),
+            new CoreMigration(10, "wpf-action-block-templates",
+                LoadEmbeddedScript("SQLITE-SCHEMA-V10-ACTION-BLOCKS.sql"))
         };
 
         private static string LoadEmbeddedScript(string resourceName)

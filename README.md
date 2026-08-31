@@ -5,7 +5,7 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
 ## Status
 
 - **SQLite is the canonical source of content truth** at `Content/GameContent.db`
-  (schema v9), owned by the provider-neutral `Game.Content.Sqlite` project.
+  (schema v10), owned by the provider-neutral `Game.Content.Sqlite` project.
   Sessions compose **reusable Phases through a Session/Phase graph model**
   (nodes + edges + Action Instances) — the PhaseSlot/slot-candidate era is
   gone except as migration history. The **Nodify WPF Graph Workbench**
@@ -82,7 +82,9 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   adds Dialog (text + blocking), Delay (duration + blocking), and the configured
   toy actions. Schema v7 adds searchable slash-delimited folder paths to Cards;
   schema v9 adds the persisted Cards folder hierarchy without changing runtime
-  card semantics.
+  card semantics. Schema v10 adds editor-only reusable Action Blocks with
+  recursive deep cloning, scope validation, and undoable drag/drop insertion;
+  see [`Docs/ActionBlocks/`](Docs/ActionBlocks/).
   Schema v8 adds reusable Resource, Dialog Tag, and Dialog Snippet catalogs,
   plus Set Toy Pattern, Timed Toy Pattern, and Dialog From Tags. Direct Dialog
   presents through `IDialogService`; Dialog From Tags selects a matching
@@ -118,9 +120,9 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   bridge remains deferred. See
   [`Docs/FinalPreMilestoneC/FINAL-REPORT.md`](Docs/FinalPreMilestoneC/FINAL-REPORT.md)
   and do not infer human acceptance from older milestone reports.
-- Latest automated .NET gates: **174 Core tests passed**, **138 SQLite tests
-  passed**, **11 profile tests passed**, and **41 WPF tests passed** (**364
-  total**). The canonical DB is schema v9, passes integrity and foreign-key
+- Latest automated .NET gates: **174 Core tests passed**, **148 SQLite tests
+  passed**, **11 profile tests passed**, and **42 WPF tests passed** (**375
+  total**). The canonical DB is schema v10, passes integrity and foreign-key
   checks, and contains the authored fixture's 1 Session, 1 Phase, and 3 Cards.
   A disposable 20-Card/two-Phase authoring-to-execution canary passes through
   the production SQLite loader and Core engine. The WPF host was built and
