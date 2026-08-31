@@ -25,6 +25,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void OnShowActionBrowser(object sender, RoutedEventArgs e)
         {
             ActionBrowserContent.Visibility = Visibility.Visible;
+            BlocksBrowserContent.Visibility = Visibility.Collapsed;
             ResourceBrowserContent.Visibility = Visibility.Collapsed;
             RefreshActionBrowser();
         }
@@ -32,6 +33,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void OnShowResourceBrowser(object sender, RoutedEventArgs e)
         {
             ActionBrowserContent.Visibility = Visibility.Collapsed;
+            BlocksBrowserContent.Visibility = Visibility.Collapsed;
             ResourceBrowserContent.Visibility = Visibility.Visible;
             if (!_resourceBrowserInitialized)
             {

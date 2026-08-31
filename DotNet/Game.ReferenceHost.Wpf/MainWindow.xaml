@@ -956,24 +956,41 @@
             </DockPanel>
 
             <!-- Pane 4: Inspector -->
-            <DockPanel Grid.Column="4" Grid.RowSpan="3" Margin="2,4,4,4" Background="#FF212226">
-                <Border DockPanel.Dock="Top" Background="#FF2B2B2B" Padding="6,4"
+            <Grid Grid.Column="4" Grid.RowSpan="3" Margin="2,4,4,4" Background="#FF212226">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*" MinHeight="80"/>
+                    <RowDefinition Height="6" MinHeight="6"/>
+                    <RowDefinition Height="250" MinHeight="100"/>
+                </Grid.RowDefinitions>
+                <Border Grid.Row="0" Background="#FF2B2B2B" Padding="6,4"
                         BorderBrush="#FF3A3A3E" BorderThickness="0,0,0,1">
                     <TextBlock Text="Inspector" FontWeight="Bold" Foreground="#FFDDDDDD"/>
                 </Border>
-                <Border DockPanel.Dock="Bottom" x:Name="ActionBrowserPanel" Height="250" Background="#FF1F1F22"
+                <Border Grid.Row="3" x:Name="ActionBrowserPanel" Background="#FF1F1F22"
                         BorderBrush="#FF3A3A3E" BorderThickness="0,1,0,0" Padding="6,5">
-                    <StackPanel>
-                        <StackPanel Orientation="Horizontal">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*" MinHeight="60"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel Grid.Row="0" Orientation="Horizontal">
                             <Button Content="Actions" Click="OnShowActionBrowser" Padding="5,1" Margin="0,0,3,0" Style="{StaticResource DarkButton}"/>
                             <Button Content="Blocks" Click="OnShowBlocksBrowser" Padding="5,1" Margin="0,0,3,0" Style="{StaticResource DarkButton}"/>
                             <Button Content="Resources" Click="OnShowResourceBrowser" Padding="5,1" Style="{StaticResource DarkButton}"/>
                         </StackPanel>
-                        <StackPanel x:Name="ActionBrowserContent">
-                        <TextBlock Text="Add Action: drag an action name into a sequence" FontWeight="SemiBold" Foreground="#FFDDDDDD" Margin="0,3,0,0"/>
-                        <TextBox x:Name="ActionBrowserSearchBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
+                        <Grid x:Name="ActionBrowserContent" Grid.Row="1">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*" MinHeight="40"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="Add Action: drag an action name into a sequence" FontWeight="SemiBold" Foreground="#FFDDDDDD" Margin="0,3,0,0"/>
+                        <TextBox Grid.Row="1" x:Name="ActionBrowserSearchBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
                                  TextChanged="OnActionBrowserSearchChanged" ToolTip="Search actions by name or keyword"/>
-                        <ListBox x:Name="ActionBrowserList" Height="150" Margin="0,4,0,0"
+                        <ListBox Grid.Row="2" x:Name="ActionBrowserList" Margin="0,4,0,0"
+                                 VerticalAlignment="Stretch"
                                  Style="{StaticResource DarkListBox}" ItemContainerStyle="{StaticResource DarkListBoxItem}"
                                  DisplayMemberPath="DisplayLabel" MouseLeftButtonDown="OnActionDragStart"
                                  PreviewMouseMove="OnActionBrowserMouseMove"
@@ -984,47 +1001,94 @@
                                 </ItemsPanelTemplate>
                             </ListBox.ItemsPanel>
                         </ListBox>
-                        <TextBlock Text="Drag an action name into a sequence. Scope-invalid drops are rejected."
+                        <TextBlock Grid.Row="3" Text="Drag an action name into a sequence. Scope-invalid drops are rejected."
                                    TextWrapping="Wrap" FontSize="9" Foreground="#FF808080" Margin="0,3,0,0"/>
-                        </StackPanel>
-                        <StackPanel x:Name="BlocksBrowserContent" Visibility="Collapsed">
-                            <TextBlock Text="Action Blocks" FontWeight="SemiBold" Foreground="#FFDDDDDD" Margin="0,3,0,0"/>
-                            <TextBox x:Name="BlocksSearchBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
+                        </Grid>
+                        <Grid x:Name="BlocksBrowserContent" Grid.Row="1" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*" MinHeight="40"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Text="Action Blocks" FontWeight="SemiBold" Foreground="#FFDDDDDD" Margin="0,3,0,0"/>
+                            <TextBox Grid.Row="1" x:Name="BlocksSearchBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
                                      TextChanged="OnActionBlockSearchChanged" ToolTip="Search Action Blocks by name"/>
-                            <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
-                                <Button Content="Rename" Click="OnRenameActionBlock" Padding="5,1" Margin="0,0,3,0" Style="{StaticResource DarkButton}"/>
-                                <Button Content="Delete" Click="OnDeleteActionBlock" Padding="5,1" Style="{StaticResource DarkButton}"/>
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,3,0,0">
+                                <Button Content="New Folder" Click="OnNewActionBlockFolder" Padding="5,1" Style="{StaticResource DarkButton}"/>
+                                <Button Content="Move..." Click="OnMoveActionBlockToFolder" Padding="5,1" Margin="3,0,0,0" Style="{StaticResource DarkButton}"/>
+                                <Button Content="Rename" Click="OnRenameActionBlock" Padding="5,1" Margin="3,0,0,0" Style="{StaticResource DarkButton}"/>
+                                <Button Content="Delete" Click="OnDeleteActionBlock" Padding="5,1" Margin="3,0,0,0" Style="{StaticResource DarkButton}"/>
                             </StackPanel>
-                            <ListBox x:Name="BlocksBrowserList" Height="150" Margin="0,4,0,0"
-                                     Style="{StaticResource DarkListBox}" ItemContainerStyle="{StaticResource DarkListBoxItem}"
-                                     DisplayMemberPath="DisplayText"
-                                     PreviewMouseLeftButtonDown="OnActionBlockBrowserMouseDown"
-                                     PreviewMouseMove="OnActionBlockBrowserMouseMove"
-                                     PreviewMouseRightButtonDown="OnActionBlockRightClick"
-                                     ContextMenuOpening="OnActionBlockContextMenuOpening"
-                                     AllowDrop="False">
-                                <ListBox.ContextMenu>
+                            <TreeView Grid.Row="3" x:Name="BlocksBrowserTree" Margin="0,4,0,0"
+                                      VerticalAlignment="Stretch"
+                                      Background="#FF242426" Foreground="#FFDDDDDD"
+                                      AllowDrop="True" SelectedItemChanged="OnActionBlockTreeSelectionChanged"
+                                      DragOver="OnActionBlockTreeDragOver" Drop="OnActionBlockTreeDrop"
+                                      PreviewMouseLeftButtonDown="OnActionBlockBrowserMouseDown"
+                                      PreviewMouseMove="OnActionBlockBrowserMouseMove"
+                                      PreviewMouseRightButtonDown="OnActionBlockRightClick"
+                                      ContextMenuOpening="OnActionBlockContextMenuOpening">
+                                <TreeView.ItemContainerStyle>
+                                    <Style TargetType="{x:Type TreeViewItem}">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                        <Setter Property="Padding" Value="2"/>
+                                    </Style>
+                                </TreeView.ItemContainerStyle>
+                                <TreeView.Resources>
+                                    <HierarchicalDataTemplate DataType="{x:Type vm:ActionBlockTreeNode}" ItemsSource="{Binding Children}">
+                                        <Border Padding="3,1" Margin="1" CornerRadius="2" Background="#FF2A2A2E">
+                                            <DockPanel MinHeight="20">
+                                                <TextBlock x:Name="FolderGlyph" Text="📁" Width="20" Foreground="#FFD9B44A"/>
+                                                <TextBlock x:Name="BlockGlyph" Text="▣" Width="20" Visibility="Collapsed" Foreground="#FF8FBCE0"/>
+                                                <TextBlock Text="{Binding DisplayText}" TextTrimming="CharacterEllipsis"/>
+                                            </DockPanel>
+                                        </Border>
+                                        <HierarchicalDataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsBlock}" Value="True">
+                                                <Setter TargetName="FolderGlyph" Property="Visibility" Value="Collapsed"/>
+                                                <Setter TargetName="BlockGlyph" Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsUnassigned}" Value="True">
+                                                <Setter TargetName="FolderGlyph" Property="Text" Value="□"/>
+                                                <Setter TargetName="FolderGlyph" Property="Foreground" Value="#FFD9B44A"/>
+                                            </DataTrigger>
+                                        </HierarchicalDataTemplate.Triggers>
+                                    </HierarchicalDataTemplate>
+                                </TreeView.Resources>
+                                <TreeView.ContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="Rename" Click="OnRenameActionBlock"/>
-                                        <MenuItem Header="Delete" Click="OnDeleteActionBlock"/>
+                                        <MenuItem Header="New Folder" Click="OnNewActionBlockFolder"/>
+                                        <MenuItem Header="Move..." Click="OnMoveActionBlockToFolder"/>
+                                        <MenuItem Header="Rename Block" Click="OnRenameActionBlock"/>
+                                        <MenuItem Header="Delete Block" Click="OnDeleteActionBlock"/>
                                     </ContextMenu>
-                                </ListBox.ContextMenu>
-                            </ListBox>
-                            <TextBlock Text="Drag a block into any ActionSequence, or use an authored row's context menu."
+                                </TreeView.ContextMenu>
+                            </TreeView>
+                            <TextBlock Grid.Row="4" Text="Drag a block onto a folder to move it, or into any ActionSequence to insert it."
                                        TextWrapping="Wrap" FontSize="9" Foreground="#FF808080" Margin="0,3,0,0"/>
-                        </StackPanel>
-                        <StackPanel x:Name="ResourceBrowserContent" Visibility="Collapsed">
-                            <TextBlock Text="Resources" FontWeight="SemiBold" Foreground="#FFDDDDDD" Margin="0,3,0,0"/>
-                            <TextBox x:Name="ResourceBrowserSearchBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
+                        </Grid>
+                        <Grid x:Name="ResourceBrowserContent" Grid.Row="1" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*" MinHeight="40"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Text="Resources" FontWeight="SemiBold" Foreground="#FFDDDDDD" Margin="0,3,0,0"/>
+                            <TextBox Grid.Row="1" x:Name="ResourceBrowserSearchBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
                                      TextChanged="OnResourceBrowserSearchChanged" ToolTip="Search resources by name or stable ID"/>
-                            <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,3,0,0">
                                 <ComboBox x:Name="ResourceKindFilter" Style="{StaticResource DarkComboBox}" Padding="3,1" Width="105"
                                           SelectionChanged="OnResourceKindFilterChanged"/>
                                 <Button Content="New" Click="OnNewResource" Padding="5,1" Margin="3,0,0,0" Style="{StaticResource DarkButton}"/>
                                 <Button Content="Rename" Click="OnRenameResource" Padding="5,1" Margin="3,0,0,0" Style="{StaticResource DarkButton}"/>
                                 <Button Content="Delete" Click="OnDeleteResource" Padding="5,1" Margin="3,0,0,0" Style="{StaticResource DarkButton}"/>
                             </StackPanel>
-                            <ListBox x:Name="ResourceBrowserList" Height="150" Margin="0,4,0,0"
+                            <ListBox Grid.Row="3" x:Name="ResourceBrowserList" Margin="0,4,0,0"
+                                     VerticalAlignment="Stretch"
                                      Style="{StaticResource DarkListBox}" ItemContainerStyle="{StaticResource DarkListBoxItem}"
                                      PreviewMouseLeftButtonDown="OnResourceDragStart"
                                      PreviewMouseMove="OnResourceBrowserMouseMove"
@@ -1047,14 +1111,19 @@
                                     </ContextMenu>
                                 </ListBox.ContextMenu>
                             </ListBox>
-                            <TextBlock Text="Drag a resource onto a compatible action row to assign it."
+                            <TextBlock Grid.Row="4" Text="Drag a resource onto a compatible action row to assign it."
                                        TextWrapping="Wrap" FontSize="9" Foreground="#FF808080" Margin="0,3,0,0"/>
-                        </StackPanel>
-                    </StackPanel>
+                        </Grid>
+                    </Grid>
                 </Border>
+                <GridSplitter Grid.Row="2" Height="6" HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch" ResizeDirection="Rows"
+                              ResizeBehavior="PreviousAndNext" Background="#FF505050"
+                              Cursor="SizeNS" DragCompleted="OnInspectorSplitterDragCompleted"
+                              ToolTip="Drag to resize the Inspector and browser"/>
                 <!-- ScrollViewer: the card editor stacks a lot vertically; the
                      pane itself keeps its width under user splitter control. -->
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="8,6,8,6" Background="Transparent">
                         <TextBlock Text="Selection" FontWeight="SemiBold" Margin="0,0,0,4" Foreground="#FFDDDDDD"/>
                         <TextBlock x:Name="InspTitle" Text="(none)" FontWeight="Bold" TextWrapping="Wrap" Foreground="#FFDDDDDD"/>
@@ -1209,7 +1278,7 @@ to place it; double-click a Phase node to open it below
 Select a Card in the Cards library to edit it here" TextWrapping="Wrap" FontSize="11" Foreground="#FFB0B0B0"/>
                 </StackPanel>
             </ScrollViewer>
-            </DockPanel>
+            </Grid>
         </Grid>
     </DockPanel>
 </Window>

@@ -17,6 +17,7 @@ namespace TruthCardGame.Content.Sqlite
         public int FormatVersion { get; set; }
         public string TemplateJson { get; set; }
         public int SortOrder { get; set; }
+        public string FolderPath { get; set; }
     }
 
     [DataContract]
@@ -25,6 +26,7 @@ namespace TruthCardGame.Content.Sqlite
         [DataMember(Order = 1)] public int FormatVersion { get; set; } = 1;
         [DataMember(Order = 2)] public string SourcePhaseId { get; set; } = "";
         [DataMember(Order = 3)] public List<ActionBlockActionTemplate> Actions { get; set; } = new List<ActionBlockActionTemplate>();
+        [DataMember(Order = 4)] public string FolderPath { get; set; } = "";
     }
 
     [DataContract]
@@ -56,13 +58,32 @@ namespace TruthCardGame.Content.Sqlite
     {
         public const int CurrentFormatVersion = 1;
 
-        public static string Serialize(IEnumerable<ActionInstanceDefinition> instances, string sourcePhaseId = null)
+        public static string Serialize(IEnumerable<ActionInstanceDefinition> instances, string sourcePhaseId = null,
+            string folderPath = null)
         {
-            var template = new ActionBlockTemplate { SourcePhaseId = sourcePhaseId ?? "" };
+            var template = new ActionBlockTemplate
+            {
+                SourcePhaseId = sourcePhaseId ?? "",
+                FolderPath = NormalizeFolderPath(folderPath)
+            };
             foreach (var instance in instances ?? new List<ActionInstanceDefinition>())
                 template.Actions.Add(ToTemplate(instance));
             ValidateTemplate(template);
             return Write(template);
+        }
+
+        public static string SetFolderPath(string json, string folderPath)
+        {
+            var template = Deserialize(json);
+            template.FolderPath = NormalizeFolderPath(folderPath);
+            return Write(template);
+        }
+
+        public static string NormalizeFolderPath(string path)
+        {
+            var value = (path ?? "").Trim().Replace('\\', '/');
+            while (value.Contains("//")) value = value.Replace("//", "/");
+            return value.Trim('/');
         }
 
         public static ActionBlockTemplate Deserialize(string json)
@@ -201,6 +222,8 @@ namespace TruthCardGame.Content.Sqlite
             if (template.FormatVersion != CurrentFormatVersion)
                 throw new InvalidOperationException("Unsupported Action Block format version " + template.FormatVersion + ".");
             if (template.Actions == null) throw new InvalidOperationException("Action Block has no Action list.");
+            if (template.Actions.Count == 0)
+                throw new InvalidOperationException("An Action Block must contain at least one Action.");
             foreach (var action in template.Actions) ValidateAction(action);
         }
 

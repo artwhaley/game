@@ -1842,6 +1842,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
             ApplyLayout();
         }
 
+        private void OnInspectorSplitterDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+        {
+            // The inspector split is intentionally local to this window. The
+            // existing center-row layout persistence must not overwrite it.
+        }
+
         private void OnResetLayout(object sender, RoutedEventArgs e)
         {
             _vm.Layout.SetRatios(

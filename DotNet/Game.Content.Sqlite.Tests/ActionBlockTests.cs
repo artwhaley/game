@@ -58,6 +58,60 @@ namespace TruthCardGame.Content.Sqlite.Tests
         }
 
         [Test]
+        public void EmptyActionBlocks_AreRejectedBySaveFormatAndInsertionBoundaries()
+        {
+            Assert.Throws<InvalidOperationException>(() =>
+                ActionBlockSerializer.Serialize(Array.Empty<ActionInstanceDefinition>()));
+            Assert.Throws<InvalidOperationException>(() =>
+                ActionBlockSerializer.Deserialize("{\"FormatVersion\":1,\"SourcePhaseId\":\"\",\"Actions\":[]}"));
+            var block = new ActionBlockDefinition
+            {
+                Id = "empty", Name = "Empty", FormatVersion = 1,
+                TemplateJson = "{\"FormatVersion\":1,\"SourcePhaseId\":\"\",\"Actions\":[]}"
+            };
+            var result = ActionBlockInsertionService.ValidateAndClone(block,
+                new ActionBlockDestination { Scope = ActionOwnerScope.CardSequence },
+                new GameContentDefinition(), "insert");
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(result.ClonedActions, Is.Empty);
+        }
+
+        [Test]
+        public void ActionBlockFormatVersion_MustMatchRowJsonAndCurrentVersion()
+        {
+            var jsonV1 = ActionBlockSerializer.Serialize(new[]
+                { new DelayInstanceDefinition { Id = "delay", DurationSeconds = 1, IsBlocking = true } });
+            var jsonV2 = jsonV1.Replace("\"FormatVersion\":1", "\"FormatVersion\":2");
+            Assert.Throws<InvalidOperationException>(() => ActionBlockSerializer.Deserialize(jsonV2));
+
+            var path = Path.Combine(Path.GetTempPath(), "action-block-format-" + Guid.NewGuid().ToString("N") + ".db");
+            try
+            {
+                using (var connection = new SqliteConnection("Data Source=" + path))
+                {
+                    ConnectionInitializer.Initialize(connection);
+                    CoreMigrator.EnsureSchema(connection);
+                    ActionBlockRepository.Create(connection, new ActionBlockDefinition
+                    {
+                        Id = "v1", Name = "V1", FormatVersion = 1, TemplateJson = jsonV1
+                    });
+                    Assert.Throws<InvalidOperationException>(() => ActionBlockRepository.Create(connection,
+                        new ActionBlockDefinition { Id = "row-v2", Name = "Row V2", FormatVersion = 2, TemplateJson = jsonV1 }));
+                    Assert.Throws<InvalidOperationException>(() => ActionBlockRepository.Create(connection,
+                        new ActionBlockDefinition { Id = "json-v2", Name = "JSON V2", FormatVersion = 1, TemplateJson = jsonV2 }));
+                    Assert.Throws<InvalidOperationException>(() => ActionBlockRepository.Create(connection,
+                        new ActionBlockDefinition { Id = "future-v2", Name = "Future V2", FormatVersion = 2, TemplateJson = jsonV2 }));
+                    Assert.That(ActionBlockRepository.Get(connection, "v1").FormatVersion, Is.EqualTo(1));
+                }
+            }
+            finally
+            {
+                SqliteConnection.ClearAllPools();
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        [Test]
         public void Repository_CrudAndSearch_PersistsEditorOnlyTemplate()
         {
             var path = Path.Combine(Path.GetTempPath(), "action-block-" + Guid.NewGuid().ToString("N") + ".db");
@@ -70,10 +124,16 @@ namespace TruthCardGame.Content.Sqlite.Tests
                     var block = new ActionBlockDefinition
                     {
                         Id = "block-1", Name = "Strong Tease", FormatVersion = 1,
-                        TemplateJson = ActionBlockSerializer.Serialize(new[] { new WaitForAllInstanceDefinition { Id = "wait" } })
+                        FolderPath = "Combat/Opening",
+                        TemplateJson = ActionBlockSerializer.Serialize(
+                            new[] { new WaitForAllInstanceDefinition { Id = "wait" } }, folderPath: "Combat/Opening")
                     };
                     ActionBlockRepository.Create(connection, block);
-                    Assert.That(ActionBlockRepository.List(connection, "tease").Single().Id, Is.EqualTo("block-1"));
+                    var loaded = ActionBlockRepository.List(connection, "tease").Single();
+                    Assert.That(loaded.Id, Is.EqualTo("block-1"));
+                    Assert.That(loaded.FolderPath, Is.EqualTo("Combat/Opening"));
+                    ActionBlockRepository.SetFolderPath(connection, "block-1", "Combat/Advanced");
+                    Assert.That(ActionBlockRepository.Get(connection, "block-1").FolderPath, Is.EqualTo("Combat/Advanced"));
                     ActionBlockRepository.Rename(connection, "block-1", "Renamed");
                     Assert.That(ActionBlockRepository.Get(connection, "block-1").Name, Is.EqualTo("Renamed"));
                     ActionBlockRepository.Delete(connection, "block-1");
@@ -222,6 +282,16 @@ namespace TruthCardGame.Content.Sqlite.Tests
                             SessionDecisionOptionId = "option"
                         }, new GameContentDefinition(), "insert");
                     Assert.That(validation.IsValid, Is.True, string.Join(" ", validation.Errors));
+                    var repeat = ActionBlockInsertionService.ValidateAndClone(source,
+                        new ActionBlockDestination
+                        {
+                            Scope = ActionOwnerScope.SessionDecisionOptionSequence,
+                            SessionDecisionNodeId = "decision",
+                            SessionDecisionOptionId = "option"
+                        }, new GameContentDefinition(), "insert-repeat");
+                    Assert.That(repeat.IsValid, Is.True, string.Join(" ", repeat.Errors));
+                    Assert.That(validation.ClonedActions.Select(action => action.Id)
+                        .Intersect(repeat.ClonedActions.Select(action => action.Id)), Is.Empty);
 
                     var before = new ActionSequenceDefinition { Id = "option-seq" };
                     var after = new ActionSequenceDefinition { Id = "option-seq" };
