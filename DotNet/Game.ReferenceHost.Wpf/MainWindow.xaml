@@ -842,11 +842,14 @@
                         <TextBlock x:Name="SessionHeader" Text="Session Graph" FontWeight="Bold"
                                    VerticalAlignment="Center" Foreground="#FFDDDDDD"/>
                         <WrapPanel Margin="8,4,0,0">
-                            <Button Content="+ Phase" Click="OnAddPhaseReference" Padding="6,1" Margin="0,0,3,0"
+                            <Button x:Name="AddSessionPhaseButton" Content="+ Phase" Click="OnAddPhaseReference" Padding="6,1" Margin="0,0,3,0"
+                                    Background="{x:Static vm:GraphPresentationPalette.PhaseReferenceHeader}"
                                     Style="{StaticResource DarkButton}" ToolTip="Add a PhaseReference for the phase selected in the Library"/>
-                            <Button Content="+ Decision" Click="OnAddSessionDecision" Padding="6,1" Margin="0,0,3,0"
+                            <Button x:Name="AddSessionDecisionButton" Content="+ Decision" Click="OnAddSessionDecision" Padding="6,1" Margin="0,0,3,0"
+                                    Background="{x:Static vm:GraphPresentationPalette.DecisionHeader}"
                                     Style="{StaticResource DarkButton}"/>
-                            <Button Content="+ End" Click="OnAddSessionEnd" Padding="6,1" Margin="0,0,3,0"
+                            <Button x:Name="AddSessionEndButton" Content="+ End" Click="OnAddSessionEnd" Padding="6,1" Margin="0,0,3,0"
+                                    Background="{x:Static vm:GraphPresentationPalette.EndHeader}"
                                     Style="{StaticResource DarkButton}"/>
                             <Button Content="Delete" Click="OnDeleteSelectedNode" Padding="6,1"
                                     Style="{StaticResource DarkButton}" ToolTip="Delete the selected node"/>
@@ -921,15 +924,21 @@
                     <StackPanel>
                         <TextBlock Text="Phase nodes:" FontSize="10" FontWeight="Bold" Foreground="#FF9CCC65" Margin="0,0,0,2"/>
                         <WrapPanel Margin="0,0,0,4">
-                            <Button Content="+ Draw" Click="OnAddCardExecutor" Padding="6,1" Margin="0,0,3,2"
+                            <Button x:Name="AddPhaseCardButton" Content="+ Draw" Click="OnAddCardExecutor" Padding="6,1" Margin="0,0,3,2"
+                                    Background="{x:Static vm:GraphPresentationPalette.CardHeader}"
                                     Style="{StaticResource DarkButton}" ToolTip="Add a card-draw executor node"/>
-                            <Button Content="+ Check" Click="OnAddVariableCheck" Padding="6,1" Margin="0,0,3,2"
+                            <Button x:Name="AddPhaseCheckButton" Content="+ Check" Click="OnAddVariableCheck" Padding="6,1" Margin="0,0,3,2"
+                                    Background="{x:Static vm:GraphPresentationPalette.CheckHeader}"
+                                    Foreground="{x:Static vm:GraphPresentationPalette.CheckHeaderForeground}"
                                     Style="{StaticResource DarkButton}" ToolTip="Add a variable-check node (progress / temperature / stat branches)"/>
-                            <Button Content="+ Action" Click="OnAddActionNode" Padding="6,1" Margin="0,0,3,2"
+                            <Button x:Name="AddPhaseActionButton" Content="+ Action" Click="OnAddActionNode" Padding="6,1" Margin="0,0,3,2"
+                                    Background="{x:Static vm:GraphPresentationPalette.ActionHeader}"
                                     Style="{StaticResource DarkButton}" ToolTip="Add an action-sequence node"/>
-                            <Button Content="+ Decision" Click="OnAddPhaseDecision" Padding="6,1" Margin="0,0,3,2"
+                            <Button x:Name="AddPhaseDecisionButton" Content="+ Decision" Click="OnAddPhaseDecision" Padding="6,1" Margin="0,0,3,2"
+                                    Background="{x:Static vm:GraphPresentationPalette.DecisionHeader}"
                                     Style="{StaticResource DarkButton}" ToolTip="Add a decision node (prompt + options)"/>
-                            <Button Content="+ Return" Click="OnAddReturn" Padding="6,1" Margin="0,0,0,2"
+                            <Button x:Name="AddPhaseReturnButton" Content="+ Return" Click="OnAddReturn" Padding="6,1" Margin="0,0,0,2"
+                                    Background="{x:Static vm:GraphPresentationPalette.ReturnHeader}"
                                     Style="{StaticResource DarkButton}" ToolTip="Add a RETURN node (resumes the suspended caller phase)"/>
                             <Button Content="Delete" Click="OnDeleteSelectedNode" Padding="6,1" Margin="0,0,0,2"
                                     Style="{StaticResource DarkButton}" ToolTip="Delete the selected node"/>

@@ -65,6 +65,36 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
         }
 
         [Test]
+        public void GraphInsertionButtonsMatchTheirNodeHeaderColors()
+        {
+            EnsureApplication();
+            var window = new MainWindow();
+            try
+            {
+                Assert.That(((Button)window.FindName("AddSessionPhaseButton")).Background,
+                    Is.SameAs(GraphPresentationPalette.PhaseReferenceHeader));
+                Assert.That(((Button)window.FindName("AddSessionDecisionButton")).Background,
+                    Is.SameAs(GraphPresentationPalette.DecisionHeader));
+                Assert.That(((Button)window.FindName("AddSessionEndButton")).Background,
+                    Is.SameAs(GraphPresentationPalette.EndHeader));
+                Assert.That(((Button)window.FindName("AddPhaseCardButton")).Background,
+                    Is.SameAs(GraphPresentationPalette.CardHeader));
+                Assert.That(((Button)window.FindName("AddPhaseCheckButton")).Background,
+                    Is.SameAs(GraphPresentationPalette.CheckHeader));
+                Assert.That(((Button)window.FindName("AddPhaseActionButton")).Background,
+                    Is.SameAs(GraphPresentationPalette.ActionHeader));
+                Assert.That(((Button)window.FindName("AddPhaseDecisionButton")).Background,
+                    Is.SameAs(GraphPresentationPalette.DecisionHeader));
+                Assert.That(((Button)window.FindName("AddPhaseReturnButton")).Background,
+                    Is.SameAs(GraphPresentationPalette.ReturnHeader));
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+
+        [Test]
         public void PortalPairIsDisplayOnlyAndTraceUsesExactEdgeIdentity()
         {
             var source = new GraphNodeViewModel { Id = "source", Kind = "entry" };

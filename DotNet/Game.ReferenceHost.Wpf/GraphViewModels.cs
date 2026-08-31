@@ -778,6 +778,17 @@ namespace TruthCardGame.ReferenceHost.Wpf
     /// <summary>Shared graph palette. Kind values are explicit presentation metadata, not title parsing.</summary>
     public static class GraphPresentationPalette
     {
+        public static readonly Brush StartHeader = Brush("#FF2E7D32");
+        public static readonly Brush PhaseReferenceHeader = Brush("#FF1565C0");
+        public static readonly Brush CardHeader = Brush("#FF0277BD");
+        public static readonly Brush CheckHeader = Brush("#FFF9A825");
+        public static readonly Brush ActionHeader = Brush("#FF00695C");
+        public static readonly Brush DecisionHeader = Brush("#FF6A1B9A");
+        public static readonly Brush ReturnHeader = Brush("#FFEF6C00");
+        public static readonly Brush EndHeader = Brush("#FFC62828");
+        public static readonly Brush DefaultHeader = Brush("#FF455A64");
+        public static readonly Brush CheckHeaderForeground = Brush("#FF1B1B1C");
+        public static readonly Brush DefaultHeaderForeground = Brushes.White;
         public static readonly Brush NormalWire = Brush("#FF7EB6E8");
         public static readonly Brush CurrentTrace = Brush("#FFFFD54F");
         public static readonly Brush NeutralInput = Brush("#FF9AA0A6");
@@ -786,21 +797,21 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             switch (kind ?? "")
             {
-                case "start": case "entry": return Brush("#FF2E7D32");
-                case "phase-reference": return Brush("#FF1565C0");
-                case "card": return Brush("#FF0277BD");
-                case "check": return Brush("#FFF9A825");
-                case "action": return Brush("#FF00695C");
-                case "decision": return Brush("#FF6A1B9A");
-                case "return": return Brush("#FFEF6C00");
-                case "end": return Brush("#FFC62828");
-                default: return Brush("#FF455A64");
+                case "start": case "entry": return StartHeader;
+                case "phase-reference": return PhaseReferenceHeader;
+                case "card": return CardHeader;
+                case "check": return CheckHeader;
+                case "action": return ActionHeader;
+                case "decision": return DecisionHeader;
+                case "return": return ReturnHeader;
+                case "end": return EndHeader;
+                default: return DefaultHeader;
             }
         }
 
         public static Brush HeaderForeground(string kind)
             => string.Equals(kind, "check", StringComparison.OrdinalIgnoreCase)
-                ? Brush("#FF1B1B1C") : Brushes.White;
+                ? CheckHeaderForeground : DefaultHeaderForeground;
 
         public static Brush PortBrush(string kind)
         {
