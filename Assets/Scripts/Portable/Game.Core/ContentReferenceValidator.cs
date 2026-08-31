@@ -11,6 +11,20 @@ namespace TruthCardGame.Core
     /// </summary>
     public static class ContentReferenceValidator
     {
+        /// <summary>
+        /// Validates a detached sequence fragment with the same reference
+        /// rules used for loaded Cards, Phases, and Sessions.
+        /// </summary>
+        public static void ValidateSequenceFragment(GameContentDefinition content,
+            ActionSequenceDefinition sequence, string owner = "Action Sequence fragment")
+        {
+            if (content == null) throw new ArgumentNullException(nameof(content));
+            var resources = IndexResources(content.Resources);
+            var capabilities = IndexIds(content.SmartToyCapabilityDefinitions, item => item?.Id);
+            var dialogTags = IndexIds(content.DialogTags, item => item?.Id);
+            ValidateSequence(sequence, owner ?? "Action Sequence fragment", resources, capabilities, dialogTags);
+        }
+
         public static void Validate(GameContentDefinition content)
         {
             if (content == null) throw new ArgumentNullException(nameof(content));

@@ -65,6 +65,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 var path = ResolveDatabasePath();
                 using (var connection = new SqliteConnection("Data Source=" + path))
                 {
+                    ConnectionInitializer.Initialize(connection);
+                    CoreMigrator.EnsureSchema(connection);
                     _content = GameContentSnapshotLoader.Load(connection);
                 }
                 SessionCombo.ItemsSource = _content.Sessions;

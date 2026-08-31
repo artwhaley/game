@@ -461,4 +461,21 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (!string.IsNullOrWhiteSpace(key)) keys.Add(key.Trim());
         }
     }
+
+    /// <summary>Recursive lookup across root and PromptChoice-owned editors.</summary>
+    public static class ActionSequenceEditorTree
+    {
+        public static ActionSequenceEditorViewModel Find(ActionSequenceEditorViewModel root, string sequenceId)
+        {
+            if (root == null || sequenceId == null) return null;
+            if (root.SequenceId == sequenceId) return root;
+            foreach (var row in root.Rows)
+                foreach (var option in row.PromptOptions)
+                {
+                    var found = Find(option.ActionSequence, sequenceId);
+                    if (found != null) return found;
+                }
+            return null;
+        }
+    }
 }

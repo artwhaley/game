@@ -907,6 +907,11 @@ namespace TruthCardGame.Content.Sqlite
                         throw new InvalidOperationException(
                             $"Loader: flow-control instance '{instanceId}' ({type}) must be blocking.");
                     }
+                    if (blocking && ActionType.IsAlwaysNonBlocking(type))
+                    {
+                        throw new InvalidOperationException(
+                            $"Loader: instance '{instanceId}' ({type}) must be nonblocking.");
+                    }
 
                     sequence.Instances.Add(LoadInstance(sequenceId, instanceId, type, blocking));
                 }
@@ -1046,7 +1051,7 @@ namespace TruthCardGame.Content.Sqlite
                             reader => { capability = reader.GetString(0); patternResource = reader.GetString(1); },
                             Param("i", instanceId));
                         RequireSubtypeRow(capability != null, sequenceId, instanceId, type);
-                        return new ToySetPatternInstanceDefinition { Id = instanceId, IsBlocking = false,
+                        return new ToySetPatternInstanceDefinition { Id = instanceId, IsBlocking = blocking,
                             CapabilityId = capability, PatternResourceId = patternResource };
                     }
 

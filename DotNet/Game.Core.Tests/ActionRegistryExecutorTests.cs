@@ -375,7 +375,8 @@ namespace TruthCardGame.Core.Tests
             var run = Run(_executor, context,
                 new ToySetPatternInstanceDefinition
                 {
-                    Id = "set-pattern", CapabilityId = "vibrate", PatternResourceId = "res-pat-50"
+                    Id = "set-pattern", CapabilityId = "vibrate", PatternResourceId = "res-pat-50",
+                    IsBlocking = false
                 },
                 new StatIncreaseInstanceDefinition { Id = "after-set", StatKey = "courage", Amount = 1f });
 

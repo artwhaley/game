@@ -208,6 +208,11 @@ namespace TruthCardGame.Content.Sqlite
                 throw new InvalidOperationException(
                     $"Always-blocking instance '{instance.Id}' ({type}) cannot be nonblocking.");
             }
+            if (instance.IsBlocking && ActionType.IsAlwaysNonBlocking(type))
+            {
+                throw new InvalidOperationException(
+                    $"Always-nonblocking instance '{instance.Id}' ({type}) cannot be blocking.");
+            }
 
             Sql.Execute(connection, transaction,
                 "UPDATE action_instance SET ordinal = @ordinal, is_blocking = @blocking WHERE id = @id AND action_sequence_id = @seq;",
@@ -373,6 +378,11 @@ namespace TruthCardGame.Content.Sqlite
             {
                 throw new InvalidOperationException(
                     $"Always-blocking instance '{instance.Id}' ({type}) cannot be nonblocking.");
+            }
+            if (instance.IsBlocking && ActionType.IsAlwaysNonBlocking(type))
+            {
+                throw new InvalidOperationException(
+                    $"Always-nonblocking instance '{instance.Id}' ({type}) cannot be blocking.");
             }
 
             Sql.Execute(connection, transaction,

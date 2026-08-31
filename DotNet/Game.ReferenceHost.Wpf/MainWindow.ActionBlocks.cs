@@ -35,7 +35,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void OnActionBlockSearchChanged(object sender, TextChangedEventArgs e) => RefreshActionBlockBrowser();
 
-        private void RefreshActionBlockBrowser()
+        private void RefreshActionBlockBrowser(bool selectFirstWhenEmpty = true)
         {
             if (!_actionBlockBrowserInitialized) return;
             var selectedId = (BlocksBrowserList.SelectedItem as ActionBlockBrowserItem)?.Id;
@@ -45,7 +45,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             _actionBlockBrowserItems.Clear();
             foreach (var block in blocks) _actionBlockBrowserItems.Add(new ActionBlockBrowserItem(block));
             if (selectedId != null) BlocksBrowserList.SelectedItem = _actionBlockBrowserItems.FirstOrDefault(item => item.Id == selectedId);
-            if (BlocksBrowserList.SelectedItem == null && _actionBlockBrowserItems.Count > 0) BlocksBrowserList.SelectedIndex = 0;
+            if (selectFirstWhenEmpty && BlocksBrowserList.SelectedItem == null && _actionBlockBrowserItems.Count > 0)
+                BlocksBrowserList.SelectedIndex = 0;
         }
 
         private void OnActionBlockBrowserMouseDown(object sender, MouseButtonEventArgs e)
@@ -138,9 +139,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void OnInsertActionBlock(object sender, RoutedEventArgs e)
         {
-            var item = BlocksBrowserList.SelectedItem as ActionBlockBrowserItem;
             var sequence = (sender as FrameworkElement)?.DataContext as ActionSequenceEditorViewModel;
-            if (item != null && sequence != null) InsertActionBlock(item.Block, sequence, sequence.Rows.Count);
+            if (sequence == null) return;
+            var item = ChooseActionBlock();
+            if (item != null) InsertActionBlock(item.Block, sequence, sequence.Rows.Count);
         }
 
         private void OnActionBlockDrop(object sender, DragEventArgs e)
@@ -188,8 +190,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 if (bufferSequence == null) return;
                 PushCommand(new InMemorySequenceCommand("Insert Action Block",
                     sequence => ReplaceBufferSequence(bufferSequence, sequence), before, after, RebuildCardSequenceHost));
-                if (CardActionSequenceHost.Content is ActionSequenceEditorViewModel cardEditor)
-                    cardEditor.SelectRowsByIds(_pendingActionSelectionIds);
+                ActionSequenceEditorTree.Find(CardActionSequenceHost.Content as ActionSequenceEditorViewModel,
+                    target.SequenceId)?.SelectRowsByIds(_pendingActionSelectionIds);
             }
             else
             {
@@ -211,17 +213,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (graph == null || _pendingActionSelectionIds == null) return;
             foreach (var node in graph.Nodes)
             {
-                var sequences = new List<ActionSequenceEditorViewModel>();
-                if (node.ActionSequence != null) sequences.Add(node.ActionSequence);
-                foreach (var option in node.DecisionRows) if (option.ActionSequence != null) sequences.Add(option.ActionSequence);
-                foreach (var sequence in sequences)
-                    if (sequence.SequenceId == _pendingActionSelectionSequenceId)
+                var sequence = ActionSequenceEditorTree.Find(node.ActionSequence, _pendingActionSelectionSequenceId);
+                if (sequence == null)
+                    foreach (var option in node.DecisionRows)
                     {
-                        sequence.SelectRowsByIds(_pendingActionSelectionIds);
-                        _pendingActionSelectionSequenceId = null;
-                        _pendingActionSelectionIds = null;
-                        return;
+                        sequence = ActionSequenceEditorTree.Find(option.ActionSequence, _pendingActionSelectionSequenceId);
+                        if (sequence != null) break;
                     }
+                if (sequence != null)
+                {
+                    sequence.SelectRowsByIds(_pendingActionSelectionIds);
+                    _pendingActionSelectionSequenceId = null;
+                    _pendingActionSelectionIds = null;
+                    return;
+                }
             }
         }
 
@@ -277,12 +282,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 BlocksBrowserList.ItemsSource = _actionBlockBrowserItems;
                 _actionBlockBrowserInitialized = true;
             }
-            RefreshActionBlockBrowser();
-            var selected = BlocksBrowserList.SelectedItem as ActionBlockBrowserItem;
-            if (selected != null) return selected;
+            RefreshActionBlockBrowser(selectFirstWhenEmpty: false);
             if (_actionBlockBrowserItems.Count == 0)
             {
-                StatusText.Text = "Create or select an Action Block first.";
+                StatusText.Text = "Create an Action Block first.";
                 return null;
             }
             if (_actionBlockBrowserItems.Count == 1) return _actionBlockBrowserItems[0];

@@ -377,6 +377,86 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
         }
 
         [Test]
+        public void ActionBlockSelectionLookupAndSelectionAreRecursive()
+        {
+            var owner = new GraphNodeViewModel { Id = "card" };
+            var nested = new ActionSequenceDefinition { Id = "nested-sequence" };
+            nested.Instances.Add(new DelayInstanceDefinition { Id = "nested-delay", DurationSeconds = 2 });
+            var prompt = new PromptChoiceInstanceDefinition
+            {
+                Id = "prompt", Prompt = "Choose", IsBlocking = true
+            };
+            prompt.Options.Add(new PromptChoiceOptionDefinition
+            {
+                Id = "option", Label = "Option", Sequence = nested
+            });
+            var root = new ActionSequenceEditorViewModel(owner, "root-sequence",
+                ActionOwnerScope.CardSequence, new[] { prompt }, null, null, null);
+
+            var nestedEditor = ActionSequenceEditorTree.Find(root, "nested-sequence");
+            Assert.That(nestedEditor, Is.Not.Null);
+            nestedEditor.SelectRowsByIds(new[] { "nested-delay" });
+            Assert.That(nestedEditor.SelectedRows.Select(row => row.InstanceId),
+                Is.EqualTo(new[] { "nested-delay" }));
+            Assert.That(ActionSequenceEditorTree.Find(root, "missing"), Is.Null);
+        }
+
+        [Test]
+        public void DirtyCardPromptChoiceBufferRebuildRetainsNestedBlockTarget()
+        {
+            var card = new CardDefinition
+            {
+                Id = "dirty-card", Title = "Dirty",
+                Sequence = new ActionSequenceDefinition { Id = "card-sequence" }
+            };
+            var prompt = new PromptChoiceInstanceDefinition
+                { Id = "prompt", Prompt = "Choose", IsBlocking = true };
+            prompt.Options.Add(new PromptChoiceOptionDefinition
+            {
+                Id = "option", Label = "Option",
+                Sequence = new ActionSequenceDefinition { Id = "nested-sequence" }
+            });
+            card.Sequence.Instances.Add(prompt);
+            var content = new GameContentDefinition();
+            var buffer = new CardEditBuffer(card);
+            var first = CardEditorSequenceHost.Build(buffer.Sequence, card.Id, card.Title, content);
+            var target = ActionSequenceEditorTree.Find(first, "nested-sequence");
+
+            buffer.AddAction(buffer.FindSequence(target.SequenceId), ActionTypeKeys.Delay,
+                id => target.CreateDefaultInstance(ActionTypeKeys.Delay, id));
+            var rebuilt = CardEditorSequenceHost.Build(buffer.Sequence, card.Id, card.Title, content);
+            var rebuiltTarget = ActionSequenceEditorTree.Find(rebuilt, "nested-sequence");
+
+            Assert.That(buffer.IsDirty, Is.True);
+            Assert.That(rebuiltTarget.Rows.Select(row => row.TypeKey),
+                Is.EqualTo(new[] { ActionTypeKeys.Delay }));
+            Assert.That(rebuiltTarget.SequenceId, Is.EqualTo(target.SequenceId));
+        }
+
+        [Test]
+        public void ActionBlockUxExposesEmptySequenceInsertAndNonblockingSetPattern()
+        {
+            EnsureApplication();
+            var window = new MainWindow();
+            try
+            {
+                var template = (DataTemplate)window.Resources["ActionSequenceTemplate"];
+                Assert.That(template, Is.Not.Null);
+                var editor = new ActionSequenceEditorViewModel(
+                    new GraphNodeViewModel { Id = "empty" }, "empty-sequence",
+                    ActionOwnerScope.CardSequence, null, null, null, null);
+                Assert.That(editor.Rows, Is.Empty);
+                Assert.That(editor.CreateDefaultInstance(ActionTypeKeys.ToySetPattern, "set"),
+                    Has.Property(nameof(ActionInstanceDefinition.IsBlocking)).EqualTo(false));
+                Assert.That(ActionTypeRegistry.ByTypeKey(ActionTypeKeys.ToySetPattern).IsAlwaysNonBlocking, Is.True);
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+
+        [Test]
         public void AutoLayoutRepairsExactDuplicateSavedCoordinates()
         {
             var nodes = new GraphNodeDefinition[]

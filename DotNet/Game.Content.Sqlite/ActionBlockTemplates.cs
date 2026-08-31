@@ -61,6 +61,7 @@ namespace TruthCardGame.Content.Sqlite
             var template = new ActionBlockTemplate { SourcePhaseId = sourcePhaseId ?? "" };
             foreach (var instance in instances ?? new List<ActionInstanceDefinition>())
                 template.Actions.Add(ToTemplate(instance));
+            ValidateTemplate(template);
             return Write(template);
         }
 
@@ -206,7 +207,13 @@ namespace TruthCardGame.Content.Sqlite
         private static void ValidateAction(ActionBlockActionTemplate action)
         {
             if (action == null || string.IsNullOrWhiteSpace(action.TypeKey)) throw new InvalidOperationException("Action Block contains an Action without a type key.");
-            ActionTypeRegistry.ByTypeKey(action.TypeKey);
+            var info = ActionTypeRegistry.ByTypeKey(action.TypeKey);
+            if (info.IsAlwaysBlocking && !action.IsBlocking)
+                throw new InvalidOperationException(
+                    "Action Block action '" + action.TypeKey + "' must be blocking.");
+            if (info.IsAlwaysNonBlocking && action.IsBlocking)
+                throw new InvalidOperationException(
+                    "Action Block action '" + action.TypeKey + "' must be nonblocking.");
             foreach (var option in action.Options ?? new List<ActionBlockOptionTemplate>())
                 foreach (var nested in option.Actions ?? new List<ActionBlockActionTemplate>()) ValidateAction(nested);
         }

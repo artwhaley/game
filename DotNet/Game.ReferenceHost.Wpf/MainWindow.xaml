@@ -42,6 +42,8 @@
                         </ComboBox>
                         <Button Content="+ Action" Click="OnAddActionInstance" Padding="5,1" Margin="3,0,0,0"
                                 Style="{StaticResource DarkButton}" ToolTip="Append the selected Action Type"/>
+                        <Button Content="+ Block" Click="OnInsertActionBlock" Padding="5,1" Margin="3,0,0,0"
+                                Style="{StaticResource DarkButton}" ToolTip="Choose and append an Action Block"/>
                         <Button Content="Save Selection as Block" Click="OnSaveSelectedActionBlock" Padding="5,1" Margin="6,0,0,0"
                                 Style="{StaticResource DarkButton}" ToolTip="Save the selected Action rows as an editor template"/>
                         <Button Content="Save Sequence as Block" Click="OnSaveEntireActionBlock" Padding="5,1" Margin="3,0,0,0"

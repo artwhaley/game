@@ -39,5 +39,10 @@ namespace TruthCardGame.Content.Sqlite
         {
             return ActionTypeKeys.IsAlwaysBlocking(actionType);
         }
+
+        public static bool IsAlwaysNonBlocking(string actionType)
+        {
+            return ActionTypeKeys.IsAlwaysNonBlocking(actionType);
+        }
     }
 }

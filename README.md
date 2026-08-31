@@ -84,6 +84,10 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   schema v9 adds the persisted Cards folder hierarchy without changing runtime
   card semantics. Schema v10 adds editor-only reusable Action Blocks with
   recursive deep cloning, scope validation, and undoable drag/drop insertion;
+  The Action Blocks readiness correction makes v10 migration authoritative,
+  unifies detached-fragment reference validation, enforces Set Toy Pattern as
+  always nonblocking, and adds chooser/empty-sequence/recursive-selection
+  regression coverage.
   see [`Docs/ActionBlocks/`](Docs/ActionBlocks/).
   Schema v8 adds reusable Resource, Dialog Tag, and Dialog Snippet catalogs,
   plus Set Toy Pattern, Timed Toy Pattern, and Dialog From Tags. Direct Dialog
@@ -120,8 +124,8 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   bridge remains deferred. See
   [`Docs/FinalPreMilestoneC/FINAL-REPORT.md`](Docs/FinalPreMilestoneC/FINAL-REPORT.md)
   and do not infer human acceptance from older milestone reports.
-- Latest automated .NET gates: **174 Core tests passed**, **148 SQLite tests
-  passed**, **11 profile tests passed**, and **42 WPF tests passed** (**375
+- Latest automated .NET gates: **174 Core tests passed**, **152 SQLite tests
+  passed**, **11 profile tests passed**, and **45 WPF tests passed** (**382
   total**). The canonical DB is schema v10, passes integrity and foreign-key
   checks, and contains the authored fixture's 1 Session, 1 Phase, and 3 Cards.
   A disposable 20-Card/two-Phase authoring-to-execution canary passes through

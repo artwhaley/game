@@ -1352,6 +1352,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 GameContentDefinition content;
                 using (var connection = new SqliteConnection("Data Source=" + path))
                 {
+                    ConnectionInitializer.Initialize(connection);
+                    CoreMigrator.EnsureSchema(connection);
                     content = GameContentSnapshotLoader.Load(connection);
                 }
                 _vm.LoadContent(content);

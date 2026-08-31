@@ -23,6 +23,7 @@ namespace TruthCardGame.Core
         public string SearchKeywords { get; set; } = "";
         public ActionOwnerScope LegalScopes { get; set; } = ActionOwnerScope.None;
         public bool IsAlwaysBlocking { get; set; }
+        public bool IsAlwaysNonBlocking { get; set; }
         public bool BlockingConfigurable { get; set; } = true;
         public bool DefaultBlocking { get; set; } = true;
 
@@ -77,6 +78,11 @@ namespace TruthCardGame.Core
             {
                 throw new InvalidOperationException(
                     $"Action '{instance.Id}' ({info.TypeKey}) must be blocking.");
+            }
+            if (info.IsAlwaysNonBlocking && instance.IsBlocking)
+            {
+                throw new InvalidOperationException(
+                    $"Action '{instance.Id}' ({info.TypeKey}) must be nonblocking.");
             }
         }
 
@@ -244,6 +250,7 @@ namespace TruthCardGame.Core
                 // Persistent toy state is never a background Task: it returns
                 // promptly and survives Cards/Phases. Always nonblocking.
                 LegalScopes = ActionOwnerScope.All,
+                IsAlwaysNonBlocking = true,
                 BlockingConfigurable = false,
                 DefaultBlocking = false,
                 EditorDiscriminator = "ToySetPattern",

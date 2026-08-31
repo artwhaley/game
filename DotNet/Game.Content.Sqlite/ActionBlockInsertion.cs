@@ -45,6 +45,19 @@ namespace TruthCardGame.Content.Sqlite
                 for (var i = 0; i < actions.Count; i++)
                     ValidateAction(actions[i], destination.Scope, destination, content, template.SourcePhaseId,
                         "Action " + (i + 1), result);
+                var fragment = new ActionSequenceDefinition
+                {
+                    Id = (idPrefix ?? "block") + "-fragment"
+                };
+                fragment.Instances.AddRange(actions);
+                try
+                {
+                    ContentReferenceValidator.ValidateSequenceFragment(content, fragment, "Action Block");
+                }
+                catch (Exception ex)
+                {
+                    result.Errors.Add(ex.Message);
+                }
                 if (result.IsValid) result.ClonedActions.AddRange(actions);
             }
             catch (Exception ex)
@@ -68,20 +81,6 @@ namespace TruthCardGame.Content.Sqlite
                 case ModifyTemperatureInstanceDefinition temperature:
                     if (!content.Temperatures.Any(item => item.Id == temperature.TemperatureId))
                         result.Errors.Add(path + ": temperature '" + temperature.TemperatureId + "' no longer exists.");
-                    break;
-                case CutsceneInstanceDefinition cutscene:
-                    if (!content.Resources.Any(item => item.Id == cutscene.ResourceId && string.Equals(item.Kind, ResourceKinds.Cutscene, StringComparison.OrdinalIgnoreCase)))
-                        result.Errors.Add(path + ": cutscene Resource '" + cutscene.ResourceId + "' no longer exists.");
-                    break;
-                case ToyActivityInstanceDefinition toy:
-                    ValidateToy(toy.CapabilityId, toy.PatternResourceId, content, path, result);
-                    break;
-                case ToySetPatternInstanceDefinition toySet:
-                    ValidateToy(toySet.CapabilityId, toySet.PatternResourceId, content, path, result);
-                    break;
-                case DialogFromTagsInstanceDefinition tags:
-                    foreach (var tag in tags.RequiredDialogTagIds ?? new List<string>())
-                        if (!content.DialogTags.Any(item => item.Id == tag)) result.Errors.Add(path + ": Dialog Tag '" + tag + "' no longer exists.");
                     break;
                 case PhaseGotoInstanceDefinition phaseGoto:
                     if (string.IsNullOrWhiteSpace(destination.PhaseId)) result.Errors.Add(path + ": PhaseGoto requires a Phase destination.");
@@ -112,14 +111,6 @@ namespace TruthCardGame.Content.Sqlite
             }
         }
 
-        private static void ValidateToy(string capabilityId, string patternId,
-            GameContentDefinition content, string path, ActionBlockValidationResult result)
-        {
-            if (!content.SmartToyCapabilityDefinitions.Any(item => item.Id == capabilityId))
-                result.Errors.Add(path + ": Smart Toy Capability '" + capabilityId + "' no longer exists.");
-            if (!content.Resources.Any(item => item.Id == patternId && string.Equals(item.Kind, ResourceKinds.ToyPattern, StringComparison.OrdinalIgnoreCase)))
-                result.Errors.Add(path + ": Toy Pattern Resource '" + patternId + "' no longer exists.");
-        }
     }
 
     /// <summary>One compound persistence command for a graph-owned sequence.</summary>

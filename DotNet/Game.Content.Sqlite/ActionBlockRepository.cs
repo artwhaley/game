@@ -8,18 +8,9 @@ namespace TruthCardGame.Content.Sqlite
     /// <summary>CRUD for the WPF-only Action Block template ledger.</summary>
     public static class ActionBlockRepository
     {
-        public static void EnsureTable(DbConnection connection)
-        {
-            Sql.Execute(connection, null,
-                "CREATE TABLE IF NOT EXISTS wpf_action_block (" +
-                "id TEXT PRIMARY KEY, name TEXT NOT NULL, format_version INTEGER NOT NULL, " +
-                "template_json TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0);" +
-                "CREATE UNIQUE INDEX IF NOT EXISTS ux_wpf_action_block_name ON wpf_action_block(name COLLATE NOCASE);");
-        }
-
         public static List<ActionBlockDefinition> List(DbConnection connection, string search = null)
         {
-            EnsureTable(connection);
+            RequireSchema(connection);
             var result = new List<ActionBlockDefinition>();
             var filter = (search ?? "").Trim();
             var sql = "SELECT id, name, format_version, template_json, sort_order FROM wpf_action_block " +
@@ -43,7 +34,7 @@ namespace TruthCardGame.Content.Sqlite
 
         public static ActionBlockDefinition Get(DbConnection connection, string id)
         {
-            EnsureTable(connection);
+            RequireSchema(connection);
             ActionBlockDefinition result = null;
             Sql.QueryAll(connection,
                 "SELECT id, name, format_version, template_json, sort_order FROM wpf_action_block WHERE id = @id;",
@@ -60,7 +51,7 @@ namespace TruthCardGame.Content.Sqlite
             if (block == null) throw new ArgumentNullException(nameof(block));
             if (string.IsNullOrWhiteSpace(block.Id) || string.IsNullOrWhiteSpace(block.Name)) throw new ArgumentException("Action Block id and name are required.");
             if (block.FormatVersion <= 0) block.FormatVersion = ActionBlockSerializer.CurrentFormatVersion;
-            EnsureTable(connection);
+            RequireSchema(connection);
             Sql.Execute(connection, null,
                 "INSERT INTO wpf_action_block (id, name, format_version, template_json, sort_order) VALUES (@id, @name, @version, @json, @sort);",
                 ("id", block.Id), ("name", block.Name.Trim()), ("version", block.FormatVersion),
@@ -70,13 +61,13 @@ namespace TruthCardGame.Content.Sqlite
         public static void Rename(DbConnection connection, string id, string name)
         {
             if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("Action Block name is required.", nameof(name));
-            EnsureTable(connection);
+            RequireSchema(connection);
             Sql.Execute(connection, null, "UPDATE wpf_action_block SET name = @name WHERE id = @id;", ("name", name.Trim()), ("id", id));
         }
 
         public static void Delete(DbConnection connection, string id)
         {
-            EnsureTable(connection);
+            RequireSchema(connection);
             Sql.Execute(connection, null, "DELETE FROM wpf_action_block WHERE id = @id;", ("id", id));
         }
 
@@ -88,6 +79,20 @@ namespace TruthCardGame.Content.Sqlite
                 Id = newId, Name = newName, FormatVersion = source.FormatVersion,
                 TemplateJson = source.TemplateJson, SortOrder = source.SortOrder + 1
             });
+        }
+
+        private static void RequireSchema(DbConnection connection)
+        {
+            if (connection == null) throw new ArgumentNullException(nameof(connection));
+            var exists = false;
+            Sql.QueryAll(connection,
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'wpf_action_block' LIMIT 1;",
+                _ => exists = true);
+            if (!exists)
+            {
+                throw new InvalidOperationException(
+                    "Action Block schema is unavailable; run CoreMigrator.EnsureSchema before using ActionBlockRepository.");
+            }
         }
     }
 }

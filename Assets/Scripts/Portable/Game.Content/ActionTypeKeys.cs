@@ -44,5 +44,11 @@ namespace TruthCardGame.Content
                 || typeKey == WaitForAll
                 || typeKey == PromptChoice;
         }
+
+        /// <summary>Actions that must never be persisted or authored as blocking.</summary>
+        public static bool IsAlwaysNonBlocking(string typeKey)
+        {
+            return typeKey == ToySetPattern;
+        }
     }
 }
