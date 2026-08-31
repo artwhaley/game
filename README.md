@@ -129,7 +129,9 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
 - Latest automated .NET gates: **174 Core tests passed**, **154 SQLite tests
   passed**, **11 profile tests passed**, and **45 WPF tests passed** (**384
   total**). The canonical DB is schema v10, passes integrity and foreign-key
-  checks, and contains the authored fixture's 1 Session, 1 Phase, and 3 Cards.
+  checks, and is content-empty after the starter fixture was removed (the
+  hand-authored shakedown session in `TESTING-METHODOLOGY.md` is the next
+  content milestone; the workbench migrates the file to v11 on next open).
   A disposable 20-Card/two-Phase authoring-to-execution canary passes through
   the production SQLite loader and Core engine. The WPF host was built and
   launched for the remaining human canary.

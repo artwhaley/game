@@ -97,8 +97,17 @@ namespace TruthCardGame.Content.Sqlite
             }
         }
 
+        /// <summary>
+        /// Recursively deletes a sequence and everything it owns, including
+        /// PromptChoice option child sequences and their instances. Nothing
+        /// cascades INTO action_sequence (option rows reference their child
+        /// sequences, not the other way around), so without this walk a delete
+        /// of a card/phase sequence that owns a PromptChoice leaks the option
+        /// sequences and their instances as orphan rows.
+        /// </summary>
         public static void Delete(DbConnection connection, DbTransaction transaction, string sequenceId)
         {
+            ClearContents(connection, transaction, sequenceId);
             Sql.Execute(connection, transaction,
                 "DELETE FROM action_sequence WHERE id = @id;",
                 ("id", sequenceId));

@@ -119,6 +119,65 @@ namespace TruthCardGame.Content.Sqlite.Tests
         }
 
         [Test]
+        public void DeleteCard_DoesNotLeakPromptChoiceOptionSequences()
+        {
+            using (var connection = Open())
+            {
+                CoreMigrator.EnsureSchema(connection);
+
+                // Card whose sequence owns a PromptChoice with option sequences;
+                // one option nests another PromptChoice (recursive ownership).
+                var nested = new ActionSequenceDefinition { Id = "del-nested-seq" };
+                nested.Instances.Add(new DialogInstanceDefinition { Id = "del-nested-dialog", Text = "Deep" });
+                var deepPrompt = new PromptChoiceInstanceDefinition { Id = "del-deep-prompt", Prompt = "Deep?" };
+                deepPrompt.Options.Add(new PromptChoiceOptionDefinition
+                    { Id = "del-deep-option", Label = "Deep", Sequence = nested });
+
+                var optionA = new ActionSequenceDefinition { Id = "del-option-a-seq" };
+                optionA.Instances.Add(new DialogInstanceDefinition { Id = "del-option-a-dialog", Text = "A" });
+                var optionB = new ActionSequenceDefinition { Id = "del-option-b-seq" };
+                optionB.Instances.Add(deepPrompt);
+                var prompt = new PromptChoiceInstanceDefinition { Id = "del-prompt", Prompt = "Choose" };
+                prompt.Options.Add(new PromptChoiceOptionDefinition
+                    { Id = "del-option-a", Label = "A", Sequence = optionA });
+                prompt.Options.Add(new PromptChoiceOptionDefinition
+                    { Id = "del-option-b", Label = "B", Sequence = optionB });
+
+                var card = new CardDefinition
+                {
+                    Id = "del-card",
+                    Title = "Delete Me",
+                    Sequence = new ActionSequenceDefinition { Id = "del-card-seq" },
+                };
+                card.Sequence.Instances.Add(prompt);
+                CardRepository.Create(connection, card);
+
+                CardRepository.Delete(connection, "del-card");
+
+                using (var check = connection.CreateCommand())
+                {
+                    check.CommandText = "SELECT COUNT(*) FROM action_sequence;";
+                    Assert.AreEqual(0L, check.ExecuteScalar(),
+                        "deleting a card must not leak its PromptChoice option sequences");
+                }
+                using (var check = connection.CreateCommand())
+                {
+                    check.CommandText = "SELECT COUNT(*) FROM action_instance;";
+                    Assert.AreEqual(0L, check.ExecuteScalar(),
+                        "deleting a card must not leak option-sequence action instances");
+                }
+                using (var check = connection.CreateCommand())
+                {
+                    check.CommandText = "PRAGMA foreign_key_check;";
+                    using (var reader = check.ExecuteReader())
+                    {
+                        Assert.IsFalse(reader.Read(), "no foreign-key violations after recursive delete");
+                    }
+                }
+            }
+        }
+
+        [Test]
         public void CardFolderPath_IsNormalizedStoredAndLoaded()
         {
             using (var connection = Open())
