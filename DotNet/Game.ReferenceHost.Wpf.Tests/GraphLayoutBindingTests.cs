@@ -77,6 +77,8 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
                     Is.SameAs(GraphPresentationPalette.DecisionHeader));
                 Assert.That(((Button)window.FindName("AddSessionEndButton")).Background,
                     Is.SameAs(GraphPresentationPalette.EndHeader));
+                Assert.That(((Button)window.FindName("AddSessionPortalButton")).Background,
+                    Is.SameAs(GraphPresentationPalette.PortalHeader));
                 Assert.That(((Button)window.FindName("AddPhaseCardButton")).Background,
                     Is.SameAs(GraphPresentationPalette.CardHeader));
                 Assert.That(((Button)window.FindName("AddPhaseCheckButton")).Background,
@@ -87,6 +89,8 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
                     Is.SameAs(GraphPresentationPalette.DecisionHeader));
                 Assert.That(((Button)window.FindName("AddPhaseReturnButton")).Background,
                     Is.SameAs(GraphPresentationPalette.ReturnHeader));
+                Assert.That(((Button)window.FindName("AddPhasePortalButton")).Background,
+                    Is.SameAs(GraphPresentationPalette.PortalHeader));
             }
             finally
             {

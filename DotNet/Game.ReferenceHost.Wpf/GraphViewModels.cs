@@ -787,6 +787,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public static readonly Brush ReturnHeader = Brush("#FFEF6C00");
         public static readonly Brush EndHeader = Brush("#FFC62828");
         public static readonly Brush DefaultHeader = Brush("#FF455A64");
+        public static readonly Brush PortalHeader = Brush("#FF42A5F5");
         public static readonly Brush CheckHeaderForeground = Brush("#FF1B1B1C");
         public static readonly Brush DefaultHeaderForeground = Brushes.White;
         public static readonly Brush NormalWire = Brush("#FF7EB6E8");

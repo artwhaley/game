@@ -851,6 +851,10 @@
                             <Button x:Name="AddSessionEndButton" Content="+ End" Click="OnAddSessionEnd" Padding="6,1" Margin="0,0,3,0"
                                     Background="{x:Static vm:GraphPresentationPalette.EndHeader}"
                                     Style="{StaticResource DarkButton}"/>
+                            <Button x:Name="AddSessionPortalButton" Content="+ Portal Pair" Click="OnInsertPortalPairButton"
+                                    Tag="session" Padding="6,1" Margin="0,0,3,0"
+                                    Background="{x:Static vm:GraphPresentationPalette.PortalHeader}"
+                                    Style="{StaticResource DarkButton}" ToolTip="Add a movable portal pair to an existing Session edge"/>
                             <Button Content="Delete" Click="OnDeleteSelectedNode" Padding="6,1"
                                     Style="{StaticResource DarkButton}" ToolTip="Delete the selected node"/>
                         </WrapPanel>
@@ -940,6 +944,10 @@
                             <Button x:Name="AddPhaseReturnButton" Content="+ Return" Click="OnAddReturn" Padding="6,1" Margin="0,0,0,2"
                                     Background="{x:Static vm:GraphPresentationPalette.ReturnHeader}"
                                     Style="{StaticResource DarkButton}" ToolTip="Add a RETURN node (resumes the suspended caller phase)"/>
+                            <Button x:Name="AddPhasePortalButton" Content="+ Portal Pair" Click="OnInsertPortalPairButton"
+                                    Tag="phase" Padding="6,1" Margin="0,0,3,2"
+                                    Background="{x:Static vm:GraphPresentationPalette.PortalHeader}"
+                                    Style="{StaticResource DarkButton}" ToolTip="Add a movable portal pair to an existing Phase edge"/>
                             <Button Content="Delete" Click="OnDeleteSelectedNode" Padding="6,1" Margin="0,0,0,2"
                                     Style="{StaticResource DarkButton}" ToolTip="Delete the selected node"/>
                         </WrapPanel>

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using Nodify;
 using TruthCardGame.Content.Sqlite;
 
@@ -39,6 +40,122 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (connection == null) connection = (sender as FrameworkElement)?.DataContext as ConnectionViewModel;
             if (connection == null || string.IsNullOrEmpty(connection.EdgeId) || connection.PortalPair != null) return;
             InsertBridgePair(connection);
+        }
+
+        private void OnInsertPortalPairButton(object sender, RoutedEventArgs e)
+        {
+            var graphKind = ((FrameworkElement)sender).Tag as string;
+            var connection = ChoosePortalConnection(graphKind);
+            if (connection != null) InsertBridgePair(connection);
+        }
+
+        private ConnectionViewModel ChoosePortalConnection(string graphKind)
+        {
+            var graph = string.Equals(graphKind, "session", StringComparison.OrdinalIgnoreCase)
+                ? (GraphEditorViewModel)_vm.SessionGraph : _vm.PhaseGraph;
+            var candidates = graph.Connections
+                .Where(connection => !string.IsNullOrEmpty(connection.EdgeId) && connection.PortalPair == null)
+                .OrderBy(connection => connection.Source?.Owner?.Title ?? connection.Source?.Owner?.Id ?? "", StringComparer.OrdinalIgnoreCase)
+                .ThenBy(connection => connection.Target?.Owner?.Title ?? connection.Target?.Owner?.Id ?? "", StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (candidates.Count == 0)
+            {
+                StatusText.Text = "Connect an unportalized edge first.";
+                return null;
+            }
+            if (candidates.Count == 1) return candidates[0];
+
+            var choices = candidates.Select(connection => new PortalEdgeChoice(connection)).ToList();
+            var list = new ListBox
+            {
+                ItemsSource = choices,
+                DisplayMemberPath = nameof(PortalEdgeChoice.DisplayText),
+                MinWidth = 480,
+                MinHeight = 180,
+            };
+            list.Style = FindResource("DarkListBox") as Style;
+            list.ItemContainerStyle = FindResource("DarkListBoxItem") as Style;
+            var search = new TextBox { MinWidth = 480, Margin = new Thickness(0, 0, 0, 5) };
+            search.Style = FindResource("DarkTextBox") as Style;
+            search.ToolTip = "Filter graph edges by node name or edge id";
+            var insert = new Button { Content = "Insert", Padding = new Thickness(12, 2, 12, 2), IsDefault = true };
+            insert.Style = FindResource("DarkButton") as Style;
+            var cancel = new Button { Content = "Cancel", Padding = new Thickness(12, 2, 12, 2), IsCancel = true,
+                Margin = new Thickness(6, 0, 0, 0) };
+            cancel.Style = FindResource("DarkButton") as Style;
+            var buttons = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 8, 0, 0),
+            };
+            buttons.Children.Add(insert);
+            buttons.Children.Add(cancel);
+            var panel = new StackPanel { Margin = new Thickness(10) };
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Choose the edge for the portal pair",
+                Foreground = Brushes.White,
+                Margin = new Thickness(0, 0, 0, 5),
+            });
+            panel.Children.Add(search);
+            panel.Children.Add(list);
+            panel.Children.Add(buttons);
+            var dialog = new Window
+            {
+                Title = "Insert Portal Pair",
+                Content = panel,
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                SizeToContent = SizeToContent.WidthAndHeight,
+                ShowInTaskbar = false,
+                Background = FindResource("PanelBrush") as Brush,
+            };
+            ConnectionViewModel choice = null;
+            Action refresh = () =>
+            {
+                var query = (search.Text ?? "").Trim();
+                var visible = choices.Where(item => item.DisplayText.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+                list.ItemsSource = visible;
+                insert.IsEnabled = visible.Count > 0;
+                if (visible.Count > 0) list.SelectedIndex = 0;
+            };
+            Action commit = () =>
+            {
+                choice = (list.SelectedItem as PortalEdgeChoice)?.Connection;
+                if (choice != null) dialog.DialogResult = true;
+            };
+            search.TextChanged += (_, _) => refresh();
+            search.KeyDown += (_, args) =>
+            {
+                if (args.Key == Key.Enter) { commit(); args.Handled = true; }
+            };
+            list.KeyDown += (_, args) =>
+            {
+                if (args.Key == Key.Enter) { commit(); args.Handled = true; }
+            };
+            list.MouseDoubleClick += (_, _) => commit();
+            insert.Click += (_, _) => commit();
+            list.SelectedIndex = 0;
+            refresh();
+            dialog.ShowDialog();
+            return choice;
+        }
+
+        private sealed class PortalEdgeChoice
+        {
+            public PortalEdgeChoice(ConnectionViewModel connection)
+            {
+                Connection = connection;
+                var source = connection.Source?.Owner?.Title;
+                var target = connection.Target?.Owner?.Title;
+                DisplayText = (string.IsNullOrEmpty(source) ? connection.Source?.Owner?.Id : source) +
+                    "  →  " + (string.IsNullOrEmpty(target) ? connection.Target?.Owner?.Id : target) +
+                    "   [" + connection.EdgeId + "]";
+            }
+
+            public ConnectionViewModel Connection { get; }
+            public string DisplayText { get; }
         }
 
         private void InsertBridgePair(ConnectionViewModel connection)
