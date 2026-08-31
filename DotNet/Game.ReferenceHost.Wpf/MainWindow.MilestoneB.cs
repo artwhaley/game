@@ -55,6 +55,16 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private UserProfileWindow _profileWindow;
         private CardEditBuffer _cardBuffer;
 
+        internal bool IsCardBufferDirty => _cardBuffer?.IsDirty == true;
+        internal string DirtyCardTitle => _cardBuffer?.Title ?? "(untitled)";
+
+        internal void FollowRuntimeCard(CardDefinition card)
+        {
+            if (card == null || IsCardBufferDirty) return;
+            OnShowCardsLibrary(this, new RoutedEventArgs());
+            SelectTreeCard(card.Id, true);
+        }
+
         // ---------- library mode switching (extends SetLibraryMode) ----------
 
         private void OnShowCardsLibrary(object sender, RoutedEventArgs e)
@@ -1705,6 +1715,25 @@ namespace TruthCardGame.ReferenceHost.Wpf
             CardDirtyText.Text = dirty ? "● unsaved changes" : "";
             CardSaveButton.IsEnabled = true;
             CardRevertButton.IsEnabled = true;
+            CardDirtyText.Text = dirty
+                ? "Unsaved Card changes — session follow will pause before another Card executes."
+                : "";
+            if (dirty)
+            {
+                CardSaveButton.Background = new SolidColorBrush(Color.FromRgb(255, 200, 87));
+                CardSaveButton.Foreground = new SolidColorBrush(Color.FromRgb(27, 27, 28));
+                CardSaveButton.BorderBrush = new SolidColorBrush(Color.FromRgb(255, 224, 138));
+                CardSaveButton.BorderThickness = new Thickness(2);
+                CardSaveButton.FontWeight = FontWeights.SemiBold;
+            }
+            else
+            {
+                CardSaveButton.ClearValue(Button.BackgroundProperty);
+                CardSaveButton.ClearValue(Button.ForegroundProperty);
+                CardSaveButton.ClearValue(Button.BorderBrushProperty);
+                CardSaveButton.ClearValue(Button.BorderThicknessProperty);
+                CardSaveButton.ClearValue(Button.FontWeightProperty);
+            }
         }
 
         /// <summary>Title/body keystrokes land in the buffer only.</summary>

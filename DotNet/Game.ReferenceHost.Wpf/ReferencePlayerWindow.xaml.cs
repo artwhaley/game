@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
@@ -34,6 +35,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private bool _waitingForContinue;
         private int _seed;
         private ToyActivityHostService _toyHost;
+        private readonly ReferencePlayerExecutionPauseGate _pauseGate;
+        private readonly List<Action> _engineUnsubscribers = new List<Action>();
+        private bool _runStarted;
 
         /// <summary>The visible integer seed used for the next/restarted run.</summary>
         public int Seed
@@ -48,11 +52,34 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         /// <summary>Raised on the UI thread whenever playback enters a phase (phase id).</summary>
         public event Action<string> PhaseChanged;
+        public event Action<string> SessionNodeChanged;
+        public event Action<string, string> PhaseNodeChanged;
+        public event Action<GraphEdgeTraversal> EdgeTraversed;
+        public event Action<CardDefinition> CardStarted;
+        public event Action RunStarted;
+        public event Action RunCompleted;
+        public event Action RunStopped;
+
+        public Func<ExecutionCheckpoint, string> AutomaticPauseReason
+        {
+            get => _pauseGate.AutomaticPauseReason;
+            set => _pauseGate.AutomaticPauseReason = value;
+        }
+
+        public Func<ExecutionCheckpoint, Task<bool>> ResumeGuard
+        {
+            get => _pauseGate.ResumeGuard;
+            set => _pauseGate.ResumeGuard = value;
+        }
+
+        public bool IsPaused => _pauseGate.IsPaused;
 
         public ReferencePlayerWindow()
         {
             InitializeComponent();
             LogList.ItemsSource = _log;
+            _pauseGate = new ReferencePlayerExecutionPauseGate();
+            _pauseGate.StateChanged += OnPauseStateChanged;
             Loaded += (_, _) => LoadContent();
         }
 
@@ -162,6 +189,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
                 StopAuto();
                 CancelSession();
+                _pauseGate.Cancel();
                 _sessionCts = new CancellationTokenSource();
                 _waitingForContinue = false;
 
@@ -174,12 +202,16 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     prompts: new UiPromptService(this),
                     cutscene: new UiCutsceneService(this),
                     toyActivity: _toyHost,
-                    dialog: new DialogHostService((text, ct) => ShowDialogAsync(text, ct), new UiGameLog(Log)));
+                    dialog: new DialogHostService((text, ct) => ShowDialogAsync(text, ct), new UiGameLog(Log)),
+                    pauseGate: _pauseGate);
 
+                UnsubscribeEngine();
                 _engine = new GameSessionEngine(_content, selected.Id, services, SpawnOptionsForRun(seed),
                     rngFactory: null, selectionProfile: LoadSelectionProfile());
 
                 SubscribeEngine();
+                _runStarted = true;
+                RunStarted?.Invoke();
 
                 ClearInteractionArea();
                 SessionTitle.Text = selected.Title;
@@ -190,6 +222,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 TemperaturesText.Text = RefreshTemperatures();
                 SetStatus("Starting…");
                 DrawNextButton.IsEnabled = false;
+                PauseButton.IsEnabled = true;
+                ResumeButton.IsEnabled = false;
                 Log($"Seed: {seed}");
                 Log($"Session started: {SelectionDiagnosticsFormatter.Session(selected)}");
 
@@ -230,11 +264,34 @@ namespace TruthCardGame.ReferenceHost.Wpf
             await AdvanceAsync();
         }
 
+        private void OnPause(object sender, RoutedEventArgs e)
+        {
+            if (_engine == null || _engine.IsComplete || IsPaused) return;
+            _pauseGate.RequestPause();
+        }
+
+        private async void OnResume(object sender, RoutedEventArgs e)
+        {
+            if (!IsPaused) return;
+            try
+            {
+                if (!await _pauseGate.ResumeAsync())
+                    SetStatus("Cannot resume — resolve the pause reason first.");
+            }
+            catch (Exception ex)
+            {
+                SetStatus("Resume error");
+                Log("ERROR resuming: " + ex.Message);
+            }
+        }
+
         private void OnHalt(object sender, RoutedEventArgs e)
         {
             Log("RUNNER HALT requested.");
             StopAuto();
+            _pauseGate.Cancel();
             CancelSession();
+            RunStopped?.Invoke();
             Close();
         }
 
@@ -288,7 +345,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 if (_engine == null || !_engine.IsComplete)
                 {
                     DrawNextButton.IsEnabled = _engine != null;
-                    SetStatus("Paused — continue when ready");
+                    if (!IsPaused) SetStatus("Paused — continue when ready");
                 }
             }
         }
@@ -300,7 +357,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private async Task AdvanceAsync()
         {
-            if (_engine == null || _sessionCts == null) return;
+            if (_engine == null || _sessionCts == null || IsPaused) return;
 
             DrawNextButton.IsEnabled = false;
             try
@@ -322,6 +379,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         SetStatus("Complete");
                         CardTitle.Text = result.Card?.Title ?? "(no card — skipped empty phases)";
                         DrawNextButton.IsEnabled = false;
+                        PauseButton.IsEnabled = false;
+                        ResumeButton.IsEnabled = false;
                         Log("SESSION COMPLETE");
                         break;
                     case AdvanceResultKind.BusyIgnored:
@@ -414,35 +473,79 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void SubscribeEngine()
         {
-            _engine.CardStarted += card =>
+            UnsubscribeEngine();
+            var engine = _engine;
+            Action<CardDefinition> cardStarted = card =>
             {
                 CardTitle.Text = card.Title;
                 CardBodyText.Text = card.BodyText ?? "";
                 SetStatus("Executing…");
                 LogCardStarted(card);
+                CardStarted?.Invoke(card);
             };
-            _engine.CardFinished += card =>
+            engine.CardStarted += cardStarted;
+            _engineUnsubscribers.Add(() => engine.CardStarted -= cardStarted);
+
+            Action<CardDefinition> cardFinished = card =>
             {
                 Log($"card finished: {card.Title}");
                 RefreshRunState();
             };
-            _engine.PhaseEntered += phaseId =>
+            engine.CardFinished += cardFinished;
+            _engineUnsubscribers.Add(() => engine.CardFinished -= cardFinished);
+
+            Action<string> phaseEntered = phaseId =>
             {
                 RefreshRunState();
                 Log($"phase entered: {PhaseDisplayName(phaseId)}");
                 PhaseChanged?.Invoke(phaseId);
             };
-            _engine.SessionCompleted += () =>
+            engine.PhaseEntered += phaseEntered;
+            _engineUnsubscribers.Add(() => engine.PhaseEntered -= phaseEntered);
+
+            Action sessionCompleted = () =>
             {
                 SetStatus("Complete");
                 ProgressText.Text = "complete";
+                RunCompleted?.Invoke();
             };
-            _engine.SessionVm.VariableCheckEvaluated += (check, value, result) =>
+            engine.SessionCompleted += sessionCompleted;
+            _engineUnsubscribers.Add(() => engine.SessionCompleted -= sessionCompleted);
+
+            Action<VariableCheckNodeDefinition, float, bool> variableCheck = (check, value, result) =>
                 Log($"check: {check.VariableKey ?? check.SourceKind.ToString()} value={value:0.###} => {result}");
-            _engine.SessionVm.RuntimeError += message => Log("runtime error: " + message);
-            _engine.SessionVm.SessionNodeChanged += nodeId => Log("session node: " + nodeId);
-            _engine.SessionVm.PhaseNodeChanged += nodeId => Log("phase node: " + nodeId);
-            _engine.CardSelectionEvaluated += evaluation =>
+            engine.SessionVm.VariableCheckEvaluated += variableCheck;
+            _engineUnsubscribers.Add(() => engine.SessionVm.VariableCheckEvaluated -= variableCheck);
+
+            Action<string> runtimeError = message => Log("runtime error: " + message);
+            engine.SessionVm.RuntimeError += runtimeError;
+            _engineUnsubscribers.Add(() => engine.SessionVm.RuntimeError -= runtimeError);
+
+            Action<string> sessionNodeChanged = nodeId =>
+            {
+                Log("session node: " + nodeId);
+                SessionNodeChanged?.Invoke(nodeId);
+            };
+            engine.SessionVm.SessionNodeChanged += sessionNodeChanged;
+            _engineUnsubscribers.Add(() => engine.SessionVm.SessionNodeChanged -= sessionNodeChanged);
+
+            Action<string> phaseNodeChanged = nodeId =>
+            {
+                Log("phase node: " + nodeId);
+                PhaseNodeChanged?.Invoke(engine.CurrentPhaseId, nodeId);
+            };
+            engine.SessionVm.PhaseNodeChanged += phaseNodeChanged;
+            _engineUnsubscribers.Add(() => engine.SessionVm.PhaseNodeChanged -= phaseNodeChanged);
+
+            Action<GraphEdgeTraversal> edgeTraversed = edge =>
+            {
+                Log($"edge: {edge.GraphKind} {edge.GraphOwnerId} {edge.EdgeId} {edge.SourceOutputId} → {edge.TargetNodeId}");
+                EdgeTraversed?.Invoke(edge);
+            };
+            engine.EdgeTraversed += edgeTraversed;
+            _engineUnsubscribers.Add(() => engine.EdgeTraversed -= edgeTraversed);
+
+            Action<CardSelector.SelectionResult> cardSelectionEvaluated = evaluation =>
             {
                 foreach (var candidate in evaluation.Candidates)
                 {
@@ -455,6 +558,18 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 if (evaluation.Selected != null)
                     Log($"card selected: {SelectionDiagnosticsFormatter.Card(evaluation.Selected)}");
             };
+            engine.CardSelectionEvaluated += cardSelectionEvaluated;
+            _engineUnsubscribers.Add(() => engine.CardSelectionEvaluated -= cardSelectionEvaluated);
+        }
+
+        private void UnsubscribeEngine()
+        {
+            for (var i = _engineUnsubscribers.Count - 1; i >= 0; i--)
+            {
+                try { _engineUnsubscribers[i](); }
+                catch { /* a closing/replaced engine cannot make cleanup fail */ }
+            }
+            _engineUnsubscribers.Clear();
         }
 
         private string PhaseDisplayName(string phaseId)
@@ -730,10 +845,25 @@ namespace TruthCardGame.ReferenceHost.Wpf
             _sessionCts = null;
         }
 
+        private void OnPauseStateChanged(bool paused, string reason)
+        {
+            RunOnUi(() =>
+            {
+                PauseButton.IsEnabled = _engine != null && !_engine.IsComplete && !paused;
+                ResumeButton.IsEnabled = paused;
+                DrawNextButton.IsEnabled = _engine != null && !paused && !_engine.IsComplete;
+                if (paused) SetStatus(reason);
+                else if (_engine != null && !_engine.IsComplete) SetStatus("Running");
+            });
+        }
+
         protected override void OnClosed(EventArgs e)
         {
             StopAuto();
+            _pauseGate.Cancel();
             CancelSession();
+            UnsubscribeEngine();
+            if (_runStarted && (_engine == null || !_engine.IsComplete)) RunStopped?.Invoke();
             _toyHost?.Dispose();
             _toyHost = null;
             base.OnClosed(e);

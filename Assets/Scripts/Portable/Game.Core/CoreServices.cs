@@ -17,10 +17,11 @@ namespace TruthCardGame.Core
         public ICutsceneService Cutscene { get; }
         public IToyActivityService ToyActivity { get; }
         public IDialogService Dialog { get; }
+        public IExecutionPauseGate PauseGate { get; }
 
         public CoreServices(IGameDelay delay, IGameLog log = null, IPromptService prompts = null,
             ICutsceneService cutscene = null, IToyActivityService toyActivity = null,
-            IDialogService dialog = null)
+            IDialogService dialog = null, IExecutionPauseGate pauseGate = null)
         {
             Delay = delay ?? throw new ArgumentNullException(nameof(delay));
             Log = log ?? new NullGameLog();
@@ -28,6 +29,7 @@ namespace TruthCardGame.Core
             Cutscene = cutscene;
             ToyActivity = toyActivity;
             Dialog = dialog;
+            PauseGate = pauseGate ?? NoOpExecutionPauseGate.Instance;
         }
     }
 }

@@ -12,6 +12,8 @@
         <vm:NullToCollapsedConverter x:Key="NullToCollapsed" />
         <vm:BoolToVisibleConverter x:Key="BoolToVisible" />
         <vm:BoolToCollapsedConverter x:Key="BoolToCollapsed" />
+        <vm:NullToVisibleConverter x:Key="NullToVisible" />
+        <vm:NotNullToVisibleConverter x:Key="NotNullToVisible" />
 
         <!-- Nodify owns the draggable ItemContainer, so keep its graph-space
              location and selection state synchronized with the view model. -->
@@ -21,6 +23,36 @@
             <Setter Property="IsSelected"
                     Value="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
         </Style>
+
+        <Style x:Key="PortalDecoratorContainerStyle" TargetType="{x:Type nodify:DecoratorContainer}">
+            <Setter Property="Location" Value="{Binding Location, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+        </Style>
+
+        <DataTemplate x:Key="GraphHeaderTemplate">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Path Data="{Binding HeaderIcon}" Fill="{Binding HeaderForeground}" Stroke="{Binding HeaderForeground}"
+                      StrokeThickness="1" Width="16" Height="16" Stretch="Uniform" Margin="0,0,5,0"/>
+                <TextBlock Text="{Binding Title}" Foreground="{Binding HeaderForeground}" FontWeight="SemiBold"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate x:Key="PortalEndpointTemplate">
+            <Border Width="64" Height="30" Padding="5,2" CornerRadius="7"
+                    Background="{Binding Color}" BorderBrush="#FFEDEDED" BorderThickness="1"
+                    Cursor="SizeAll" PreviewMouseLeftButtonDown="OnPortalEndpointMouseDown"
+                    PreviewMouseMove="OnPortalEndpointMouseMove" PreviewMouseLeftButtonUp="OnPortalEndpointMouseUp"
+                    ContextMenuOpening="OnPortalEndpointContextMenuOpening">
+                <Border.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Remove Bridge Pair" Click="OnRemoveBridgePairFromMenu"
+                                  DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
+                <TextBlock Text="{Binding DirectionLabel}" Foreground="White" FontFamily="Consolas"
+                           FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+        </DataTemplate>
 
         <!-- One editor for every owned ActionSequence. The first line is the
              insertion surface; authored rows below it are visually distinct. -->
@@ -32,23 +64,30 @@
                     <TextBlock Text="{Binding ScopeLabel}" FontSize="10" Foreground="#FFB0B0B0"/>
                     <Border Background="#FF202124" BorderBrush="#FF3A3A3E" BorderThickness="1"
                             CornerRadius="2" Padding="3" Margin="0,2,0,0">
-                        <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Add Action:" FontWeight="SemiBold" Foreground="#FFB0B0B0"
-                                   VerticalAlignment="Center" Margin="0,0,4,0"/>
-                        <ComboBox Style="{StaticResource DarkComboBox}" Padding="2,0" Width="128" Margin="3,0,0,0"
-                                  ItemsSource="{Binding ActionTypePickerView}" DisplayMemberPath="DisplayLabel"
-                                  SelectedValuePath="TypeKey" SelectedValue="{Binding SelectedActionTypeKey, Mode=TwoWay}"
-                                  ToolTip="Action Type (filtered by owner scope)">
-                        </ComboBox>
-                        <Button Content="+ Action" Click="OnAddActionInstance" Padding="5,1" Margin="3,0,0,0"
-                                Style="{StaticResource DarkButton}" ToolTip="Append the selected Action Type"/>
-                        <Button Content="+ Block" Click="OnInsertActionBlock" Padding="5,1" Margin="3,0,0,0"
-                                Style="{StaticResource DarkButton}" ToolTip="Choose and append an Action Block"/>
-                        <Button Content="Save Selection as Block" Click="OnSaveSelectedActionBlock" Padding="5,1" Margin="6,0,0,0"
-                                Style="{StaticResource DarkButton}" ToolTip="Save the selected Action rows as an editor template"/>
-                        <Button Content="Save Sequence as Block" Click="OnSaveEntireActionBlock" Padding="5,1" Margin="3,0,0,0"
-                                Style="{StaticResource DarkButton}" ToolTip="Save the whole ActionSequence as an editor template"/>
-                        </StackPanel>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <WrapPanel Grid.Row="0">
+                                <TextBlock Text="Add Action:" FontWeight="SemiBold" Foreground="#FFB0B0B0"
+                                           VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <ComboBox Style="{StaticResource DarkComboBox}" Padding="2,0" Width="128" Margin="3,0,0,0"
+                                          ItemsSource="{Binding ActionTypePickerView}" DisplayMemberPath="DisplayLabel"
+                                          SelectedValuePath="TypeKey" SelectedValue="{Binding SelectedActionTypeKey, Mode=TwoWay}"
+                                          ToolTip="Action Type (filtered by owner scope)"/>
+                                <Button Content="+ Action" Click="OnAddActionInstance" Padding="5,1" Margin="3,0,0,0"
+                                        Style="{StaticResource DarkButton}" ToolTip="Append the selected Action Type"/>
+                                <Button Content="+ Block" Click="OnInsertActionBlock" Padding="5,1" Margin="3,0,0,0"
+                                        Style="{StaticResource DarkButton}" ToolTip="Choose and append an Action Block"/>
+                            </WrapPanel>
+                            <WrapPanel Grid.Row="1" Margin="0,3,0,0">
+                                <Button Content="Save Selection as Block" Click="OnSaveSelectedActionBlock" Padding="5,1"
+                                        Style="{StaticResource DarkButton}" ToolTip="Save the selected Action rows as an editor template"/>
+                                <Button Content="Save Sequence as Block" Click="OnSaveEntireActionBlock" Padding="5,1" Margin="3,0,0,0"
+                                        Style="{StaticResource DarkButton}" ToolTip="Save the whole ActionSequence as an editor template"/>
+                            </WrapPanel>
+                        </Grid>
                     </Border>
                     <ItemsControl ItemsSource="{Binding Rows}" Margin="0,3,0,0">
                         <ItemsControl.ItemTemplate>
@@ -267,21 +306,32 @@
                 </Grid.InputBindings>
                 <!-- Live-debug highlight ring (ticket 19): the Core VM's current node. -->
                 <Border BorderBrush="#FFFFB347" BorderThickness="3" CornerRadius="9" Margin="-7"
-                        Visibility="{Binding DebugActive, Converter={StaticResource BoolToVisible}}" IsHitTestVisible="False"/>
-                <nodify:Node Header="{Binding Title}"
+                        Opacity="{Binding TraceOpacity}"
+                        Visibility="{Binding TraceVisible, Converter={StaticResource BoolToVisible}}" IsHitTestVisible="False"/>
+                <nodify:Node Header="{Binding}"
+                             HeaderBrush="{Binding HeaderBrush}"
+                             HeaderTemplate="{StaticResource GraphHeaderTemplate}"
                              Input="{Binding Inputs}"
                              Output="{Binding Outputs}">
                     <nodify:Node.InputConnectorTemplate>
                         <DataTemplate>
                             <nodify:NodeInput IsConnected="{Binding IsConnected}"
-                                              Anchor="{Binding Anchor, Mode=OneWayToSource}"/>
+                                              Anchor="{Binding Anchor, Mode=OneWayToSource}">
+                                <nodify:NodeInput.ConnectorTemplate>
+                                    <DataTemplate><Ellipse Width="12" Height="12" Fill="{x:Static vm:GraphPresentationPalette.NeutralInput}" Stroke="#FFE0E0E0" StrokeThickness="1"/></DataTemplate>
+                                </nodify:NodeInput.ConnectorTemplate>
+                            </nodify:NodeInput>
                         </DataTemplate>
                     </nodify:Node.InputConnectorTemplate>
                     <nodify:Node.OutputConnectorTemplate>
                         <DataTemplate>
                             <nodify:NodeOutput Header="{Binding Title}"
                                                IsConnected="{Binding IsConnected}"
-                                               Anchor="{Binding Anchor, Mode=OneWayToSource}"/>
+                                               Anchor="{Binding Anchor, Mode=OneWayToSource}">
+                                <nodify:NodeOutput.ConnectorTemplate>
+                                    <DataTemplate><Ellipse Width="12" Height="12" Fill="{Binding PresentationBrush}" Stroke="#FFE0E0E0" StrokeThickness="1"/></DataTemplate>
+                                </nodify:NodeOutput.ConnectorTemplate>
+                            </nodify:NodeOutput>
                         </DataTemplate>
                     </nodify:Node.OutputConnectorTemplate>
                     <StackPanel Margin="4,2,4,4">
@@ -806,6 +856,9 @@
                 <nodify:NodifyEditor x:Name="SessionEditor"
                                      ItemsSource="{Binding SessionGraph.Nodes}"
                                      Connections="{Binding SessionGraph.Connections}"
+                                     Decorators="{Binding SessionGraph.PortalEndpoints}"
+                                     DecoratorTemplate="{StaticResource PortalEndpointTemplate}"
+                                     DecoratorContainerStyle="{StaticResource PortalDecoratorContainerStyle}"
                                      PendingConnection="{Binding SessionGraph.PendingConnection}"
                                      DisconnectConnectorCommand="{Binding SessionGraph.DisconnectConnectorCommand}"
                                      ItemTemplate="{StaticResource NodeTemplate}"
@@ -817,21 +870,32 @@
                                      Background="#FF1B1B1C" Margin="2,4,2,2">
                     <nodify:NodifyEditor.ConnectionTemplate>
                         <DataTemplate>
-                            <nodify:LineConnection Source="{Binding Source.Anchor}"
-                                                   Target="{Binding Target.Anchor}">
-                                <nodify:LineConnection.Style>
-                                    <Style TargetType="nodify:LineConnection">
-                                        <Setter Property="Stroke" Value="#FF7EB6E8"/>
-                                        <Setter Property="StrokeThickness" Value="2"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding DebugActive}" Value="True">
-                                                <Setter Property="Stroke" Value="#FFFFB347"/>
-                                                <Setter Property="StrokeThickness" Value="4"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </nodify:LineConnection.Style>
-                            </nodify:LineConnection>
+                            <Grid ContextMenuOpening="OnGraphConnectionContextMenuOpening">
+                                <Grid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Insert Bridge Pair" Click="OnInsertBridgePairFromMenu"
+                                                  DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"/>
+                                        <MenuItem Header="Remove Bridge Pair" Click="OnRemoveBridgePairFromMenu"
+                                                  DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
+                                                  Visibility="{Binding PortalPair, Converter={StaticResource NotNullToVisible}}"/>
+                                    </ContextMenu>
+                                </Grid.ContextMenu>
+                                <nodify:StepConnection Source="{Binding Source.Anchor}" Target="{Binding Target.Anchor}"
+                                                        SourcePosition="Right" TargetPosition="Left"
+                                                        Stroke="{Binding Stroke}" StrokeThickness="{Binding RenderThickness}"
+                                                        Opacity="{Binding RenderOpacity}"
+                                                        Visibility="{Binding PortalPair, Converter={StaticResource NullToVisible}}"/>
+                                <nodify:StepConnection Source="{Binding Source.Anchor}" Target="{Binding PortalPair.Source.Anchor}"
+                                                        SourcePosition="Right" TargetPosition="Left"
+                                                        Stroke="{Binding Stroke}" StrokeThickness="{Binding RenderThickness}"
+                                                        Opacity="{Binding RenderOpacity}"
+                                                        Visibility="{Binding PortalPair, Converter={StaticResource NotNullToVisible}}"/>
+                                <nodify:StepConnection Source="{Binding PortalPair.Target.Anchor}" Target="{Binding Target.Anchor}"
+                                                        SourcePosition="Right" TargetPosition="Left"
+                                                        Stroke="{Binding Stroke}" StrokeThickness="{Binding RenderThickness}"
+                                                        Opacity="{Binding RenderOpacity}"
+                                                        Visibility="{Binding PortalPair, Converter={StaticResource NotNullToVisible}}"/>
+                            </Grid>
                         </DataTemplate>
                     </nodify:NodifyEditor.ConnectionTemplate>
                     <nodify:NodifyEditor.PendingConnectionTemplate>
@@ -918,6 +982,9 @@
                 <nodify:NodifyEditor x:Name="PhaseEditor"
                                      ItemsSource="{Binding PhaseGraph.Nodes}"
                                      Connections="{Binding PhaseGraph.Connections}"
+                                     Decorators="{Binding PhaseGraph.PortalEndpoints}"
+                                     DecoratorTemplate="{StaticResource PortalEndpointTemplate}"
+                                     DecoratorContainerStyle="{StaticResource PortalDecoratorContainerStyle}"
                                      PendingConnection="{Binding PhaseGraph.PendingConnection}"
                                      DisconnectConnectorCommand="{Binding PhaseGraph.DisconnectConnectorCommand}"
                                      ItemTemplate="{StaticResource NodeTemplate}"
@@ -928,21 +995,32 @@
                                      Background="#FF1B1B1C" Margin="2,4,2,2">
                     <nodify:NodifyEditor.ConnectionTemplate>
                         <DataTemplate>
-                            <nodify:LineConnection Source="{Binding Source.Anchor}"
-                                                   Target="{Binding Target.Anchor}">
-                                <nodify:LineConnection.Style>
-                                    <Style TargetType="nodify:LineConnection">
-                                        <Setter Property="Stroke" Value="#FF7EB6E8"/>
-                                        <Setter Property="StrokeThickness" Value="2"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding DebugActive}" Value="True">
-                                                <Setter Property="Stroke" Value="#FFFFB347"/>
-                                                <Setter Property="StrokeThickness" Value="4"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </nodify:LineConnection.Style>
-                            </nodify:LineConnection>
+                            <Grid ContextMenuOpening="OnGraphConnectionContextMenuOpening">
+                                <Grid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Insert Bridge Pair" Click="OnInsertBridgePairFromMenu"
+                                                  DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"/>
+                                        <MenuItem Header="Remove Bridge Pair" Click="OnRemoveBridgePairFromMenu"
+                                                  DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
+                                                  Visibility="{Binding PortalPair, Converter={StaticResource NotNullToVisible}}"/>
+                                    </ContextMenu>
+                                </Grid.ContextMenu>
+                                <nodify:StepConnection Source="{Binding Source.Anchor}" Target="{Binding Target.Anchor}"
+                                                        SourcePosition="Right" TargetPosition="Left"
+                                                        Stroke="{Binding Stroke}" StrokeThickness="{Binding RenderThickness}"
+                                                        Opacity="{Binding RenderOpacity}"
+                                                        Visibility="{Binding PortalPair, Converter={StaticResource NullToVisible}}"/>
+                                <nodify:StepConnection Source="{Binding Source.Anchor}" Target="{Binding PortalPair.Source.Anchor}"
+                                                        SourcePosition="Right" TargetPosition="Left"
+                                                        Stroke="{Binding Stroke}" StrokeThickness="{Binding RenderThickness}"
+                                                        Opacity="{Binding RenderOpacity}"
+                                                        Visibility="{Binding PortalPair, Converter={StaticResource NotNullToVisible}}"/>
+                                <nodify:StepConnection Source="{Binding PortalPair.Target.Anchor}" Target="{Binding Target.Anchor}"
+                                                        SourcePosition="Right" TargetPosition="Left"
+                                                        Stroke="{Binding Stroke}" StrokeThickness="{Binding RenderThickness}"
+                                                        Opacity="{Binding RenderOpacity}"
+                                                        Visibility="{Binding PortalPair, Converter={StaticResource NotNullToVisible}}"/>
+                            </Grid>
                         </DataTemplate>
                     </nodify:NodifyEditor.ConnectionTemplate>
                     <nodify:NodifyEditor.PendingConnectionTemplate>

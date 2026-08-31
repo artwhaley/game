@@ -55,7 +55,9 @@ namespace TruthCardGame.Content.Sqlite
                 LoadEmbeddedScript("SQLITE-SCHEMA-V9-CARD-FOLDER-HIERARCHY.sql"),
                 Migration9Transform.Transform),
             new CoreMigration(10, "wpf-action-block-templates",
-                LoadEmbeddedScript("SQLITE-SCHEMA-V10-ACTION-BLOCKS.sql"))
+                LoadEmbeddedScript("SQLITE-SCHEMA-V10-ACTION-BLOCKS.sql")),
+            new CoreMigration(11, "wpf-graph-portal-pairs",
+                LoadEmbeddedScript("SQLITE-SCHEMA-V11-WPF-GRAPH-PORTALS.sql"))
         };
 
         private static string LoadEmbeddedScript(string resourceName)

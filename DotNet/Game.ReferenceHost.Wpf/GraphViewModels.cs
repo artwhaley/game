@@ -5,8 +5,10 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Linq;
 using TruthCardGame.Content;
+using TruthCardGame.Content.Sqlite;
 using TruthCardGame.Core;
 
 namespace TruthCardGame.ReferenceHost.Wpf
@@ -46,12 +48,22 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private Point _location;
         private bool _isSelected;
         private bool _debugActive;
+        private int _traceRank = -1;
         private string _decisionPrompt = "";
 
         public string Id { get; set; } = "";
         public string Title { get; set; } = "";
         public string Subtitle { get; set; } = "";
         public string Kind { get; set; } = "";
+
+        /// <summary>Presentation-only header palette resolved from the canonical node kind.</summary>
+        public Brush HeaderBrush => GraphPresentationPalette.HeaderBrush(Kind);
+
+        /// <summary>Presentation-only header text color resolved from the canonical node kind.</summary>
+        public Brush HeaderForeground => GraphPresentationPalette.HeaderForeground(Kind);
+
+        /// <summary>Monochrome vector geometry used by the shared node header.</summary>
+        public Geometry HeaderIcon => GraphPresentationPalette.HeaderIcon(Kind);
 
         /// <summary>Domain reference for the node kind (e.g. the referenced phase id of a PhaseReference).</summary>
         public string RefId { get; set; } = "";
@@ -149,6 +161,22 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 }
             }
         }
+
+        public int TraceRank
+        {
+            get => _traceRank;
+            internal set
+            {
+                if (_traceRank == value) return;
+                _traceRank = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TraceRank)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TraceVisible)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TraceOpacity)));
+            }
+        }
+
+        public bool TraceVisible => TraceRank >= 0;
+        public double TraceOpacity => TraceRank < 0 ? 0 : new[] { 1.0, 0.60, 0.44, 0.32, 0.23, 0.16 }[Math.Min(5, TraceRank)];
 
         public event PropertyChangedEventHandler PropertyChanged;
     }
@@ -614,6 +642,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public string Kind { get; set; } = "";      // normal / phase_exit / session_goto / true / false
         public string Tag { get; set; } = "";       // phase exit id / session goto instance id
 
+        /// <summary>Source output kind controls the port fill and established wire color.</summary>
+        public Brush PresentationBrush => GraphPresentationPalette.PortBrush(Kind);
+
         /// <summary>The node that owns this connector (edge persistence resolves the target node id).</summary>
         public GraphNodeViewModel Owner { get; set; }
 
@@ -650,17 +681,59 @@ namespace TruthCardGame.ReferenceHost.Wpf
     public sealed class ConnectionViewModel : INotifyPropertyChanged
     {
         private bool _debugActive;
+        private int _traceRank = -1;
+        private double _renderOpacity = 1.0;
+        private double _renderThickness = 2.0;
+        private GraphPortalPairViewModel _portalPair;
 
         public ConnectionViewModel(ConnectorViewModel source, ConnectorViewModel target)
+            : this(source, target, null, null, null)
+        {
+        }
+
+        public ConnectionViewModel(ConnectorViewModel source, ConnectorViewModel target,
+            string graphKind, string graphOwnerId, string edgeId)
         {
             Source = source;
             Target = target;
+            GraphKind = graphKind ?? "";
+            GraphOwnerId = graphOwnerId ?? "";
+            EdgeId = edgeId ?? "";
             Source.IsConnected = true;
             Target.IsConnected = true;
         }
 
         public ConnectorViewModel Source { get; }
         public ConnectorViewModel Target { get; }
+
+        /// <summary>Exact persisted graph edge identity; never inferred from its endpoints.</summary>
+        public string EdgeId { get; }
+
+        /// <summary>"session" or "phase"; identifies the owning graph for trace lookup.</summary>
+        public string GraphKind { get; }
+
+        public string GraphOwnerId { get; }
+
+        public Brush BaseStroke => Source?.PresentationBrush ?? GraphPresentationPalette.NormalWire;
+
+        public Brush Stroke => DebugActive ? GraphPresentationPalette.CurrentTrace : BaseStroke;
+
+        public double RenderOpacity => _renderOpacity;
+
+        public double RenderThickness => _renderThickness;
+
+        public int TraceRank => _traceRank;
+
+        public GraphPortalPairViewModel PortalPair
+        {
+            get => _portalPair;
+            set
+            {
+                if (ReferenceEquals(_portalPair, value)) return;
+                _portalPair = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PortalPair)));
+            }
+        }
 
         /// <summary>Live-debug highlight (Ticket 19): the transfer edge into the current node.</summary>
         public bool DebugActive
@@ -672,11 +745,114 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 {
                     _debugActive = value;
                     PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DebugActive)));
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Stroke)));
                 }
             }
         }
 
+        internal void SetTraceRank(int rank)
+        {
+            rank = rank < 0 || rank > 5 ? -1 : rank;
+            if (_traceRank == rank) return;
+            _traceRank = rank;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TraceRank)));
+        }
+
+        internal void SetRenderState(double opacity, double thickness)
+        {
+            if (Math.Abs(_renderOpacity - opacity) > 0.0001)
+            {
+                _renderOpacity = opacity;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RenderOpacity)));
+            }
+            if (Math.Abs(_renderThickness - thickness) > 0.0001)
+            {
+                _renderThickness = thickness;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RenderThickness)));
+            }
+        }
+
         public event PropertyChangedEventHandler PropertyChanged;
+    }
+
+    /// <summary>Shared graph palette. Kind values are explicit presentation metadata, not title parsing.</summary>
+    public static class GraphPresentationPalette
+    {
+        public static readonly Brush NormalWire = Brush("#FF7EB6E8");
+        public static readonly Brush CurrentTrace = Brush("#FFFFD54F");
+        public static readonly Brush NeutralInput = Brush("#FF9AA0A6");
+
+        public static Brush HeaderBrush(string kind)
+        {
+            switch (kind ?? "")
+            {
+                case "start": case "entry": return Brush("#FF2E7D32");
+                case "phase-reference": return Brush("#FF1565C0");
+                case "card": return Brush("#FF0277BD");
+                case "check": return Brush("#FFF9A825");
+                case "action": return Brush("#FF00695C");
+                case "decision": return Brush("#FF6A1B9A");
+                case "return": return Brush("#FFEF6C00");
+                case "end": return Brush("#FFC62828");
+                default: return Brush("#FF455A64");
+            }
+        }
+
+        public static Brush HeaderForeground(string kind)
+            => string.Equals(kind, "check", StringComparison.OrdinalIgnoreCase)
+                ? Brush("#FF1B1B1C") : Brushes.White;
+
+        public static Brush PortBrush(string kind)
+        {
+            switch (kind ?? "")
+            {
+                case "true": return Brush("#FF6FCF78");
+                case "false": return Brush("#FFFF7474");
+                case "phase_exit": return Brush("#FFFFC857");
+                case "session_goto": return Brush("#FFB388FF");
+                default: return NormalWire;
+            }
+        }
+
+        public static Geometry HeaderIcon(string kind)
+        {
+            // Small vector marks intentionally use geometry, never font glyphs.
+            switch (kind ?? "")
+            {
+                case "start": case "entry": return Geometry.Parse("M 2,1 L 14,8 L 2,15 Z");
+                case "phase-reference": return Geometry.Parse("M 2,2 H 13 V 5 H 2 Z M 4,6 H 15 V 9 H 4 Z M 2,10 H 13 V 13 H 2 Z");
+                case "card": return Geometry.Parse("M 2,2 H 14 V 14 H 2 Z M 4,5 H 12 M 4,8 H 12");
+                case "check": case "decision": return Geometry.Parse("M 8,1 L 15,8 L 8,15 L 1,8 Z");
+                case "action": return Geometry.Parse("M 9,1 L 3,9 H 8 L 6,15 L 13,6 H 8 Z");
+                case "return": return Geometry.Parse("M 14,4 H 5 L 8,1 M 5,4 L 8,7 M 5,4 V 12 H 14");
+                case "end": return Geometry.Parse("M 3,3 H 13 V 13 H 3 Z");
+                default: return Geometry.Parse("M 2,2 H 14 V 14 H 2 Z");
+            }
+        }
+
+        public static Brush TraceBrush(int rank)
+        {
+            switch (rank)
+            {
+                case 0: return CurrentTrace;
+                case 1: return Brush("#FFFFC857");
+                default: return null;
+            }
+        }
+
+        public static Brush PortalBrush(int colorSlot)
+        {
+            var colors = new[] { "#FF42A5F5", "#FFAB47BC", "#FF26A69A", "#FFFFA726",
+                "#FFEC407A", "#FF7E57C2", "#FF66BB6A", "#FFFF7043" };
+            return Brush(colors[Math.Max(0, Math.Min(colors.Length - 1, colorSlot))]);
+        }
+
+        private static Brush Brush(string value)
+        {
+            var brush = (SolidColorBrush)new BrushConverter().ConvertFromString(value);
+            brush.Freeze();
+            return brush;
+        }
     }
 
     /// <summary>In-flight connector drag; Nodify drives StartedCommand/CompletedCommand.</summary>
@@ -708,6 +884,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
     {
         public ObservableCollection<GraphNodeViewModel> Nodes { get; } = new ObservableCollection<GraphNodeViewModel>();
         public ObservableCollection<ConnectionViewModel> Connections { get; } = new ObservableCollection<ConnectionViewModel>();
+        public ObservableCollection<PortalEndpointViewModel> PortalEndpoints { get; } = new ObservableCollection<PortalEndpointViewModel>();
+
+        private readonly List<string> _traceHistory = new List<string>();
+        private readonly List<string> _nodeTraceHistory = new List<string>();
+        public string GraphKind { get; protected set; } = "";
+        public string GraphOwnerId { get; protected set; } = "";
 
         public List<ActionParameterOption> TemperatureOptions { get; private set; } = new List<ActionParameterOption>();
         public List<ActionParameterOption> StatOptions { get; private set; } = new List<ActionParameterOption>();
@@ -782,6 +964,131 @@ namespace TruthCardGame.ReferenceHost.Wpf
         /// <summary>Pan or zoom changed (persist the viewport row).</summary>
         public event Action ViewportChanged;
 
+        /// <summary>Recomputes selection/trace presentation for every logical edge.</summary>
+        public void RecomputeConnectionPresentation()
+        {
+            var selectedEndpointPair = PortalEndpoints.FirstOrDefault(endpoint => endpoint.IsSelected)?.Pair;
+            foreach (var connection in Connections)
+            {
+                var incident = SelectedNode != null &&
+                    (connection.Source?.Owner == SelectedNode || connection.Target?.Owner == SelectedNode);
+                if (selectedEndpointPair != null && ReferenceEquals(connection.PortalPair, selectedEndpointPair))
+                    incident = true;
+
+                var rank = connection.TraceRank;
+                if (rank >= 0)
+                {
+                    var opacities = new[] { 1.0, 0.72, 0.55, 0.40, 0.28, 0.18 };
+                    var thickness = new[] { 4.0, 3.5, 3.0, 2.7, 2.4, 2.2 };
+                    connection.SetRenderState(opacities[rank], thickness[rank]);
+                }
+                else
+                {
+                    connection.SetRenderState(incident || SelectedNode == null ? 1.0 : 0.22, 2.0);
+                }
+            }
+        }
+
+        /// <summary>Records an exact traversal and keeps six unique logical edges, newest first.</summary>
+        public void ApplyTraversal(GraphEdgeTraversal traversal)
+        {
+            if (traversal == null || !string.Equals(GraphKind, traversal.GraphKind == ExecutionGraphKind.Session ? "session" : "phase", StringComparison.Ordinal) ||
+                !string.Equals(GraphOwnerId, traversal.GraphOwnerId, StringComparison.Ordinal)) return;
+            var edge = Connections.FirstOrDefault(connection => connection.EdgeId == traversal.EdgeId);
+            if (edge == null) return;
+            _traceHistory.Remove(traversal.EdgeId);
+            _traceHistory.Insert(0, traversal.EdgeId);
+            while (_traceHistory.Count > 6) _traceHistory.RemoveAt(_traceHistory.Count - 1);
+            foreach (var connection in Connections)
+            {
+                connection.SetTraceRank(_traceHistory.IndexOf(connection.EdgeId));
+                connection.DebugActive = connection.TraceRank == 0;
+            }
+            RecomputeConnectionPresentation();
+        }
+
+        public void ClearTrace()
+        {
+            _traceHistory.Clear();
+            foreach (var connection in Connections)
+            {
+                connection.SetTraceRank(-1);
+                connection.DebugActive = false;
+            }
+            _nodeTraceHistory.Clear();
+            foreach (var node in Nodes)
+            {
+                node.TraceRank = -1;
+                node.DebugActive = false;
+            }
+            RecomputeConnectionPresentation();
+        }
+
+        public void ApplyNodeTrace(string nodeId)
+        {
+            if (string.IsNullOrEmpty(nodeId) || Nodes.All(node => node.Id != nodeId)) return;
+            _nodeTraceHistory.Remove(nodeId);
+            _nodeTraceHistory.Insert(0, nodeId);
+            while (_nodeTraceHistory.Count > 6) _nodeTraceHistory.RemoveAt(_nodeTraceHistory.Count - 1);
+            foreach (var node in Nodes)
+            {
+                node.TraceRank = _nodeTraceHistory.IndexOf(node.Id);
+                node.DebugActive = node.TraceRank == 0;
+            }
+        }
+
+        /// <summary>Hydrates WPF portal decorators for the already-loaded logical edges.</summary>
+        public void LoadPortalPairs(IEnumerable<GraphPortalPairDefinition> definitions)
+        {
+            PortalEndpoints.Clear();
+            foreach (var connection in Connections) connection.PortalPair = null;
+            foreach (var definition in definitions ?? Enumerable.Empty<GraphPortalPairDefinition>())
+            {
+                AddPortalPairVisual(definition);
+            }
+            RecomputeConnectionPresentation();
+        }
+
+        public GraphPortalPairViewModel AddPortalPairVisual(GraphPortalPairDefinition definition)
+        {
+            if (definition == null) throw new ArgumentNullException(nameof(definition));
+            var connection = Connections.FirstOrDefault(item => item.EdgeId == definition.EdgeId);
+            if (connection == null)
+                throw new InvalidOperationException(
+                    $"{GraphKind} graph '{GraphOwnerId}' portal pair '{definition.Id}' references missing edge '{definition.EdgeId}'.");
+            if (connection.PortalPair != null)
+                throw new InvalidOperationException(
+                    $"{GraphKind} graph '{GraphOwnerId}' edge '{definition.EdgeId}' has multiple portal pairs.");
+            var pair = new GraphPortalPairViewModel(definition.Id, GraphKind, GraphOwnerId, definition.EdgeId,
+                definition.Label, definition.ColorSlot,
+                new Point(definition.SourceX, definition.SourceY), new Point(definition.TargetX, definition.TargetY));
+            connection.PortalPair = pair;
+            PortalEndpoints.Add(pair.Source);
+            PortalEndpoints.Add(pair.Target);
+            RecomputeConnectionPresentation();
+            return pair;
+        }
+
+        public GraphPortalPairViewModel FindPortalPair(string pairId)
+            => PortalEndpoints.Select(endpoint => endpoint.Pair)
+                .FirstOrDefault(pair => pair.Id == pairId);
+
+        public void SelectPortalEndpoint(PortalEndpointViewModel endpoint)
+        {
+            foreach (var item in PortalEndpoints) item.IsSelected = ReferenceEquals(item, endpoint);
+            RecomputeConnectionPresentation();
+        }
+
+        public void RemovePortalPairVisual(GraphPortalPairViewModel pair)
+        {
+            if (pair == null) return;
+            PortalEndpoints.Remove(pair.Source);
+            PortalEndpoints.Remove(pair.Target);
+            var connection = Connections.FirstOrDefault(item => item.PortalPair == pair);
+            if (connection != null) connection.PortalPair = null;
+            RecomputeConnectionPresentation();
+        }
+
         protected GraphEditorViewModel()
         {
             PendingConnection = new PendingConnectionViewModel(this);
@@ -844,6 +1151,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
             SelectionChanged?.Invoke(this, EventArgs.Empty);
             Nodes.Clear();
             Connections.Clear();
+            PortalEndpoints.Clear();
+            _traceHistory.Clear();
+            _nodeTraceHistory.Clear();
             foreach (var node in nodes)
             {
                 node.PropertyChanged += OnNodePropertyChanged;
@@ -882,6 +1192,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 Nodes.Add(node);
             }
             foreach (var connection in connections) Connections.Add(connection);
+            RecomputeConnectionPresentation();
         }
 
         private void SubscribeActionSequence(GraphNodeViewModel node, ActionSequenceEditorViewModel sequence)
@@ -912,11 +1223,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 if (SelectedNode != null) SelectedNode.IsSelected = false;
                 SelectedNode = node;
                 SelectionChanged?.Invoke(this, EventArgs.Empty);
+                RecomputeConnectionPresentation();
             }
             else if (!node.IsSelected && SelectedNode == node)
             {
                 SelectedNode = null;
                 SelectionChanged?.Invoke(this, EventArgs.Empty);
+                RecomputeConnectionPresentation();
             }
         }
 
@@ -1127,6 +1440,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public void LoadFromDefinition(SessionDefinition session, Dictionary<string, (double X, double Y)> layout = null, (double Zoom, double X, double Y)? viewport = null)
         {
             _loaded = session;
+            GraphKind = "session";
+            GraphOwnerId = session?.Id ?? "";
             if (session?.Graph == null)
             {
                 Populate(new GraphNodeViewModel[0], new ConnectionViewModel[0]);
@@ -1195,7 +1510,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 if (!outputsByNode.TryGetValue(edge.SourceOutputId, out var source)) continue;
                 if (!nodes.TryGetValue(edge.TargetNodeId, out var target)) continue;
-                connections.Add(new ConnectionViewModel(source, target.Inputs[0]));
+                connections.Add(new ConnectionViewModel(source, target.Inputs[0], "session", session.Id, edge.Id));
             }
 
             Populate(nodes.Values, connections);
@@ -1341,6 +1656,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public void LoadFromDefinition(PhaseDefinition phase, Dictionary<string, (double X, double Y)> layout = null, (double Zoom, double X, double Y)? viewport = null)
         {
             _loaded = phase;
+            GraphKind = "phase";
+            GraphOwnerId = phase?.Id ?? "";
             if (phase?.Graph == null)
             {
                 Populate(new GraphNodeViewModel[0], new ConnectionViewModel[0]);
@@ -1431,7 +1748,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 if (!outputsByNode.TryGetValue(edge.SourceOutputId, out var source)) continue;
                 if (!nodes.TryGetValue(edge.TargetNodeId, out var target)) continue;
-                connections.Add(new ConnectionViewModel(source, target.Inputs[0]));
+                connections.Add(new ConnectionViewModel(source, target.Inputs[0], "phase", phase.Id, edge.Id));
             }
 
             Populate(nodes.Values, connections);

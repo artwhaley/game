@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -157,6 +158,28 @@ namespace TruthCardGame.Core.Tests
             return session;
         }
 
+        private sealed class OneShotPauseGate : IExecutionPauseGate
+        {
+            public readonly List<ExecutionCheckpoint> Checkpoints = new List<ExecutionCheckpoint>();
+            public readonly TaskCompletionSource<bool> Entered =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            public readonly TaskCompletionSource<bool> Release =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            public bool PauseFirst = true;
+
+            public Task WaitAsync(ExecutionCheckpoint checkpoint, CancellationToken cancellationToken)
+            {
+                Checkpoints.Add(checkpoint);
+                if (PauseFirst)
+                {
+                    PauseFirst = false;
+                    Entered.TrySetResult(true);
+                    return Release.Task.WaitAsync(cancellationToken);
+                }
+                return Task.CompletedTask;
+            }
+        }
+
         private static GraphEdgeDefinition SessionEdge(string source, string target)
         {
             return new GraphEdgeDefinition { Id = $"se-{source}-{target}", SourceOutputId = source, TargetNodeId = target };
@@ -251,11 +274,13 @@ namespace TruthCardGame.Core.Tests
             var sessionTrace = new List<string>();
             var phaseEntered = new List<string>();
             var phaseNodes = new List<string>();
+            var edges = new List<GraphEdgeTraversal>();
             var checks = new List<(string NodeId, bool Passed)>();
             var cardStarted = 0;
             vm.SessionNodeChanged += id => sessionTrace.Add(id);
             vm.PhaseEntered += id => phaseEntered.Add(id);
             vm.PhaseNodeChanged += id => phaseNodes.Add(id);
+            vm.EdgeTraversed += edge => edges.Add(edge);
             vm.VariableCheckEvaluated += (node, value, passed) => checks.Add((node.Id, passed));
             vm.CardStarted += _ => cardStarted++;
 
@@ -274,6 +299,47 @@ namespace TruthCardGame.Core.Tests
             Assert.AreEqual(true, checks[^1].Passed, "the final check passes");
             Assert.AreEqual(0, vm.ContinuationDepth, "stack empty at completion");
             Assert.IsEmpty(vm.ContinuationSummary());
+            Assert.That(edges.Any(edge => edge.GraphKind == ExecutionGraphKind.Session &&
+                edge.GraphOwnerId == "s-main" && edge.EdgeId == "se-n-start-out-n-ref" &&
+                edge.SourceOutputId == "n-start-out" && edge.TargetNodeId == "n-ref"), Is.True,
+                "session traversal exposes the exact authored edge identity");
+            Assert.That(edges.Any(edge => edge.GraphKind == ExecutionGraphKind.Phase &&
+                edge.GraphOwnerId == "main" && edge.SourceOutputId == "n-m-entry-out" &&
+                edge.TargetNodeId == "n-m-exec"), Is.True,
+                "phase traversal exposes the exact authored edge identity");
+        }
+
+        [Test]
+        public async Task ExecutionPauseGate_BlocksAtCheckpointWithoutCancellingGameplay()
+        {
+            var gate = new OneShotPauseGate();
+            _services = new CoreServices(_delay, _log, new FakePromptService(), pauseGate: gate);
+
+            var phase = Phase("gated-phase", Entry("g-entry"), Action("g-goto", Goto("px-complete")));
+            phase.Exits.Add(Exit("Complete"));
+            Edge(phase, "g-entry-out", "g-goto");
+            _content.Phases.Add(phase);
+
+            var session = SessionDef("s-gated",
+                (Start(), new List<GraphEdgeDefinition> { SessionEdge("n-start-out", "n-ref") }),
+                (Ref("n-ref", "gated-phase", ("n-ref-complete", "px-complete")),
+                    new List<GraphEdgeDefinition> { SessionEdge("n-ref-complete", "n-end") }),
+                (End(), new List<GraphEdgeDefinition>()));
+            _content.Sessions.Add(session);
+
+            var engine = new GameSessionEngine(_content, "s-gated", _services, null,
+                new PhaseRunRngFactory(() => new FixedRandomSource(0)));
+            var runTask = engine.RunUntilYieldAsync(CancellationToken.None);
+            await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+            Assert.That(runTask.IsCompleted, Is.False, "host gate pauses the run cooperatively");
+            Assert.That(gate.Checkpoints[0].Kind, Is.EqualTo(ExecutionCheckpointKind.BeforeSessionNode));
+            Assert.That(gate.Checkpoints[0].GraphKind, Is.EqualTo(ExecutionGraphKind.Session));
+            Assert.That(gate.Checkpoints[0].NodeId, Is.EqualTo("n-start"));
+
+            gate.Release.TrySetResult(true);
+            var result = await runTask;
+            Assert.That(result.Kind, Is.EqualTo(AdvanceResultKind.SessionCompleted));
         }
 
         // =====================================================================

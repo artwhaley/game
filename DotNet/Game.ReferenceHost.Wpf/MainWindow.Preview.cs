@@ -252,6 +252,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 UpdateSessionHighlight(nodeId);
                 RefreshPreviewState();
             });
+            vm.EdgeTraversed += edge => RunOnUi(() =>
+            {
+                if (edge.GraphKind == ExecutionGraphKind.Session) _vm.SessionGraph.ApplyTraversal(edge);
+                else _vm.PhaseGraph.ApplyTraversal(edge);
+            });
             vm.PhaseEntered += phaseId => RunOnUi(() =>
             {
                 PreviewLog("phase entered: " + PhaseDisplayName(phaseId));
@@ -291,45 +296,24 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void ClearPreviewHighlights()
         {
-            foreach (var node in _vm.SessionGraph.Nodes) node.DebugActive = false;
-            foreach (var node in _vm.PhaseGraph.Nodes) node.DebugActive = false;
-            foreach (var connection in _vm.SessionGraph.Connections) connection.DebugActive = false;
-            foreach (var connection in _vm.PhaseGraph.Connections) connection.DebugActive = false;
+            _vm.SessionGraph.ClearTrace();
+            _vm.PhaseGraph.ClearTrace();
         }
 
         private void UpdateSessionHighlight(string nodeId)
         {
-            foreach (var node in _vm.SessionGraph.Nodes)
-            {
-                node.DebugActive = node.Id == nodeId;
-            }
-            // Transfer edge = the edge entering the current node.
-            foreach (var connection in _vm.SessionGraph.Connections)
-            {
-                connection.DebugActive = connection.Target?.Owner?.Id == nodeId;
-            }
+            _vm.SessionGraph.ApplyNodeTrace(nodeId);
         }
 
         private void UpdatePhaseHighlight(string nodeId)
         {
-            foreach (var node in _vm.PhaseGraph.Nodes)
-            {
-                node.DebugActive = node.Id == nodeId;
-            }
-            foreach (var connection in _vm.PhaseGraph.Connections)
-            {
-                connection.DebugActive = false;
-            }
+            _vm.PhaseGraph.ApplyNodeTrace(nodeId);
         }
 
         private void UpdateCheckHighlight(VariableCheckNodeDefinition check, bool passed)
         {
-            if (check?.Outputs == null) return;
-            var wantedOutput = check.Outputs.FirstOrDefault(o => (o.Kind == GraphPortKind.True) == passed)?.Id;
-            foreach (var connection in _vm.PhaseGraph.Connections)
-            {
-                connection.DebugActive = connection.Source?.Id == wantedOutput;
-            }
+            // Exact branch highlighting is driven by GraphEdgeTraversal. The
+            // check callback remains available for the preview log/readout.
         }
 
         // ---------- readouts ----------

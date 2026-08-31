@@ -39,7 +39,7 @@ namespace TruthCardGame.Core
 
         private readonly Dictionary<string, GraphNodeDefinition> _nodesById;
         private readonly Dictionary<string, GraphOutputDefinition> _outputsById;
-        private readonly Dictionary<string, string> _edgeFromOutput; // outputId -> targetNodeId
+        private readonly Dictionary<string, GraphEdgeDefinition> _edgeFromOutput; // outputId -> edge
 
         public event Action<string> PhaseEntered;      // phase id
         public event Action<string> PhaseNodeChanged;  // node id
@@ -49,6 +49,7 @@ namespace TruthCardGame.Core
         public event Action<string> RuntimeError;      // message
 
         public event Action<CardSelector.SelectionResult> CardSelectionEvaluated;
+        public event Action<GraphEdgeTraversal> EdgeTraversed;
 
         public PhaseGraphVm(GameContentDefinition content, PhaseDefinition phase, CoreServices services,
             BackgroundActionTracker tracker, int executionBudget = DefaultExecutionBudget,
@@ -71,7 +72,7 @@ namespace TruthCardGame.Core
 
             _nodesById = new Dictionary<string, GraphNodeDefinition>();
             _outputsById = new Dictionary<string, GraphOutputDefinition>();
-            _edgeFromOutput = new Dictionary<string, string>();
+            _edgeFromOutput = new Dictionary<string, GraphEdgeDefinition>();
 
             var entryCount = 0;
             foreach (var node in phase.Graph.Nodes)
@@ -110,7 +111,7 @@ namespace TruthCardGame.Core
                 {
                     throw new InvalidOperationException($"Phase '{phase.Id}' edge '{edge.Id}' references unknown target node '{edge.TargetNodeId}'.");
                 }
-                _edgeFromOutput[edge.SourceOutputId] = edge.TargetNodeId;
+                _edgeFromOutput[edge.SourceOutputId] = edge;
             }
         }
 
@@ -236,6 +237,9 @@ namespace TruthCardGame.Core
                 budget.Consume("phase node", phaseId: _phase.Id, nodeId: node?.Id);
 
                 cancellationToken.ThrowIfCancellationRequested();
+                await context.Services.PauseGate.WaitAsync(
+                    new ExecutionCheckpoint(ExecutionCheckpointKind.BeforePhaseNode,
+                        ExecutionGraphKind.Phase, _phase.Id, node?.Id), cancellationToken);
 
                 switch (node)
                 {
@@ -253,6 +257,10 @@ namespace TruthCardGame.Core
                         }
 
                         CardStarted?.Invoke(selected);
+                        await context.Services.PauseGate.WaitAsync(
+                            new ExecutionCheckpoint(ExecutionCheckpointKind.BeforeCardActions,
+                                ExecutionGraphKind.Phase, _phase.Id, cardExecutor.Id, selected.Id),
+                            cancellationToken);
                         var cardContext = ContextFor(context, run, ActionOwnerScope.CardSequence);
                         var cardResult = await _executor.ExecuteSequenceAsync(selected.Sequence, cardContext, cancellationToken, budget);
 
@@ -346,14 +354,18 @@ namespace TruthCardGame.Core
             }
         }
 
-        private Task<PhaseAdvanceResult> ResumeCardAsync(PhaseRun run, ActionExecutionContext context,
+        private async Task<PhaseAdvanceResult> ResumeCardAsync(PhaseRun run, ActionExecutionContext context,
             CancellationToken cancellationToken, GraphExecutionBudget budget)
         {
             var card = run.SuspendedCard;
             var chain = run.SuspendedCardChain;
             run.SuspendedCard = null;
             run.SuspendedCardChain = null;
-            return ResumeCardChainAsync(run, run.CurrentNode, card, chain, context, cancellationToken, budget);
+            await context.Services.PauseGate.WaitAsync(
+                new ExecutionCheckpoint(ExecutionCheckpointKind.BeforeCardActions,
+                    ExecutionGraphKind.Phase, _phase.Id, run.CurrentNode?.Id, card?.Id),
+                cancellationToken);
+            return await ResumeCardChainAsync(run, run.CurrentNode, card, chain, context, cancellationToken, budget);
         }
 
         private async Task<PhaseAdvanceResult> ResumeCardChainAsync(PhaseRun run, GraphNodeDefinition locus,
@@ -398,6 +410,10 @@ namespace TruthCardGame.Core
             run.SuspendedActionLocus = null;
             run.SuspendedActionChain = null;
 
+            await context.Services.PauseGate.WaitAsync(
+                new ExecutionCheckpoint(ExecutionCheckpointKind.BeforePhaseNode,
+                    ExecutionGraphKind.Phase, _phase.Id, locus?.Id), cancellationToken);
+
             var actionContext = ContextFor(context, run, ScopeForLocus(locus));
             var result = await _executor.ResumeChainAsync(
                 chain ?? Array.Empty<ContinuationPoint>(), actionContext, cancellationToken, budget);
@@ -440,12 +456,14 @@ namespace TruthCardGame.Core
 
         private GraphNodeDefinition FollowOutput(PhaseRun run, GraphNodeDefinition node, GraphOutputDefinition output)
         {
-            if (!_edgeFromOutput.TryGetValue(output.Id, out var targetId))
+            if (!_edgeFromOutput.TryGetValue(output.Id, out var edge))
             {
                 throw new InvalidOperationException(
                     $"Phase '{_phase.Id}': node '{node.Id}' output '{output.Id}' is a dead end with no outgoing edge.");
             }
-            var target = _nodesById[targetId];
+            var target = _nodesById[edge.TargetNodeId];
+            EdgeTraversed?.Invoke(new GraphEdgeTraversal(
+                ExecutionGraphKind.Phase, _phase.Id, edge.Id, edge.SourceOutputId, edge.TargetNodeId));
             run.CurrentNode = target;
             PhaseNodeChanged?.Invoke(target.Id);
             return target;

@@ -70,6 +70,24 @@ namespace TruthCardGame.ReferenceHost.Wpf
         }
     }
 
+    public sealed class NotNullToVisibleConverter : System.Windows.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+            => value == null ? Visibility.Collapsed : Visibility.Visible;
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+            => throw new NotSupportedException();
+    }
+
+    public sealed class NullToVisibleConverter : System.Windows.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+            => value == null ? Visibility.Visible : Visibility.Collapsed;
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+            => throw new NotSupportedException();
+    }
+
     public partial class MainWindow : Window
     {
         private readonly WorkbenchViewModel _vm;
@@ -1723,6 +1741,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 _hydratingSessionViewport = true;
                 _vm.SelectedSession.Graph = graph;
                 _vm.SessionGraph.LoadFromDefinition(_vm.SelectedSession, filled, viewport);
+                _vm.SessionGraph.LoadPortalPairs(GraphPortalRepository.LoadSession(connection, _vm.SelectedSession.Id));
                 ApplyPendingActionSelection(_vm.SessionGraph);
                 Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() =>
                 {
@@ -1765,6 +1784,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 var hydrationGeneration = ++_phaseViewportHydrationGeneration;
                 _hydratingPhaseViewport = true;
                 _vm.PhaseGraph.LoadFromDefinition(_vm.SelectedPhase, filled, viewport);
+                _vm.PhaseGraph.LoadPortalPairs(GraphPortalRepository.LoadPhase(connection, _vm.SelectedPhase.Id));
                 ApplyPendingActionSelection(_vm.PhaseGraph);
                 Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() =>
                 {
@@ -1930,16 +1950,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             if (!TryGetRunSeed(out var seed)) return;
             var player = new ReferencePlayerWindow { Owner = this, Seed = seed };
-            // Parity: while the player runs, the Phase Graph follows the phase
-            // being played so the two views stay in sync.
-            player.PhaseChanged += phaseId =>
-            {
-                if (_vm.SelectPhaseById(phaseId))
-                {
-                    SyncPhaseListSelection(phaseId);
-                    ReloadPhaseEditor();
-                }
-            };
+            AttachReferencePlayer(player);
             player.Show();
         }
 
@@ -2031,7 +2042,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 }
                 return remapped;
             });
-            PushCommand(new CopySessionCommand(OpenConnection, clone.Session, layout));
+            PushCommand(new CopySessionCommand(OpenConnection, clone.Session, layout, clone.EdgeIdMap));
 
             _vm.Content.Sessions.Add(clone.Session);
             BindSessionList();
@@ -2123,7 +2134,14 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 var editor = sender as System.Windows.Controls.Control;
                 var isSession = ReferenceEquals(editor, SessionEditor);
-                var node = isSession ? _vm.SessionGraph.SelectedNode : _vm.PhaseGraph.SelectedNode;
+                var graph = isSession ? (GraphEditorViewModel)_vm.SessionGraph : _vm.PhaseGraph;
+                if (graph.PortalEndpoints.Any(endpoint => endpoint.IsSelected))
+                {
+                    DeleteSelectedPortalIfAny(graph);
+                    e.Handled = true;
+                    return;
+                }
+                var node = graph.SelectedNode;
                 DeleteSelectedNode(node);
                 e.Handled = true;
             }
@@ -2343,7 +2361,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 }
                 return remapped;
             });
-            PushCommand(new DuplicatePhaseCommand(OpenConnection, clone.Phase, layout));
+            PushCommand(new DuplicatePhaseCommand(OpenConnection, clone.Phase, layout, clone.EdgeIdMap));
 
             _vm.Content.Phases.Add(clone.Phase);
             BindPhaseList();

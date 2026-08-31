@@ -12,7 +12,8 @@ namespace TruthCardGame.Content.Sqlite
     /// </summary>
     public static class ReuseWriter
     {
-        public static void WriteClonedPhase(DbConnection connection, PhaseDefinition phase)
+        public static void WriteClonedPhase(DbConnection connection, PhaseDefinition phase,
+            IDictionary<string, string> edgeIdMap = null, IDictionary<string, string> portalIdMap = null)
         {
             if (phase == null) throw new ArgumentNullException(nameof(phase));
 
@@ -46,6 +47,7 @@ namespace TruthCardGame.Content.Sqlite
                             ("id", edge.Id), ("phase", phase.Id),
                             ("source", edge.SourceOutputId), ("target", edge.TargetNodeId));
                     }
+                    CopyPortalRows(connection, transaction, "phase", phase.Id, edgeIdMap, portalIdMap);
 
                     transaction.Commit();
                 }
@@ -57,7 +59,8 @@ namespace TruthCardGame.Content.Sqlite
             }
         }
 
-        public static void WriteClonedSession(DbConnection connection, SessionDefinition session)
+        public static void WriteClonedSession(DbConnection connection, SessionDefinition session,
+            IDictionary<string, string> edgeIdMap = null, IDictionary<string, string> portalIdMap = null)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
 
@@ -91,6 +94,7 @@ namespace TruthCardGame.Content.Sqlite
                             ("id", edge.Id), ("session", session.Id),
                             ("source", edge.SourceOutputId), ("target", edge.TargetNodeId));
                     }
+                    CopyPortalRows(connection, transaction, "session", session.Id, edgeIdMap, portalIdMap);
 
                     transaction.Commit();
                 }
@@ -100,6 +104,52 @@ namespace TruthCardGame.Content.Sqlite
                     throw;
                 }
             }
+        }
+
+        internal static void CopyPortalRows(DbConnection connection, DbTransaction transaction,
+            string graphKind, string graphId, IDictionary<string, string> edgeIdMap,
+            IDictionary<string, string> portalIdMap = null)
+        {
+            if (edgeIdMap == null || edgeIdMap.Count == 0) return;
+            var sourceTable = graphKind == "session"
+                ? "wpf_session_edge_portal_pair" : "wpf_phase_edge_portal_pair";
+            var ownerColumn = graphKind == "session" ? "session_id" : "phase_id";
+            foreach (var mapping in edgeIdMap)
+            {
+                GraphPortalPairDefinition source = null;
+                Sql.QueryAll(connection,
+                    $"SELECT id, {ownerColumn}, edge_id, label, color_slot, source_x, source_y, target_x, target_y " +
+                    $"FROM {sourceTable} WHERE edge_id = @edge;",
+                    reader => source = new GraphPortalPairDefinition
+                    {
+                        Id = reader.GetString(0), GraphId = reader.GetString(1), EdgeId = reader.GetString(2),
+                        Label = reader.GetString(3), ColorSlot = reader.GetInt32(4), SourceX = reader.GetDouble(5),
+                        SourceY = reader.GetDouble(6), TargetX = reader.GetDouble(7), TargetY = reader.GetDouble(8),
+                    }, ("edge", mapping.Key));
+                if (source == null) continue;
+                var cloneId = portalIdMap != null && portalIdMap.TryGetValue(source.Id, out var mappedId)
+                    ? mappedId : StableIds.New();
+                if (portalIdMap != null) portalIdMap[source.Id] = cloneId;
+                var clone = CreateClonePortal(source, graphId, mapping.Value, cloneId);
+                var cloneTable = sourceTable;
+                Sql.Execute(connection, transaction,
+                    $"INSERT INTO {cloneTable} (id, {ownerColumn}, edge_id, label, color_slot, source_x, source_y, target_x, target_y) " +
+                    "VALUES (@id, @owner, @edge, @label, @color, @sx, @sy, @tx, @ty);",
+                    ("id", clone.Id), ("owner", clone.GraphId), ("edge", clone.EdgeId), ("label", clone.Label),
+                    ("color", clone.ColorSlot), ("sx", clone.SourceX), ("sy", clone.SourceY),
+                    ("tx", clone.TargetX), ("ty", clone.TargetY));
+            }
+        }
+
+        private static GraphPortalPairDefinition CreateClonePortal(GraphPortalPairDefinition source,
+            string graphId, string edgeId, string cloneId)
+        {
+            return new GraphPortalPairDefinition
+            {
+                Id = cloneId, GraphId = graphId, EdgeId = edgeId, Label = source.Label,
+                ColorSlot = source.ColorSlot, SourceX = source.SourceX, SourceY = source.SourceY,
+                TargetX = source.TargetX, TargetY = source.TargetY,
+            };
         }
 
         private static void WriteCardQuery(DbConnection connection, DbTransaction transaction, PhaseDefinition phase)

@@ -24,6 +24,7 @@
     <EmbeddedResource Include="SQLITE-SCHEMA-V8-TOY-DIALOG.sql" />
     <EmbeddedResource Include="SQLITE-SCHEMA-V9-CARD-FOLDER-HIERARCHY.sql" />
     <EmbeddedResource Include="SQLITE-SCHEMA-V10-ACTION-BLOCKS.sql" />
+    <EmbeddedResource Include="SQLITE-SCHEMA-V11-WPF-GRAPH-PORTALS.sql" />
   </ItemGroup>
 
 </Project>

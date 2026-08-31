@@ -99,8 +99,10 @@ namespace TruthCardGame.Content.Sqlite
 
         /// <summary>
         /// Splits a DDL script into individual statements. Strips '--' line
-        /// comments; statements are ';'-terminated. The core schema contains
-        /// no string literals with semicolons, so line-based splitting is safe.
+        /// comments; ordinary statements are ';'-terminated while SQLite
+        /// trigger bodies remain intact through their final END;. The core
+        /// schema contains no string literals with semicolons, so this small
+        /// parser is sufficient for the embedded migration scripts.
         /// </summary>
         internal static IReadOnlyList<string> SplitStatements(string script)
         {
@@ -113,11 +115,33 @@ namespace TruthCardGame.Content.Sqlite
             }
 
             var statements = new List<string>();
-            foreach (var statement in buffer.ToString().Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+            var current = new StringBuilder();
+            foreach (var part in buffer.ToString().Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
             {
-                var trimmed = statement.Trim();
-                if (trimmed.Length > 0) statements.Add(trimmed);
+                var trimmedPart = part.Trim();
+                if (trimmedPart.Length == 0) continue;
+
+                if (current.Length > 0) current.Append(';');
+                current.Append(trimmedPart);
+
+                // SQLite trigger bodies contain their own semicolon-terminated
+                // statements. Keep those together until the body's END; rather
+                // than handing an incomplete trigger to the command engine.
+                var candidate = current.ToString().Trim();
+                var isTrigger = candidate.StartsWith("CREATE TRIGGER", StringComparison.OrdinalIgnoreCase) ||
+                                candidate.StartsWith("CREATE TEMP TRIGGER", StringComparison.OrdinalIgnoreCase) ||
+                                candidate.StartsWith("CREATE TEMPORARY TRIGGER", StringComparison.OrdinalIgnoreCase);
+                if (isTrigger && !string.Equals(trimmedPart, "END", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                statements.Add(candidate);
+                current.Clear();
             }
+
+            var trailing = current.ToString().Trim();
+            if (trailing.Length > 0) statements.Add(trailing);
             return statements;
         }
 

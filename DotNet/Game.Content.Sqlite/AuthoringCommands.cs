@@ -259,6 +259,7 @@ namespace TruthCardGame.Content.Sqlite
         private readonly SessionGraphNodeDefinition _node;
         private readonly List<GraphEdgeDefinition> _edges;
         private readonly Point2? _position;
+        private readonly Dictionary<string, GraphPortalPairDefinition> _portals = new Dictionary<string, GraphPortalPairDefinition>();
 
         public DeleteSessionNodeCommand(Func<DbConnection> conn, string sessionId, SessionGraphNodeDefinition node,
             List<GraphEdgeDefinition> edges, Point2? position) : base(conn)
@@ -270,6 +271,12 @@ namespace TruthCardGame.Content.Sqlite
 
         protected override void ExecuteCore(DbConnection connection)
         {
+            foreach (var edge in _edges)
+            {
+                if (edge?.Id == null || _portals.ContainsKey(edge.Id)) continue;
+                var portal = GraphPortalRepository.GetByEdge(connection, "session", _sessionId, edge.Id);
+                if (portal != null) _portals[edge.Id] = CreateGraphPortalPairCommand.Copy(portal);
+            }
             SessionGraphRepository.RemoveNode(connection, _sessionId, _node.Id);
             if (_position.HasValue)
                 AuthoringLayoutRepository.DeleteSessionNodePosition(connection, _sessionId, _node.Id);
@@ -286,6 +293,8 @@ namespace TruthCardGame.Content.Sqlite
                     SourceOutputId = edge.SourceOutputId,
                     TargetNodeId = edge.TargetNodeId,
                 });
+                if (_portals.TryGetValue(edge.Id, out var portal))
+                    GraphPortalRepository.Restore(connection, "session", portal);
             }
             if (_position.HasValue)
                 AuthoringLayoutRepository.SaveSessionNodePosition(connection, _sessionId, _node.Id, _position.Value.X, _position.Value.Y);
@@ -299,6 +308,7 @@ namespace TruthCardGame.Content.Sqlite
         private readonly PhaseGraphNodeDefinition _node;
         private readonly List<GraphEdgeDefinition> _edges;
         private readonly Point2? _position;
+        private readonly Dictionary<string, GraphPortalPairDefinition> _portals = new Dictionary<string, GraphPortalPairDefinition>();
 
         public DeletePhaseNodeCommand(Func<DbConnection> conn, string phaseId, PhaseGraphNodeDefinition node,
             List<GraphEdgeDefinition> edges, Point2? position) : base(conn)
@@ -310,6 +320,12 @@ namespace TruthCardGame.Content.Sqlite
 
         protected override void ExecuteCore(DbConnection connection)
         {
+            foreach (var edge in _edges)
+            {
+                if (edge?.Id == null || _portals.ContainsKey(edge.Id)) continue;
+                var portal = GraphPortalRepository.GetByEdge(connection, "phase", _phaseId, edge.Id);
+                if (portal != null) _portals[edge.Id] = CreateGraphPortalPairCommand.Copy(portal);
+            }
             PhaseGraphRepository.RemoveNode(connection, _phaseId, _node.Id);
             if (_position.HasValue)
                 AuthoringLayoutRepository.DeletePhaseNodePosition(connection, _phaseId, _node.Id);
@@ -326,6 +342,8 @@ namespace TruthCardGame.Content.Sqlite
                     SourceOutputId = edge.SourceOutputId,
                     TargetNodeId = edge.TargetNodeId,
                 });
+                if (_portals.TryGetValue(edge.Id, out var portal))
+                    GraphPortalRepository.Restore(connection, "phase", portal);
             }
             if (_position.HasValue)
                 AuthoringLayoutRepository.SavePhaseNodePosition(connection, _phaseId, _node.Id, _position.Value.X, _position.Value.Y);
@@ -340,6 +358,7 @@ namespace TruthCardGame.Content.Sqlite
         private readonly string _targetNodeId;
         private GraphEdgeDefinition _replacedEdge;
         private readonly GraphEdgeDefinition _createdEdge;
+        private GraphPortalPairDefinition _replacedPortal;
 
         public ConnectSessionCommand(Func<DbConnection> conn, string sessionId, string sourceOutputId,
             string targetNodeId, GraphEdgeDefinition replacedEdge)
@@ -372,6 +391,8 @@ namespace TruthCardGame.Content.Sqlite
         {
             if (_replacedEdge != null && string.IsNullOrEmpty(_replacedEdge.Id))
                 _replacedEdge = AuthoringUndo.SessionEdgeFromSource(connection, _sourceOutputId);
+            if (_replacedEdge != null && !string.IsNullOrEmpty(_replacedEdge.Id) && _replacedPortal == null)
+                _replacedPortal = GraphPortalRepository.GetByEdge(connection, "session", _sessionId, _replacedEdge.Id);
             SessionGraphRepository.RemoveEdgesFromSource(connection, _sourceOutputId);
             SessionGraphRepository.AddEdge(connection, _sessionId, _createdEdge);
         }
@@ -382,6 +403,7 @@ namespace TruthCardGame.Content.Sqlite
             if (_replacedEdge != null && !string.IsNullOrEmpty(_replacedEdge.Id))
             {
                 SessionGraphRepository.AddEdge(connection, _sessionId, _replacedEdge);
+                if (_replacedPortal != null) GraphPortalRepository.Restore(connection, "session", _replacedPortal);
             }
         }
 
@@ -403,6 +425,7 @@ namespace TruthCardGame.Content.Sqlite
         private readonly string _targetNodeId;
         private GraphEdgeDefinition _replacedEdge;
         private readonly GraphEdgeDefinition _createdEdge;
+        private GraphPortalPairDefinition _replacedPortal;
 
         public ConnectPhaseCommand(Func<DbConnection> conn, string phaseId, string sourceOutputId,
             string targetNodeId, GraphEdgeDefinition replacedEdge)
@@ -438,6 +461,8 @@ namespace TruthCardGame.Content.Sqlite
         {
             if (_replacedEdge != null && string.IsNullOrEmpty(_replacedEdge.Id))
                 _replacedEdge = AuthoringUndo.PhaseEdgeFromSource(connection, _sourceOutputId);
+            if (_replacedEdge != null && !string.IsNullOrEmpty(_replacedEdge.Id) && _replacedPortal == null)
+                _replacedPortal = GraphPortalRepository.GetByEdge(connection, "phase", _phaseId, _replacedEdge.Id);
             PhaseGraphRepository.RemoveEdgesFromSource(connection, _sourceOutputId);
             PhaseGraphRepository.AddEdge(connection, _phaseId, _createdEdge);
         }
@@ -448,6 +473,7 @@ namespace TruthCardGame.Content.Sqlite
             if (_replacedEdge != null && !string.IsNullOrEmpty(_replacedEdge.Id))
             {
                 PhaseGraphRepository.AddEdge(connection, _phaseId, _replacedEdge);
+                if (_replacedPortal != null) GraphPortalRepository.Restore(connection, "phase", _replacedPortal);
             }
         }
     }
@@ -458,6 +484,7 @@ namespace TruthCardGame.Content.Sqlite
         private readonly string _sessionId;
         private readonly string _sourceOutputId;
         private GraphEdgeDefinition _edge;
+        private GraphPortalPairDefinition _portal;
 
         public DisconnectSessionCommand(Func<DbConnection> conn, string sessionId, string sourceOutputId,
             GraphEdgeDefinition edge) : base(conn)
@@ -486,13 +513,18 @@ namespace TruthCardGame.Content.Sqlite
         {
             if (_edge != null && string.IsNullOrEmpty(_edge.Id))
                 _edge = AuthoringUndo.SessionEdgeFromSource(connection, _sourceOutputId);
+            if (_edge != null && !string.IsNullOrEmpty(_edge.Id) && _portal == null)
+                _portal = GraphPortalRepository.GetByEdge(connection, "session", _sessionId, _edge.Id);
             SessionGraphRepository.RemoveEdgesFromSource(connection, _sourceOutputId);
         }
 
         protected override void UndoCore(DbConnection connection)
         {
             if (_edge != null && !string.IsNullOrEmpty(_edge.Id))
+            {
                 SessionGraphRepository.AddEdge(connection, _sessionId, _edge);
+                if (_portal != null) GraphPortalRepository.Restore(connection, "session", _portal);
+            }
         }
     }
 
@@ -501,6 +533,7 @@ namespace TruthCardGame.Content.Sqlite
         private readonly string _phaseId;
         private readonly string _sourceOutputId;
         private GraphEdgeDefinition _edge;
+        private GraphPortalPairDefinition _portal;
 
         public DisconnectPhaseCommand(Func<DbConnection> conn, string phaseId, string sourceOutputId,
             GraphEdgeDefinition edge) : base(conn)
@@ -529,14 +562,116 @@ namespace TruthCardGame.Content.Sqlite
         {
             if (_edge != null && string.IsNullOrEmpty(_edge.Id))
                 _edge = AuthoringUndo.PhaseEdgeFromSource(connection, _sourceOutputId);
+            if (_edge != null && !string.IsNullOrEmpty(_edge.Id) && _portal == null)
+                _portal = GraphPortalRepository.GetByEdge(connection, "phase", _phaseId, _edge.Id);
             PhaseGraphRepository.RemoveEdgesFromSource(connection, _sourceOutputId);
         }
 
         protected override void UndoCore(DbConnection connection)
         {
             if (_edge != null && !string.IsNullOrEmpty(_edge.Id))
+            {
                 PhaseGraphRepository.AddEdge(connection, _phaseId, _edge);
+                if (_portal != null) GraphPortalRepository.Restore(connection, "phase", _portal);
+            }
         }
+    }
+
+    /// <summary>Creates one persistent WPF-only bridge pair. Identity is allocated once and reused on redo.</summary>
+    public sealed class CreateGraphPortalPairCommand : AuthoringCommandBase
+    {
+        private readonly string _graphKind;
+        private readonly GraphPortalPairDefinition _pair;
+
+        public CreateGraphPortalPairCommand(Func<DbConnection> conn, string graphKind,
+            GraphPortalPairDefinition pair) : base(conn)
+        {
+            _graphKind = graphKind ?? throw new ArgumentNullException(nameof(graphKind));
+            _pair = Copy(pair);
+        }
+
+        public override string Name => "Insert bridge pair";
+
+        protected override void ExecuteCore(DbConnection connection)
+            => GraphPortalRepository.Create(connection, _graphKind, _pair);
+
+        protected override void UndoCore(DbConnection connection)
+            => GraphPortalRepository.Delete(connection, _graphKind, _pair.Id);
+
+        internal static GraphPortalPairDefinition Copy(GraphPortalPairDefinition pair)
+        {
+            if (pair == null) throw new ArgumentNullException(nameof(pair));
+            return new GraphPortalPairDefinition
+            {
+                Id = pair.Id, GraphId = pair.GraphId, EdgeId = pair.EdgeId, Label = pair.Label,
+                ColorSlot = pair.ColorSlot, SourceX = pair.SourceX, SourceY = pair.SourceY,
+                TargetX = pair.TargetX, TargetY = pair.TargetY,
+            };
+        }
+    }
+
+    /// <summary>Moves one bridge endpoint; consecutive updates for that endpoint merge into one undo entry.</summary>
+    public sealed class MoveGraphPortalEndpointCommand : AuthoringCommandBase
+    {
+        private readonly string _graphKind;
+        private readonly string _pairId;
+        private readonly bool _source;
+        private readonly Point2 _original;
+        private Point2 _current;
+
+        public MoveGraphPortalEndpointCommand(Func<DbConnection> conn, string graphKind, string pairId,
+            bool source, Point2 original, Point2 current) : base(conn)
+        {
+            _graphKind = graphKind; _pairId = pairId; _source = source;
+            _original = original; _current = current;
+        }
+
+        public override string Name => "Move bridge endpoint";
+        public override string MergeKey => "portal-move:" + _graphKind + ":" + _pairId + ":" + (_source ? "source" : "target");
+
+        public override bool Merge(IAuthoringCommand incoming)
+        {
+            if (incoming is MoveGraphPortalEndpointCommand move)
+            {
+                _current = move._current;
+                return true;
+            }
+            return false;
+        }
+
+        protected override void ExecuteCore(DbConnection connection)
+        {
+            if (_source) GraphPortalRepository.UpdateSource(connection, _graphKind, _pairId, _current.X, _current.Y);
+            else GraphPortalRepository.UpdateTarget(connection, _graphKind, _pairId, _current.X, _current.Y);
+        }
+
+        protected override void UndoCore(DbConnection connection)
+        {
+            if (_source) GraphPortalRepository.UpdateSource(connection, _graphKind, _pairId, _original.X, _original.Y);
+            else GraphPortalRepository.UpdateTarget(connection, _graphKind, _pairId, _original.X, _original.Y);
+        }
+    }
+
+    /// <summary>Removes both visible endpoints while leaving the logical graph edge untouched.</summary>
+    public sealed class RemoveGraphPortalPairCommand : AuthoringCommandBase
+    {
+        private readonly string _graphKind;
+        private readonly GraphPortalPairDefinition _pair;
+
+        public RemoveGraphPortalPairCommand(Func<DbConnection> conn, string graphKind,
+            GraphPortalPairDefinition pair) : base(conn)
+        {
+            _graphKind = graphKind ?? throw new ArgumentNullException(nameof(graphKind));
+            _pair = CreateGraphPortalPairCommand.Copy(pair);
+        }
+
+        public override string Name => "Remove bridge pair";
+
+        protected override void ExecuteCore(DbConnection connection)
+            => GraphPortalRepository.Delete(connection, _graphKind, _pair.Id);
+
+        protected override void UndoCore(DbConnection connection)
+            => GraphPortalRepository.Restore(connection, _graphKind, _pair);
     }
 
     // ==================================================================
@@ -581,6 +716,7 @@ namespace TruthCardGame.Content.Sqlite
     {
         private readonly SessionDefinition _session;
         private readonly List<(string NodeId, double X, double Y)> _layout;
+        private List<GraphPortalPairDefinition> _portals;
 
         public DeleteSessionCommand(Func<DbConnection> conn, SessionDefinition session,
             List<(string NodeId, double X, double Y)> layout) : base(conn)
@@ -589,12 +725,19 @@ namespace TruthCardGame.Content.Sqlite
         }
 
         public override string Name => "Delete session";
-        protected override void ExecuteCore(DbConnection connection) => SessionRepository.Delete(connection, _session.Id);
+        protected override void ExecuteCore(DbConnection connection)
+        {
+            _portals ??= GraphPortalRepository.LoadSession(connection, _session.Id)
+                .Select(CreateGraphPortalPairCommand.Copy).ToList();
+            SessionRepository.Delete(connection, _session.Id);
+        }
         protected override void UndoCore(DbConnection connection)
         {
             ReuseWriter.WriteClonedSession(connection, _session);
             foreach (var pair in _layout)
                 AuthoringLayoutRepository.SaveSessionNodePosition(connection, _session.Id, pair.NodeId, pair.X, pair.Y);
+            foreach (var portal in _portals ?? Enumerable.Empty<GraphPortalPairDefinition>())
+                GraphPortalRepository.Restore(connection, "session", portal);
         }
     }
 
@@ -603,6 +746,7 @@ namespace TruthCardGame.Content.Sqlite
     {
         private readonly PhaseDefinition _phase;
         private readonly List<(string NodeId, double X, double Y)> _layout;
+        private List<GraphPortalPairDefinition> _portals;
 
         public DeletePhaseCommand(Func<DbConnection> conn, PhaseDefinition phase,
             List<(string NodeId, double X, double Y)> layout) : base(conn)
@@ -611,12 +755,19 @@ namespace TruthCardGame.Content.Sqlite
         }
 
         public override string Name => "Delete phase";
-        protected override void ExecuteCore(DbConnection connection) => PhaseRepository.Delete(connection, _phase.Id);
+        protected override void ExecuteCore(DbConnection connection)
+        {
+            _portals ??= GraphPortalRepository.LoadPhase(connection, _phase.Id)
+                .Select(CreateGraphPortalPairCommand.Copy).ToList();
+            PhaseRepository.Delete(connection, _phase.Id);
+        }
         protected override void UndoCore(DbConnection connection)
         {
             ReuseWriter.WriteClonedPhase(connection, _phase);
             foreach (var pair in _layout)
                 AuthoringLayoutRepository.SavePhaseNodePosition(connection, _phase.Id, pair.NodeId, pair.X, pair.Y);
+            foreach (var portal in _portals ?? Enumerable.Empty<GraphPortalPairDefinition>())
+                GraphPortalRepository.Restore(connection, "phase", portal);
         }
     }
 
@@ -1466,15 +1617,18 @@ namespace TruthCardGame.Content.Sqlite
     {
         private readonly SessionDefinition _clone;
         private readonly List<(string NodeId, double X, double Y)> _layout;
+        private readonly IDictionary<string, string> _edgeIdMap;
+        private readonly IDictionary<string, string> _portalIdMap = new Dictionary<string, string>();
 
-        public CopySessionCommand(Func<DbConnection> conn, SessionDefinition clone, List<(string NodeId, double X, double Y)> layout)
-            : base(conn) { _clone = clone; _layout = layout; }
+        public CopySessionCommand(Func<DbConnection> conn, SessionDefinition clone, List<(string NodeId, double X, double Y)> layout,
+            IDictionary<string, string> edgeIdMap = null)
+            : base(conn) { _clone = clone; _layout = layout; _edgeIdMap = edgeIdMap; }
 
         public override string Name => "Copy session";
 
         protected override void ExecuteCore(DbConnection connection)
         {
-            ReuseWriter.WriteClonedSession(connection, _clone);
+            ReuseWriter.WriteClonedSession(connection, _clone, _edgeIdMap, _portalIdMap);
             foreach (var pair in _layout)
             {
                 AuthoringLayoutRepository.SaveSessionNodePosition(connection, _clone.Id, pair.NodeId, pair.X, pair.Y);
@@ -1492,15 +1646,18 @@ namespace TruthCardGame.Content.Sqlite
     {
         private readonly PhaseDefinition _clone;
         private readonly List<(string NodeId, double X, double Y)> _layout;
+        private readonly IDictionary<string, string> _edgeIdMap;
+        private readonly IDictionary<string, string> _portalIdMap = new Dictionary<string, string>();
 
-        public DuplicatePhaseCommand(Func<DbConnection> conn, PhaseDefinition clone, List<(string NodeId, double X, double Y)> layout)
-            : base(conn) { _clone = clone; _layout = layout; }
+        public DuplicatePhaseCommand(Func<DbConnection> conn, PhaseDefinition clone, List<(string NodeId, double X, double Y)> layout,
+            IDictionary<string, string> edgeIdMap = null)
+            : base(conn) { _clone = clone; _layout = layout; _edgeIdMap = edgeIdMap; }
 
         public override string Name => "Duplicate phase";
 
         protected override void ExecuteCore(DbConnection connection)
         {
-            ReuseWriter.WriteClonedPhase(connection, _clone);
+            ReuseWriter.WriteClonedPhase(connection, _clone, _edgeIdMap, _portalIdMap);
             foreach (var pair in _layout)
             {
                 AuthoringLayoutRepository.SavePhaseNodePosition(connection, _clone.Id, pair.NodeId, pair.X, pair.Y);
@@ -1554,6 +1711,7 @@ namespace TruthCardGame.Content.Sqlite
         private readonly string _placementNodeId;
         private readonly string _newPhaseId;
         private readonly Dictionary<string, string> _portToOldExit;
+        private readonly Dictionary<string, string> _portalIdMap = new Dictionary<string, string>();
 
         public MakeUniqueCommand(Func<DbConnection> conn, PhaseDefinition sharedPhase, string placementNodeId,
             string newPhaseId, Dictionary<string, string> portToOldExit) : base(conn)
@@ -1566,7 +1724,7 @@ namespace TruthCardGame.Content.Sqlite
 
         protected override void ExecuteCore(DbConnection connection)
         {
-            MakeUniqueRepository.MakeUnique(connection, _sharedPhase, _placementNodeId, _newPhaseId);
+            MakeUniqueRepository.MakeUnique(connection, _sharedPhase, _placementNodeId, _newPhaseId, _portalIdMap);
         }
 
         protected override void UndoCore(DbConnection connection)

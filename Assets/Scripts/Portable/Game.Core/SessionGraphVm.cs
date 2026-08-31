@@ -34,7 +34,7 @@ namespace TruthCardGame.Core
 
         private readonly Dictionary<string, GraphNodeDefinition> _nodesById;
         private readonly Dictionary<string, GraphOutputDefinition> _outputsById;
-        private readonly Dictionary<string, string> _edgeFromOutput;
+        private readonly Dictionary<string, GraphEdgeDefinition> _edgeFromOutput;
 
         private readonly ContinuationStack _stack = new ContinuationStack();
 
@@ -58,6 +58,7 @@ namespace TruthCardGame.Core
         public event Action<CardDefinition> CardFinished;
         public event Action<VariableCheckNodeDefinition, float, bool> VariableCheckEvaluated;
         public event Action<string> RuntimeError;
+        public event Action<GraphEdgeTraversal> EdgeTraversed;
         public event Action SessionCompleted;
 
         /// <summary>Forwarded from active PhaseGraphVms (selection diagnostics seam).</summary>
@@ -84,7 +85,7 @@ namespace TruthCardGame.Core
 
             _nodesById = new Dictionary<string, GraphNodeDefinition>();
             _outputsById = new Dictionary<string, GraphOutputDefinition>();
-            _edgeFromOutput = new Dictionary<string, string>();
+            _edgeFromOutput = new Dictionary<string, GraphEdgeDefinition>();
 
             var startCount = 0;
             foreach (var node in _session.Graph.Nodes)
@@ -123,7 +124,7 @@ namespace TruthCardGame.Core
                 {
                     throw new InvalidOperationException($"Session '{sessionId}' edge '{edge.Id}' references unknown target node '{edge.TargetNodeId}'.");
                 }
-                _edgeFromOutput[edge.SourceOutputId] = edge.TargetNodeId;
+                _edgeFromOutput[edge.SourceOutputId] = edge;
             }
         }
 
@@ -272,6 +273,10 @@ namespace TruthCardGame.Core
                 SessionNodeChanged?.Invoke(_sessionNode.Id);
             }
 
+            await context.Services.PauseGate.WaitAsync(
+                new ExecutionCheckpoint(ExecutionCheckpointKind.BeforeSessionNode,
+                    ExecutionGraphKind.Session, _session.Id, _sessionNode.Id), cancellationToken);
+
             switch (_sessionNode)
             {
                 case SessionStartNodeDefinition startNode:
@@ -418,7 +423,7 @@ namespace TruthCardGame.Core
                     $"Unwired phase exit: Phase '{_activeRun.PhaseId}' exit '{transfer.PhaseExitId}' is not projected on placement '{placement.Id}' of Session '{_session.Id}'.");
             }
 
-            if (!_edgeFromOutput.TryGetValue(socketId, out var targetNodeId))
+            if (!_edgeFromOutput.TryGetValue(socketId, out var edge))
             {
                 throw new InvalidOperationException(
                     $"Unwired phase exit: projected socket '{socketId}' (exit '{transfer.PhaseExitId}') of Session '{_session.Id}' has no outgoing edge.");
@@ -427,7 +432,9 @@ namespace TruthCardGame.Core
             // Transfer: the phase run is now suspended on the stack.
             _activeRun = null;
             _activePhaseVm = null;
-            _sessionNode = _nodesById[targetNodeId];
+            _sessionNode = _nodesById[edge.TargetNodeId];
+            EdgeTraversed?.Invoke(new GraphEdgeTraversal(
+                ExecutionGraphKind.Session, _session.Id, edge.Id, edge.SourceOutputId, edge.TargetNodeId));
             SessionNodeChanged?.Invoke(_sessionNode.Id);
         }
 
@@ -458,14 +465,16 @@ namespace TruthCardGame.Core
                     $"on decision '{decision.Id}'.");
             }
 
-            if (!_edgeFromOutput.TryGetValue(socket.Id, out var targetNodeId))
+            if (!_edgeFromOutput.TryGetValue(socket.Id, out var edge))
             {
                 throw new InvalidOperationException(
                     $"Unwired SessionGoto: socket '{socket.Id}' ('{transfer.SessionGotoLabel}') " +
                     $"of decision '{decision.Id}' has no outgoing edge.");
             }
 
-            _sessionNode = _nodesById[targetNodeId];
+            _sessionNode = _nodesById[edge.TargetNodeId];
+            EdgeTraversed?.Invoke(new GraphEdgeTraversal(
+                ExecutionGraphKind.Session, _session.Id, edge.Id, edge.SourceOutputId, edge.TargetNodeId));
             SessionNodeChanged?.Invoke(_sessionNode.Id);
         }
 
@@ -634,12 +643,16 @@ namespace TruthCardGame.Core
             {
                 if (output.Kind == GraphPortKind.Normal)
                 {
-                    if (!_edgeFromOutput.TryGetValue(output.Id, out var targetId))
+                    if (!_edgeFromOutput.TryGetValue(output.Id, out var edge))
                     {
                         throw new InvalidOperationException(
                             $"Session '{_session.Id}': node '{node.Id}' output '{output.Id}' is a dead end with no outgoing edge.");
                     }
-                    return _nodesById[targetId];
+                    var target = _nodesById[edge.TargetNodeId];
+                    EdgeTraversed?.Invoke(new GraphEdgeTraversal(
+                        ExecutionGraphKind.Session, _session.Id, edge.Id,
+                        edge.SourceOutputId, edge.TargetNodeId));
+                    return target;
                 }
             }
             throw new InvalidOperationException(
@@ -656,6 +669,7 @@ namespace TruthCardGame.Core
         {
             vm.PhaseEntered += id => PhaseEntered?.Invoke(id);
             vm.PhaseNodeChanged += id => PhaseNodeChanged?.Invoke(id);
+            vm.EdgeTraversed += edge => EdgeTraversed?.Invoke(edge);
             vm.CardStarted += card => CardStarted?.Invoke(card);
             vm.CardFinished += card => CardFinished?.Invoke(card);
             vm.VariableCheckEvaluated += (check, value, result) => VariableCheckEvaluated?.Invoke(check, value, result);

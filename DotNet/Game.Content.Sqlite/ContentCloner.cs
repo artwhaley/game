@@ -19,6 +19,7 @@ namespace TruthCardGame.Content.Sqlite
             public PhaseDefinition Phase { get; set; }
             public Dictionary<string, string> ExitIdMap { get; } = new Dictionary<string, string>();
             public Dictionary<string, string> NodeIdMap { get; } = new Dictionary<string, string>();
+            public Dictionary<string, string> EdgeIdMap { get; } = new Dictionary<string, string>();
         }
 
         /// <summary>Deep-clones a phase: new phase id, new exit/node/output/edge/instance ids.</summary>
@@ -63,9 +64,11 @@ namespace TruthCardGame.Content.Sqlite
             // Second pass: edges through the remap.
             foreach (var edge in source.Graph.Edges)
             {
+                var newEdgeId = newPhaseId + "-edge-" + (clone.Phase.Graph.Edges.Count + 1);
+                clone.EdgeIdMap[edge.Id] = newEdgeId;
                 clone.Phase.Graph.Edges.Add(new GraphEdgeDefinition
                 {
-                    Id = newPhaseId + "-edge-" + (clone.Phase.Graph.Edges.Count + 1),
+                    Id = newEdgeId,
                     SourceOutputId = oldOutputToNew.TryGetValue(edge.SourceOutputId, out var newOutput)
                         ? newOutput : edge.SourceOutputId,
                     TargetNodeId = clone.NodeIdMap.TryGetValue(edge.TargetNodeId, out var newTarget)
@@ -81,6 +84,7 @@ namespace TruthCardGame.Content.Sqlite
         {
             public SessionDefinition Session { get; set; }
             public Dictionary<string, string> NodeIdMap { get; } = new Dictionary<string, string>();
+            public Dictionary<string, string> EdgeIdMap { get; } = new Dictionary<string, string>();
         }
 
         /// <summary>
@@ -155,9 +159,11 @@ namespace TruthCardGame.Content.Sqlite
 
             foreach (var edge in source.Graph.Edges)
             {
+                var newEdgeId = newSessionId + "-edge-" + (clone.Session.Graph.Edges.Count + 1);
+                clone.EdgeIdMap[edge.Id] = newEdgeId;
                 clone.Session.Graph.Edges.Add(new GraphEdgeDefinition
                 {
-                    Id = newSessionId + "-edge-" + (clone.Session.Graph.Edges.Count + 1),
+                    Id = newEdgeId,
                     SourceOutputId = oldOutputToNew.TryGetValue(edge.SourceOutputId, out var newOutput)
                         ? newOutput : edge.SourceOutputId,
                     TargetNodeId = oldNodeToNew.TryGetValue(edge.TargetNodeId, out var newTarget)

@@ -67,6 +67,9 @@ namespace TruthCardGame.Content.Sqlite.Tests
             Assert.IsTrue(TableExists(_connection, "session_type_required_smart_toy_capability"));
             // v10 editor-only Action Block templates:
             Assert.IsTrue(TableExists(_connection, "wpf_action_block"));
+            // v11 WPF-only graph portal metadata:
+            Assert.IsTrue(TableExists(_connection, "wpf_session_edge_portal_pair"));
+            Assert.IsTrue(TableExists(_connection, "wpf_phase_edge_portal_pair"));
             // v5 drops the superseded v1 structures:
             Assert.IsFalse(TableExists(_connection, "phase_slot"));
             Assert.IsFalse(TableExists(_connection, "card_deck"));
@@ -140,6 +143,22 @@ namespace TruthCardGame.Content.Sqlite.Tests
                     Assert.IsFalse(reader.Read(), "more ledger rows than registered migrations");
                 }
             }
+        }
+
+        [Test]
+        public void SplitStatements_KeepsSQLiteTriggerBodiesTogether()
+        {
+            var statements = CoreMigrator.SplitStatements(
+                "CREATE TABLE sample (id TEXT);" +
+                "CREATE TRIGGER trigger_sample BEFORE INSERT ON sample BEGIN " +
+                "SELECT CASE WHEN NEW.id = '' THEN RAISE(ABORT, 'empty') END; " +
+                "END;" +
+                "CREATE INDEX index_sample ON sample(id);");
+
+            Assert.That(statements, Has.Count.EqualTo(3));
+            Assert.That(statements[1], Does.Contain("CREATE TRIGGER"));
+            Assert.That(statements[1], Does.Contain("END"));
+            Assert.That(statements[2], Does.Contain("CREATE INDEX"));
         }
 
         private bool TableExists(SqliteConnection connection, string name)

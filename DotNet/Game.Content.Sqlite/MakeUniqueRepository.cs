@@ -19,7 +19,8 @@ namespace TruthCardGame.Content.Sqlite
             DbConnection connection,
             PhaseDefinition sharedPhase,
             string placementNodeId,
-            string newPhaseId)
+            string newPhaseId,
+            IDictionary<string, string> portalIdMap = null)
         {
             if (sharedPhase == null) throw new ArgumentNullException(nameof(sharedPhase));
             if (string.IsNullOrEmpty(placementNodeId)) throw new ArgumentException("Placement node id required.", nameof(placementNodeId));
@@ -35,6 +36,7 @@ namespace TruthCardGame.Content.Sqlite
                     // ReuseWriter does its own transaction, so inline the phase
                     // writes here instead to stay inside THIS transaction.
                     WritePhaseInside(connection, transaction, clone.Phase);
+                    ReuseWriter.CopyPortalRows(connection, transaction, "phase", newPhaseId, clone.EdgeIdMap, portalIdMap);
 
                     // Re-point the placement.
                     Sql.Execute(connection, transaction,

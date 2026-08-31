@@ -20,6 +20,10 @@
             <Button x:Name="AutoButton" Content="Auto ▶" Width="80" Height="24" Margin="8,0,0,0"
                     Style="{StaticResource DarkButton}" Click="OnAutoToggled"
                     ToolTip="Run automatically until an authored wait or session completion"/>
+            <Button x:Name="PauseButton" Content="Pause" Width="72" Height="24" Margin="8,0,0,0"
+                    Style="{StaticResource DarkButton}" IsEnabled="False" Click="OnPause"/>
+            <Button x:Name="ResumeButton" Content="Resume" Width="78" Height="24" Margin="4,0,0,0"
+                    Style="{StaticResource DarkButton}" IsEnabled="False" Click="OnResume"/>
             <Button x:Name="DrawNextButton" Content="Continue" Width="110" Height="24" Margin="8,0,0,0"
                     Style="{StaticResource DarkButton}" IsEnabled="False" Click="OnDrawNext"/>
             <Button x:Name="HaltButton" Content="Halt / Close" Width="100" Height="24" Margin="8,0,0,0"

@@ -37,6 +37,9 @@ namespace TruthCardGame.Core
         public event Action<CardDefinition> CardFinished;
         public event Action<string> PhaseEntered;
         public event Action SessionCompleted;
+        public event Action<string> SessionNodeChanged;
+        public event Action<string> PhaseNodeChanged;
+        public event Action<GraphEdgeTraversal> EdgeTraversed;
 
         /// <summary>Forwarded from the session VM (selection diagnostics seam).</summary>
         public event Action<CardSelector.SelectionResult> CardSelectionEvaluated;
@@ -238,6 +241,9 @@ namespace TruthCardGame.Core
             _vm.CardStarted += card => CardStarted?.Invoke(card);
             _vm.CardFinished += card => CardFinished?.Invoke(card);
             _vm.PhaseEntered += title => PhaseEntered?.Invoke(title);
+            _vm.SessionNodeChanged += nodeId => SessionNodeChanged?.Invoke(nodeId);
+            _vm.PhaseNodeChanged += nodeId => PhaseNodeChanged?.Invoke(nodeId);
+            _vm.EdgeTraversed += edge => EdgeTraversed?.Invoke(edge);
             _vm.SessionCompleted += () => SessionCompleted?.Invoke();
             _vm.CardSelectionEvaluated += result => CardSelectionEvaluated?.Invoke(result);
             return _vm;

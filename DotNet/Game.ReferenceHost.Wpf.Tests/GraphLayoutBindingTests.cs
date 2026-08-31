@@ -11,6 +11,7 @@ using System.Windows.Threading;
 using NUnit.Framework;
 using Nodify;
 using TruthCardGame.Content;
+using TruthCardGame.Content.Sqlite;
 using TruthCardGame.Core;
 using TruthCardGame.ReferenceHost.Wpf;
 
@@ -20,6 +21,15 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
     [Apartment(ApartmentState.STA)]
     public sealed class GraphLayoutBindingTests
     {
+        private sealed class TestGraphEditor : GraphEditorViewModel
+        {
+            public TestGraphEditor(string kind, string owner)
+            {
+                GraphKind = kind;
+                GraphOwnerId = owner;
+            }
+        }
+
         private static Application EnsureApplication()
         {
             if (Application.Current != null) return Application.Current;
@@ -52,6 +62,45 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             {
                 window.Close();
             }
+        }
+
+        [Test]
+        public void PortalPairIsDisplayOnlyAndTraceUsesExactEdgeIdentity()
+        {
+            var source = new GraphNodeViewModel { Id = "source", Kind = "entry" };
+            var target = new GraphNodeViewModel { Id = "target", Kind = "end" };
+            var output = new ConnectorViewModel { Id = "output", Owner = source, Kind = "normal" };
+            var input = new ConnectorViewModel { Id = "input", Owner = target, Kind = "normal" };
+            source.Outputs.Add(output);
+            target.Inputs.Add(input);
+
+            var editor = new TestGraphEditor("phase", "phase-a");
+            editor.Nodes.Add(source);
+            editor.Nodes.Add(target);
+            var connection = new ConnectionViewModel(output, input, "phase", "phase-a", "edge-a");
+            editor.Connections.Add(connection);
+
+            var pair = editor.AddPortalPairVisual(new GraphPortalPairDefinition
+            {
+                Id = "portal-a", GraphId = "phase-a", EdgeId = "edge-a", Label = "P1", ColorSlot = 3,
+                SourceX = 25, SourceY = 40, TargetX = 75, TargetY = 40,
+            });
+
+            Assert.That(editor.PortalEndpoints, Has.Count.EqualTo(2));
+            Assert.That(pair.Source.Anchor, Is.EqualTo(new Point(57, 55)));
+            Assert.That(pair.Target.Anchor, Is.EqualTo(new Point(107, 55)));
+            Assert.That(connection.PortalPair, Is.SameAs(pair));
+
+            editor.ApplyTraversal(new GraphEdgeTraversal(
+                ExecutionGraphKind.Phase, "phase-a", "edge-a", "output", "target"));
+
+            Assert.That(connection.TraceRank, Is.EqualTo(0));
+            Assert.That(connection.DebugActive, Is.True);
+            Assert.That(connection.Stroke, Is.SameAs(GraphPresentationPalette.CurrentTrace));
+
+            editor.RemovePortalPairVisual(pair);
+            Assert.That(editor.PortalEndpoints, Is.Empty);
+            Assert.That(connection.PortalPair, Is.Null);
         }
 
         [Test]
