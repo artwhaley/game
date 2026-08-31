@@ -291,7 +291,7 @@ namespace TruthCardGame.Tests
 
             Assert.AreEqual(card.Id, definition.Id);
             Assert.AreEqual("The Card", definition.Title);
-            CollectionAssert.AreEqual(new[] { "party", "truth" }, definition.Tags.ToArray());
+            CollectionAssert.AreEqual(new[] { "party", "truth" }, definition.CardTagIds.ToArray());
             // Null entries are skipped; conversion does not invent a hidden
             // progress action. Pacing/progress must be authored in the Card.
             Assert.AreEqual(1, definition.Sequence.Instances.Count);
@@ -315,21 +315,24 @@ namespace TruthCardGame.Tests
         }
 
         [Test]
-        public void Deck_Converts_OrderedCardIds_Dense()
+        public void Builder_CollectsDeckCards_WithoutPortableDeckEntity()
         {
             var cardA = ScriptableObject.CreateInstance<Card>();
             cardA.EnsureId();
             Set(cardA, "title", "A");
+            SetStringList(cardA, "tags", new[] { "party" });
             var deck = ScriptableObject.CreateInstance<CardDeck>();
             deck.EnsureId();
             var so = new SerializedObject(deck);
             SetObjectList(so, "cards", new Object[] { cardA, null });
+            var session = ScriptableObject.CreateInstance<Session>();
+            session.EnsureId();
 
             var builder = Builder();
-            var definition = deck.ToDefinition(builder);
+            var content = builder.Build(session, deck);
 
-            Assert.AreEqual(deck.Id, definition.Id);
-            CollectionAssert.AreEqual(new[] { cardA.Id }, definition.CardIds.ToArray());
+            CollectionAssert.AreEqual(new[] { cardA.Id }, content.Cards.Select(card => card.Id).ToArray());
+            CollectionAssert.AreEqual(new[] { "party" }, content.CardTagDefinitions.Select(tag => tag.Id).ToArray());
         }
 
         [Test]
@@ -341,7 +344,6 @@ namespace TruthCardGame.Tests
             Set(phase, "minCards", 2);
             Set(phase, "maxCards", 5);
             SetStringList(phase, "mustIncludeTags", new[] { "solo" });
-            SetStringList(phase, "mustExcludeTags", new[] { "loud" });
 
             var session = ScriptableObject.CreateInstance<Session>();
             session.EnsureId();
@@ -355,7 +357,7 @@ namespace TruthCardGame.Tests
 
             Assert.AreEqual(session.Id, definition.Id);
             Assert.AreEqual("Relaxing", definition.Title);
-            CollectionAssert.AreEqual(new[] { "relaxing" }, definition.Tags.ToArray());
+            Assert.AreEqual("type-standard", definition.SessionTypeId);
 
             // One Start, one End, one PhaseReference with a projected Complete socket.
             Assert.AreEqual(1, definition.Graph.Nodes.Count(n => n is Content.SessionStartNodeDefinition));
@@ -372,8 +374,18 @@ namespace TruthCardGame.Tests
             Assert.AreEqual("Complete", collected.Exits[0].Name);
             Assert.AreEqual(4, collected.Graph.Nodes.Count, "standard graph: entry, executor, check, goto");
             Assert.Greater(collected.Graph.Edges.Count, 0);
-            CollectionAssert.AreEqual(new[] { "solo" }, collected.MustIncludeTags.ToArray());
-            CollectionAssert.AreEqual(new[] { "loud" }, collected.MustExcludeTags.ToArray());
+            CollectionAssert.AreEqual(new[] { "solo" }, collected.MustHaveAllCardTags.ToArray());
+        }
+
+        [Test]
+        public void Phase_WithLegacyExclusionTags_FailsLoudly()
+        {
+            var phase = ScriptableObject.CreateInstance<Phase>();
+            phase.EnsureId();
+            SetStringList(phase, "mustExcludeTags", new[] { "loud" });
+
+            var error = Assert.Throws<System.InvalidOperationException>(() => phase.ToDefinition());
+            StringAssert.Contains("legacy exclusion tags", error.Message);
         }
 
         [Test]
@@ -427,7 +439,7 @@ namespace TruthCardGame.Tests
             Assert.AreEqual(1, content.Sessions.Count);
             Assert.AreEqual(1, content.Phases.Count);
             Assert.AreEqual(1, content.Cards.Count);
-            Assert.AreEqual(1, content.Deck.CardIds.Count);
+            Assert.AreEqual("type-standard", content.SessionTypes.Single().Id);
             // Same SO referenced twice on one card -> two owned instances (never shared).
             Assert.AreEqual(2, content.Cards[0].Sequence.Instances.Count(i => i.Id == debug.Id));
         }

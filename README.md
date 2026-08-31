@@ -5,7 +5,7 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
 ## Status
 
 - **SQLite is the canonical source of content truth** at `Content/GameContent.db`
-  (schema v8), owned by the provider-neutral `Game.Content.Sqlite` project.
+  (schema v9), owned by the provider-neutral `Game.Content.Sqlite` project.
   Sessions compose **reusable Phases through a Session/Phase graph model**
   (nodes + edges + Action Instances) — the PhaseSlot/slot-candidate era is
   gone except as migration history. The **Nodify WPF Graph Workbench**
@@ -47,7 +47,32 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   the active Sessions/Phases/Cards/Catalogs drawer, every deletable Library
   item has a right-click Delete action, double-click opens an undoable rename
   dialog for Sessions, Phases, Cards, and Catalog entries, and the Catalog
-  kind/entry lists use the full available width. Action-row drag starts only
+  kind/entry lists use the full available width. The Cards pane now has a
+  persisted hierarchical folder tree: empty folders can be created, folders
+  can be nested, New Card uses the selected folder, and one or more selected
+  cards can be dragged onto a folder. Folder rename updates descendants and
+  card paths; folder delete is context-aware — deleting a non-empty folder
+  offers cascade (delete the folder tree and its cards) or keep-cards (cards
+  move to UNASSIGNED), both fully undoable including every card's owned
+  action sequence. Cards AND folders multi-select (Ctrl+click) into one
+  batch for drag, delete, and duplication: a batch drag moves selected cards
+  and entire folder subtrees in one undoable command (self- and descendant
+  drops are rejected); batch delete confirms once with the cascade/keep
+  choice applied to all selected folders; batch duplicate deep-clones every
+  selected card and folder subtree (fresh ids, "(copy)" names) and then
+  deselects the originals and selects the duplicates. Shift+click selects a
+  range of cards from the anchor (the last plain/Ctrl-clicked card) in
+  visual tree order; a new Shift+click replaces the previous range while
+  Ctrl-toggled members stay selected. Tree rows are
+  full-width UI cards (folder glyph + recursive card-count badge for folders,
+  card glyph for cards) so the entire row surface is clickable and a
+  drag-drop target. The tree preserves expansion state across reloads and
+  uses explorer-style selection (plain-click a selected card to start a
+  group drag, Ctrl+click to toggle). A startup crash
+  caused by event handlers declared inside the TreeViewItem style's deferred
+  ContextMenu content (which corrupted the generated XAML connection ids,
+  leaving the Catalogs drawer null) was fixed by declaring the menu on the
+  TreeView itself. Action-row drag starts only
   from the action label and is guarded against re-entry, preventing editor
   controls from initiating a fatal nested drag. Stat Increase uses an editable
   dropdown of authored stat keys; Modify Temperature uses the configured
@@ -55,20 +80,29 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   persisted values before hydrating bound editor fields, so rebuilding the
   Card editor after Save cannot reset authored IDs or numeric amounts. Schema v6
   adds Dialog (text + blocking), Delay (duration + blocking), and the configured
-  toy actions. Schema v7 adds searchable slash-delimited folders to Cards only.
+  toy actions. Schema v7 adds searchable slash-delimited folder paths to Cards;
+  schema v9 adds the persisted Cards folder hierarchy without changing runtime
+  card semantics.
   Schema v8 adds reusable Resource, Dialog Tag, and Dialog Snippet catalogs,
-  plus Set Toy Pattern, Timed Toy Pattern, and Dialog From Tags. Dialog currently
-  uses the same temporary host presentation as a Cutscene. Card duplication
+  plus Set Toy Pattern, Timed Toy Pattern, and Dialog From Tags. Direct Dialog
+  presents through `IDialogService`; Dialog From Tags selects a matching
+  snippet through the dedicated dialog RNG and presents its text through the
+  same `IDialogService`. Neither dialog action uses the Cutscene host. Card duplication
   recursively assigns fresh IDs to the owned action sequence, every PromptChoice
   option sequence, and every nested action. The Cards drawer searches titles,
   stable IDs, and folder paths; the buffered Card editor saves folder moves in
-  the same undoable edit. Wait For All is an always-blocking snapshot barrier
-  for currently running nonblocking actions and is intentionally unavailable
-  inside PromptChoice descendant sequences. A top-level Return with no
+  the same undoable edit. PromptChoice is always blocking. Its nested sequences
+  may use ordinary legal actions, including the always-blocking Wait For All
+  snapshot barrier for currently running nonblocking actions. SessionGoto is
+  still illegal in PromptChoice descendants, and PromptChoice remains capped at
+  three options. A top-level Return with no
   continuation is a loud runtime/content error; terminal paths use an explicit
   end action. The action editor labels its insertion surface, separates
   authored rows visually, and preserves configured strict dropdown values while
-  an editor is rebuilt.
+  an editor is rebuilt. Resource, Dialog Tag, and Smart Toy Capability mutations
+  hot-refresh every open root and nested action editor without replacing a dirty
+  Card buffer. Portable content-reference validation runs after SQLite snapshot
+  reconstruction and again at engine construction, before host dispatch.
   See [`Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md`](Docs/MilestoneBAuthoringReadiness/FINAL-REPORT.md).
 - Game rules live in a **portable C# engine** (`Game.Content` + `Game.Core` +
   `Game.Profile`, .NET Standard 2.1) that both Unity and the WPF hosts run —
@@ -76,18 +110,21 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   snapshot; `Game.Core` owns resolution and runtime. See
   [Extraction milestone](#extraction-milestone-01) below.
 - Editor builders generate scenes + starter content — no manual wiring.
-- Unity 6000.5.9f1 is pinned. The Ticket 10 batch check reached script
-  compilation; the known stale `CardDeck` conversion reference was removed.
-  The shared source builds cleanly, but a full Unity editor batch compile
-  remains unverified in this environment. The full Unity Action binding/Timeline
+- Unity 6000.5.9f1 is pinned. A headless batch compile with that exact editor
+  succeeds. The legacy ScriptableObject conversion bridge now targets the
+  current deckless portable catalogs (`CardTagIds`, include-only Phase queries,
+  and Session Types); legacy Phase exclusion tags fail loudly because exclusion
+  semantics remain deliberately deferred. The full Unity Action binding/Timeline
   bridge remains deferred. See
   [`Docs/FinalPreMilestoneC/FINAL-REPORT.md`](Docs/FinalPreMilestoneC/FINAL-REPORT.md)
   and do not infer human acceptance from older milestone reports.
-- Latest automated .NET gates: **161 Core tests passed**, **134 SQLite tests
-  passed**, **11 profile tests passed**, and **36 WPF tests passed** (**342
-  total**). The canonical DB is schema v8, passes integrity and foreign-key
+- Latest automated .NET gates: **174 Core tests passed**, **138 SQLite tests
+  passed**, **11 profile tests passed**, and **41 WPF tests passed** (**364
+  total**). The canonical DB is schema v9, passes integrity and foreign-key
   checks, and contains the authored fixture's 1 Session, 1 Phase, and 3 Cards.
-  The WPF host was built and launched for the human canary.
+  A disposable 20-Card/two-Phase authoring-to-execution canary passes through
+  the production SQLite loader and Core engine. The WPF host was built and
+  launched for the remaining human canary.
 - Development rules: [`agents.md`](agents.md) · Unity CLI notes: [`unity-cli.md`](unity-cli.md)
 
 ## Milestone B — Cards, Profile, Selection (0.4)

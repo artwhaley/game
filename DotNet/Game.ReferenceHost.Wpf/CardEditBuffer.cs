@@ -290,6 +290,43 @@ namespace TruthCardGame.ReferenceHost.Wpf
             return null;
         }
 
+        public bool ReferencesResource(string resourceId)
+        {
+            return AnyAction(Sequence, instance =>
+                instance is CutsceneInstanceDefinition cutscene && cutscene.ResourceId == resourceId ||
+                instance is ToyActivityInstanceDefinition timed && timed.PatternResourceId == resourceId ||
+                instance is ToySetPatternInstanceDefinition set && set.PatternResourceId == resourceId);
+        }
+
+        public bool ReferencesDialogTag(string dialogTagId)
+        {
+            return AnyAction(Sequence, instance =>
+                instance is DialogFromTagsInstanceDefinition dialog &&
+                dialog.RequiredDialogTagIds.Contains(dialogTagId));
+        }
+
+        public bool ReferencesSmartToyCapability(string capabilityId)
+        {
+            return RequiredCapabilityIds.Contains(capabilityId) || AnyAction(Sequence, instance =>
+                instance is ToyActivityInstanceDefinition timed && timed.CapabilityId == capabilityId ||
+                instance is ToySetPatternInstanceDefinition set && set.CapabilityId == capabilityId);
+        }
+
+        private static bool AnyAction(ActionSequenceDefinition sequence, Func<ActionInstanceDefinition, bool> predicate)
+        {
+            if (sequence?.Instances == null) return false;
+            foreach (var instance in sequence.Instances)
+            {
+                if (instance != null && predicate(instance)) return true;
+                if (instance is PromptChoiceInstanceDefinition prompt)
+                {
+                    foreach (var option in prompt.Options)
+                        if (AnyAction(option?.Sequence, predicate)) return true;
+                }
+            }
+            return false;
+        }
+
         /// <summary>
         /// Applies an inline row edit (message/amount/prompt text or numeric
         /// value) to the buffered instance — the same field semantics

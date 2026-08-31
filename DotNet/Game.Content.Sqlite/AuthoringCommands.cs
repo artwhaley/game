@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.Linq;
 using TruthCardGame.Content;
 
 namespace TruthCardGame.Content.Sqlite
@@ -31,6 +32,15 @@ namespace TruthCardGame.Content.Sqlite
         bool Merge(IAuthoringCommand incoming);
     }
 
+    /// <summary>Catalog identity/deletion metadata used to protect an unsaved Card before undo/redo.</summary>
+    public interface ICatalogMutationCommand
+    {
+        string CatalogKind { get; }
+        string CatalogId { get; }
+        bool DeletesOnExecute { get; }
+        bool DeletesOnUndo { get; }
+    }
+
     /// <summary>
     /// In-memory undo/redo history for the current Workbench run. Every
     /// Execute/Undo/Redo commits its SQLite transaction immediately; a
@@ -47,6 +57,8 @@ namespace TruthCardGame.Content.Sqlite
         public bool CanRedo => _redo.Count > 0;
         public int UndoCount => _undo.Count;
         public int RedoCount => _redo.Count;
+        public IAuthoringCommand NextUndo => _undo.Count == 0 ? null : _undo[_undo.Count - 1];
+        public IAuthoringCommand NextRedo => _redo.Count == 0 ? null : _redo[_redo.Count - 1];
 
         /// <summary>Fires after every push/undo/redo (toolbar state refresh).</summary>
         public event Action Changed;
@@ -79,8 +91,8 @@ namespace TruthCardGame.Content.Sqlite
         {
             if (_undo.Count == 0) return;
             var command = _undo[_undo.Count - 1];
-            _undo.RemoveAt(_undo.Count - 1);
             command.Undo();
+            _undo.RemoveAt(_undo.Count - 1);
             _redo.Add(command);
             Changed?.Invoke();
         }
@@ -90,8 +102,8 @@ namespace TruthCardGame.Content.Sqlite
         {
             if (_redo.Count == 0) return;
             var command = _redo[_redo.Count - 1];
-            _redo.RemoveAt(_redo.Count - 1);
             command.Execute();
+            _redo.RemoveAt(_redo.Count - 1);
             _undo.Add(command);
             Changed?.Invoke();
         }
@@ -1569,7 +1581,7 @@ namespace TruthCardGame.Content.Sqlite
     // =====================================================================
 
     /// <summary>Creates a catalog definition (SessionType/CardTag/Kink/Equipment/Capability).</summary>
-    public sealed class CreateCatalogEntryCommand : AuthoringCommandBase
+    public sealed class CreateCatalogEntryCommand : AuthoringCommandBase, ICatalogMutationCommand
     {
         private readonly string _kind;
         private readonly string _id;
@@ -1581,6 +1593,10 @@ namespace TruthCardGame.Content.Sqlite
         }
 
         public override string Name => "Create " + _kind;
+        public string CatalogKind => _kind;
+        public string CatalogId => _id;
+        public bool DeletesOnExecute => false;
+        public bool DeletesOnUndo => true;
 
         protected override void ExecuteCore(DbConnection connection)
         {
@@ -1617,14 +1633,14 @@ namespace TruthCardGame.Content.Sqlite
                 case CatalogKinds.CardTag: Sql.Execute(connection, null, "DELETE FROM card_tag_definition WHERE id = @id;", ("id", _id)); break;
                 case CatalogKinds.Kink: Sql.Execute(connection, null, "DELETE FROM kink_definition WHERE id = @id;", ("id", _id)); break;
                 case CatalogKinds.Equipment: Sql.Execute(connection, null, "DELETE FROM equipment_definition WHERE id = @id;", ("id", _id)); break;
-                case CatalogKinds.SmartToyCapability: Sql.Execute(connection, null, "DELETE FROM smart_toy_capability_definition WHERE id = @id;", ("id", _id)); break;
+                case CatalogKinds.SmartToyCapability: CatalogRepositories.DeleteSmartToyCapabilityIfUnused(connection, _id); break;
                 case CatalogKinds.DialogTag: DialogCatalogRepository.DeleteTagIfUnused(connection, _id); break;
             }
         }
     }
 
     /// <summary>Deletes an unreferenced catalog definition (usage blocking happens in the UI before push).</summary>
-    public sealed class DeleteCatalogEntryCommand : AuthoringCommandBase
+    public sealed class DeleteCatalogEntryCommand : AuthoringCommandBase, ICatalogMutationCommand
     {
         private readonly string _kind;
         private readonly string _id;
@@ -1636,6 +1652,10 @@ namespace TruthCardGame.Content.Sqlite
         }
 
         public override string Name => "Delete " + _kind;
+        public string CatalogKind => _kind;
+        public string CatalogId => _id;
+        public bool DeletesOnExecute => true;
+        public bool DeletesOnUndo => false;
 
         protected override void ExecuteCore(DbConnection connection)
         {
@@ -1645,7 +1665,7 @@ namespace TruthCardGame.Content.Sqlite
                 case CatalogKinds.CardTag: Sql.Execute(connection, null, "DELETE FROM card_tag_definition WHERE id = @id;", ("id", _id)); break;
                 case CatalogKinds.Kink: Sql.Execute(connection, null, "DELETE FROM kink_definition WHERE id = @id;", ("id", _id)); break;
                 case CatalogKinds.Equipment: Sql.Execute(connection, null, "DELETE FROM equipment_definition WHERE id = @id;", ("id", _id)); break;
-                case CatalogKinds.SmartToyCapability: Sql.Execute(connection, null, "DELETE FROM smart_toy_capability_definition WHERE id = @id;", ("id", _id)); break;
+                case CatalogKinds.SmartToyCapability: CatalogRepositories.DeleteSmartToyCapabilityIfUnused(connection, _id); break;
                 case CatalogKinds.DialogTag: DialogCatalogRepository.DeleteTagIfUnused(connection, _id); break;
             }
         }
@@ -1806,22 +1826,644 @@ namespace TruthCardGame.Content.Sqlite
     {
         private readonly string _id;
         private readonly string _title;
+        private readonly string _folderPath;
 
-        public CreateCardCommand(Func<DbConnection> conn, string id, string title) : base(conn)
+        public CreateCardCommand(Func<DbConnection> conn, string id, string title)
+            : this(conn, id, title, "")
         {
-            _id = id; _title = title;
+        }
+
+        public CreateCardCommand(Func<DbConnection> conn, string id, string title, string folderPath) : base(conn)
+        {
+            _id = id; _title = title; _folderPath = CardRepository.NormalizeFolder(folderPath);
         }
 
         public override string Name => "Create card";
 
         protected override void ExecuteCore(DbConnection connection)
         {
-            CardRepository.Create(connection, new CardDefinition { Id = _id, Title = _title });
+            CardRepository.Create(connection, new CardDefinition { Id = _id, Title = _title, FolderPath = _folderPath });
         }
 
         protected override void UndoCore(DbConnection connection)
         {
             CardRepository.Delete(connection, _id);
+        }
+    }
+
+    /// <summary>Creates an empty Cards library folder; undo removes that empty folder.</summary>
+    public sealed class CreateCardFolderCommand : AuthoringCommandBase
+    {
+        private readonly string _id;
+        private readonly string _name;
+        private readonly string _parentId;
+
+        public CreateCardFolderCommand(Func<DbConnection> conn, string id, string name, string parentId) : base(conn)
+        {
+            _id = id; _name = name; _parentId = parentId;
+        }
+
+        public override string Name => "Create card folder";
+        protected override void ExecuteCore(DbConnection connection) => CardFolderRepository.Create(connection, _id, _name, _parentId);
+        protected override void UndoCore(DbConnection connection) => CardFolderRepository.Delete(connection, _id);
+    }
+
+    /// <summary>Deletes an empty Cards library folder and restores it on undo.</summary>
+    public sealed class DeleteCardFolderCommand : AuthoringCommandBase
+    {
+        private readonly CardFolderDefinition _snapshot;
+
+        public DeleteCardFolderCommand(Func<DbConnection> conn, string folderId) : base(conn)
+        {
+            using (var connection = conn())
+            {
+                _snapshot = CardFolderRepository.Load(connection).FirstOrDefault(folder => folder.Id == folderId);
+            }
+            if (_snapshot == null) throw new InvalidOperationException($"Folder '{folderId}' not found.");
+        }
+
+        public override string Name => "Delete card folder";
+        protected override void ExecuteCore(DbConnection connection) => CardFolderRepository.Delete(connection, _snapshot.Id);
+        protected override void UndoCore(DbConnection connection)
+        {
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    CardFolderRepository.CreateExact(connection, transaction, _snapshot);
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+    }
+
+    /// <summary>Deletes a non-empty folder subtree. Contained cards are deleted
+    /// or relocated to the unassigned root; undo restores everything.</summary>
+    public sealed class DeleteCardFolderTreeCommand : AuthoringCommandBase
+    {
+        private readonly List<CardFolderDefinition> _folders;
+        private readonly List<CardDefinition> _cards;
+        private readonly List<string> _keptCardIds = new List<string>();
+        private readonly List<string> _keptCardFolders = new List<string>();
+        private readonly bool _deleteCards;
+
+        public DeleteCardFolderTreeCommand(Func<DbConnection> conn, string folderId, bool deleteCards) : base(conn)
+        {
+            _deleteCards = deleteCards;
+            _folders = new List<CardFolderDefinition>();
+            _cards = new List<CardDefinition>();
+            using (var connection = conn())
+            {
+                CardFolderRepository.LoadSubtree(connection, folderId).ForEach(folder => _folders.Add(folder));
+                if (_folders.Count == 0) throw new InvalidOperationException($"Folder '{folderId}' not found.");
+
+                // Capture every contained card fully (relations + owned sequence)
+                // so cascade undo can restore verbatim what cascade delete removed.
+                var prefix = _folders[0].Path + "/%";
+                var cardIds = new List<string>();
+                Sql.QueryAll(connection,
+                    "SELECT id FROM card WHERE folder_path = @path OR folder_path LIKE @prefix;",
+                    reader => cardIds.Add(reader.GetString(0)),
+                    ("path", _folders[0].Path), ("prefix", prefix));
+                if (_deleteCards)
+                {
+                    cardIds.ForEach(cardId => _cards.Add(CaptureCard(connection, cardId)));
+                }
+                else
+                {
+                    // Keep-cards mode: remember where each surviving card lived so
+                    // undo can move it back after the folders are restored.
+                    foreach (var cardId in cardIds)
+                    {
+                        string folder = null;
+                        Sql.QueryAll(connection, "SELECT folder_path FROM card WHERE id = @id;",
+                            reader => folder = reader.IsDBNull(0) ? "" : reader.GetString(0), ("id", cardId));
+                        _keptCardIds.Add(cardId);
+                        _keptCardFolders.Add(CardRepository.NormalizeFolder(folder));
+                    }
+                }
+            }
+        }
+
+        internal static CardDefinition CaptureCard(DbConnection connection, string cardId)
+        {
+            string title = null, body = null, folder = null, sequenceId = null;
+            Sql.QueryAll(connection, "SELECT title, body_text, folder_path, action_sequence_id FROM card WHERE id = @id;",
+                reader =>
+                {
+                    title = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                    body = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                    folder = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                    sequenceId = reader.IsDBNull(3) ? null : reader.GetString(3);
+                },
+                ("id", cardId));
+            if (sequenceId == null) throw new InvalidOperationException($"Card '{cardId}' not found.");
+            var card = new CardDefinition { Id = cardId, Title = title, BodyText = body, FolderPath = folder };
+            card.CardTagIds.AddRange(IdsOf(connection, "SELECT tag_id FROM card_tag WHERE card_id = @id;", cardId));
+            card.KinkIds.AddRange(IdsOf(connection, "SELECT kink_id FROM card_kink WHERE card_id = @id;", cardId));
+            card.RequiredEquipmentIds.AddRange(IdsOf(connection, "SELECT equipment_id FROM card_required_equipment WHERE card_id = @id;", cardId));
+            card.RequiredCapabilityIds.AddRange(IdsOf(connection, "SELECT capability_id FROM card_required_smart_toy_capability WHERE card_id = @id;", cardId));
+            card.Sequence = GameContentSnapshotLoader.LoadSequence(connection, sequenceId);
+            return card;
+        }
+
+        private static List<string> IdsOf(DbConnection connection, string sql, string cardId)
+        {
+            var ids = new List<string>();
+            Sql.QueryAll(connection, sql, reader => ids.Add(reader.GetString(0)), ("id", cardId));
+            return ids;
+        }
+
+        public override string Name => _deleteCards
+            ? "Delete card folder (with cards)"
+            : "Delete card folder (keep cards)";
+
+        internal string RootFolderId => _folders[0].Id;
+        internal bool DeleteCards => _deleteCards;
+
+        /// <summary>Executes/undoes against a caller-owned transaction so a batch
+        /// command can compose multiple subtree operations atomically.</summary>
+        internal void ExecuteSubtree(DbConnection connection, DbTransaction transaction)
+        {
+            CardFolderRepository.DeleteSubtree(connection, transaction, _folders[0].Id, _deleteCards);
+        }
+
+        internal void UndoSubtree(DbConnection connection, DbTransaction transaction)
+        {
+            CardFolderRepository.RestoreSubtree(connection, transaction, _folders);
+            CardFolderRepository.RestoreCards(connection, transaction, _cards);
+            if (!_deleteCards && _keptCardIds.Count > 0)
+            {
+                // Put the surviving cards back where they were.
+                CardFolderRepository.SetCardsFolders(connection, transaction, _keptCardIds, _keptCardFolders);
+            }
+        }
+
+        protected override void ExecuteCore(DbConnection connection)
+        {
+            CardFolderRepository.DeleteSubtree(connection, _folders[0].Id, _deleteCards);
+        }
+
+        protected override void UndoCore(DbConnection connection)
+        {
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    CardFolderRepository.RestoreSubtree(connection, transaction, _folders);
+                    CardFolderRepository.RestoreCards(connection, transaction, _cards);
+                    if (!_deleteCards && _keptCardIds.Count > 0)
+                    {
+                        // Put the surviving cards back where they were.
+                        CardFolderRepository.SetCardsFolders(connection, transaction, _keptCardIds, _keptCardFolders);
+                    }
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+    }
+
+    /// <summary>Batch move: selected cards and selected folder subtrees move to
+    /// one destination in a single undoable transaction. Undo puts everything
+    /// back exactly where it was.</summary>
+    public sealed class MoveCardSelectionCommand : AuthoringCommandBase
+    {
+        private readonly List<string> _cardIds;
+        private readonly List<string> _cardOldFolders = new List<string>();
+        private readonly List<string> _folderIds;
+        private readonly List<CardFolderDefinition> _folderSnapshots = new List<CardFolderDefinition>();
+        private readonly string _destinationFolderId; // null = All Cards root
+
+        public MoveCardSelectionCommand(Func<DbConnection> conn,
+            IReadOnlyList<string> cardIds, IReadOnlyList<string> folderIds, string destinationFolderId) : base(conn)
+        {
+            _cardIds = new List<string>(cardIds ?? new List<string>());
+            _folderIds = new List<string>(folderIds ?? new List<string>());
+            _destinationFolderId = destinationFolderId;
+            if (_cardIds.Count == 0 && _folderIds.Count == 0)
+                throw new ArgumentException("Move requires at least one card or folder.");
+            using (var connection = conn())
+            {
+                using (var transaction = connection.BeginTransaction())
+                {
+                    foreach (var cardId in _cardIds)
+                    {
+                        string oldFolder = null;
+                        Sql.QueryAll(connection, transaction, "SELECT folder_path FROM card WHERE id = @id;",
+                            reader => oldFolder = reader.IsDBNull(0) ? "" : reader.GetString(0), ("id", cardId));
+                        if (oldFolder == null) throw new InvalidOperationException($"Card '{cardId}' not found.");
+                        _cardOldFolders.Add(CardRepository.NormalizeFolder(oldFolder));
+                    }
+                    foreach (var folderId in _folderIds)
+                        CardFolderRepository.LoadSubtree(connection, transaction, folderId, _folderSnapshots);
+                }
+            }
+        }
+
+        public override string Name => "Move cards and folders";
+
+        protected override void ExecuteCore(DbConnection connection)
+        {
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    // Cards first (plain folder_path move)...
+                    if (_cardIds.Count > 0)
+                        CardFolderRepository.SetCardsFolder(connection, transaction, _cardIds, DestinationPath(connection, transaction));
+                    // ...then folder subtrees (re-parent + path rewrite).
+                    foreach (var folderId in _folderIds)
+                        CardFolderRepository.MoveSubtree(connection, transaction, folderId, _destinationFolderId);
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+
+        private string DestinationPath(DbConnection connection, DbTransaction transaction)
+        {
+            if (string.IsNullOrEmpty(_destinationFolderId)) return "";
+            var path = "";
+            Sql.QueryAll(connection, transaction, "SELECT path FROM card_folder WHERE id = @id;",
+                reader => path = reader.GetString(0), ("id", _destinationFolderId));
+            if (path.Length == 0) throw new InvalidOperationException($"Destination folder '{_destinationFolderId}' not found.");
+            return path;
+        }
+
+        protected override void UndoCore(DbConnection connection)
+        {
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    // Undo in reverse: folders back (restore snapshots then re-parent
+                    // to their original parents), then cards back to their folders.
+                    for (var index = _folderSnapshots.Count - 1; index >= 0; index--)
+                    {
+                        var snapshot = _folderSnapshots[index];
+                        // Rewrite the subtree back to its original path.
+                        UndoMoveFolder(connection, transaction, snapshot);
+                    }
+                    if (_cardIds.Count > 0)
+                        CardFolderRepository.SetCardsFolders(connection, transaction, _cardIds, _cardOldFolders);
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+
+        private static void UndoMoveFolder(DbConnection connection, DbTransaction transaction, CardFolderDefinition snapshot)
+        {
+            // Reload the moved root to learn its current path.
+            var movedList = new List<CardFolderDefinition>();
+            CardFolderRepository.LoadSubtree(connection, transaction, snapshot.Id, movedList);
+            var moved = movedList[0];
+            var sourcePath = moved.Path;
+            var targetPath = snapshot.Path;
+            string collision = null;
+            Sql.QueryAll(connection, transaction,
+                "SELECT id FROM card_folder WHERE path = @path COLLATE NOCASE AND id <> @id;",
+                reader => collision = reader.GetString(0), ("path", targetPath), ("id", snapshot.Id));
+            if (collision != null) throw new InvalidOperationException($"Cannot undo move: a folder named '{snapshot.Name}' now exists at '{targetPath}'.");
+            Sql.Execute(connection, transaction,
+                "UPDATE card_folder SET path = @new || substr(path, length(@old) + 1) " +
+                "WHERE path = @old OR path LIKE @prefix;",
+                ("new", targetPath), ("old", sourcePath), ("prefix", sourcePath + "/%"));
+            Sql.Execute(connection, transaction,
+                "UPDATE card_folder SET parent_id = @parent WHERE id = @id;",
+                ("parent", (object)snapshot.ParentId ?? DBNull.Value), ("id", snapshot.Id));
+            Sql.Execute(connection, transaction,
+                "UPDATE card SET folder_path = @new || substr(folder_path, length(@old) + 1) " +
+                "WHERE folder_path = @old OR folder_path LIKE @prefix;",
+                ("new", targetPath), ("old", sourcePath), ("prefix", sourcePath + "/%"));
+        }
+    }
+
+    /// <summary>Batch delete: selected cards always delete; selected folders delete
+    /// with cascade or keep-cards semantics. One undoable transaction; undo restores
+    /// everything verbatim.</summary>
+    public sealed class DeleteCardSelectionCommand : AuthoringCommandBase
+    {
+        private readonly List<CardDefinition> _cards = new List<CardDefinition>();
+        private readonly List<DeleteCardFolderTreeCommand> _folderCommands = new List<DeleteCardFolderTreeCommand>();
+
+        public DeleteCardSelectionCommand(Func<DbConnection> conn,
+            IReadOnlyList<string> cardIds, IReadOnlyList<string> folderIds, bool folderDeleteCards) : base(conn)
+        {
+            foreach (var cardId in cardIds ?? new List<string>())
+                using (var connection = conn())
+                    _cards.Add(DeleteCardFolderTreeCommand.CaptureCard(connection, cardId));
+            foreach (var folderId in folderIds ?? new List<string>())
+                _folderCommands.Add(new DeleteCardFolderTreeCommand(conn, folderId, folderDeleteCards));
+        }
+
+        public override string Name => "Delete cards and folders";
+
+        protected override void ExecuteCore(DbConnection connection)
+        {
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    foreach (var folderCommand in _folderCommands)
+                        folderCommand.ExecuteSubtree(connection, transaction);
+                    foreach (var card in _cards)
+                        CardRepository.Delete(connection, transaction, card.Id);
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+
+        protected override void UndoCore(DbConnection connection)
+        {
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    // Undo in reverse: cards first, then folders (each folder
+                    // command restores its own captured subtree).
+                    for (var index = _cards.Count - 1; index >= 0; index--)
+                        CardRepository.Create(connection, transaction, _cards[index]);
+                    for (var index = _folderCommands.Count - 1; index >= 0; index--)
+                        _folderCommands[index].UndoSubtree(connection, transaction);
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+    }
+
+    /// <summary>Batch duplicate: every selected card and folder subtree deep-clones
+    /// with fresh ids. Undo removes all copies. The command exposes the created
+    /// ids so the UI can select the duplicates.</summary>
+    public sealed class DuplicateCardSelectionCommand : AuthoringCommandBase
+    {
+        private readonly List<string> _sourceCardIds;
+        private readonly List<string> _sourceFolderIds;
+        private readonly List<string> _newCardIds = new List<string>();
+        private readonly List<string> _newFolderIds = new List<string>();
+
+        public DuplicateCardSelectionCommand(Func<DbConnection> conn,
+            IReadOnlyList<string> cardIds, IReadOnlyList<string> folderIds) : base(conn)
+        {
+            _sourceCardIds = new List<string>(cardIds ?? new List<string>());
+            _sourceFolderIds = new List<string>(folderIds ?? new List<string>());
+            if (_sourceCardIds.Count == 0 && _sourceFolderIds.Count == 0)
+                throw new ArgumentException("Duplicate requires at least one card or folder.");
+        }
+
+        public IReadOnlyList<string> NewCardIds => _newCardIds;
+        public IReadOnlyList<string> NewFolderIds => _newFolderIds;
+
+        public override string Name => "Duplicate cards and folders";
+
+        protected override void ExecuteCore(DbConnection connection)
+        {
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    foreach (var sourceId in _sourceCardIds)
+                    {
+                        var newId = "card-" + Guid.NewGuid().ToString("N");
+                        string sourceTitle = null;
+                        Sql.QueryAll(connection, transaction, "SELECT title FROM card WHERE id = @id;",
+                            reader => sourceTitle = reader.IsDBNull(0) ? "" : reader.GetString(0), ("id", sourceId));
+                        CardRepository.Duplicate(connection, transaction, sourceId, newId,
+                            (sourceTitle ?? "Card") + " (copy)");
+                        _newCardIds.Add(newId);
+                    }
+                    foreach (var sourceFolderId in _sourceFolderIds)
+                    {
+                        var newFolderId = DuplicateFolderSubtree(connection, transaction, sourceFolderId, _newCardIds);
+                        _newFolderIds.Add(newFolderId);
+                    }
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    _newCardIds.Clear();
+                    _newFolderIds.Clear();
+                    throw;
+                }
+            }
+        }
+
+        private string DuplicateFolderSubtree(DbConnection connection, DbTransaction transaction, string sourceFolderId,
+            List<string> newCardIds)
+        {
+            var subtree = new List<CardFolderDefinition>();
+            CardFolderRepository.LoadSubtree(connection, transaction, sourceFolderId, subtree);
+            var source = subtree[0];
+
+            // Compute a fresh sibling name for the copy.
+            var parentPath = string.IsNullOrEmpty(source.ParentId) ? "" : ParentPath(connection, transaction, source.ParentId);
+            var newName = UniqueSiblingName(connection, transaction, parentPath, source.Name + " (copy)");
+
+            var rootId = "folder-" + Guid.NewGuid().ToString("N");
+            var newRootPath = string.IsNullOrEmpty(parentPath) ? newName : parentPath + "/" + newName;
+            CardFolderRepository.CreateExact(connection, transaction, new CardFolderDefinition
+            {
+                Id = rootId, ParentId = source.ParentId, Name = newName, Path = newRootPath,
+            });
+
+            // Clone child folders (skip the root), mapping old->new ids and paths.
+            var folderIdMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [source.Id] = rootId };
+            for (var index = 1; index < subtree.Count; index++)
+            {
+                var original = subtree[index];
+                var cloneId = "folder-" + Guid.NewGuid().ToString("N");
+                var originalPrefix = source.Path + "/";
+                var clonePath = newRootPath + original.Path.Substring(source.Path.Length);
+                var cloneParentId = folderIdMap[original.ParentId];
+                CardFolderRepository.CreateExact(connection, transaction, new CardFolderDefinition
+                {
+                    Id = cloneId, ParentId = cloneParentId, Name = original.Name, Path = clonePath,
+                });
+                folderIdMap[original.Id] = cloneId;
+            }
+
+            // Clone every card in the subtree, landing in the cloned folders.
+            var cardIds = new List<string>();
+            Sql.QueryAll(connection, transaction,
+                "SELECT id FROM card WHERE folder_path = @path OR folder_path LIKE @prefix ORDER BY folder_path, title;",
+                reader => cardIds.Add(reader.GetString(0)), ("path", source.Path), ("prefix", source.Path + "/%"));
+            foreach (var cardId in cardIds)
+            {
+                var newCardId = "card-" + Guid.NewGuid().ToString("N");
+                var clone = CardRepository.Duplicate(connection, transaction, cardId, newCardId, null);
+                // Rewrite the clone's folder to the copied folder path.
+                var newFolderPath = newRootPath + clone.FolderPath.Substring(source.Path.Length);
+                Sql.Execute(connection, transaction,
+                    "UPDATE card SET folder_path = @folder WHERE id = @id;",
+                    ("folder", newFolderPath), ("id", newCardId));
+                newCardIds.Add(newCardId);
+            }
+            return rootId;
+        }
+
+        private static string ParentPath(DbConnection connection, DbTransaction transaction, string parentId)
+        {
+            var path = "";
+            Sql.QueryAll(connection, transaction, "SELECT path FROM card_folder WHERE id = @id;",
+                reader => path = reader.GetString(0), ("id", parentId));
+            if (path.Length == 0) throw new InvalidOperationException($"Parent folder '{parentId}' not found.");
+            return path;
+        }
+
+        private static string UniqueSiblingName(DbConnection connection, DbTransaction transaction,
+            string parentPath, string desiredName)
+        {
+            var candidate = desiredName;
+            var attempt = 2;
+            while (true)
+            {
+                var probe = string.IsNullOrEmpty(parentPath) ? candidate : parentPath + "/" + candidate;
+                string existing = null;
+                Sql.QueryAll(connection, transaction,
+                    "SELECT id FROM card_folder WHERE path = @path COLLATE NOCASE;",
+                    reader => existing = reader.GetString(0), ("path", probe));
+                if (existing == null) return candidate;
+                candidate = desiredName + " " + attempt;
+                attempt++;
+            }
+        }
+
+        protected override void UndoCore(DbConnection connection)
+        {
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    foreach (var newCardId in _newCardIds)
+                        CardRepository.Delete(connection, transaction, newCardId);
+                    foreach (var newFolderId in _newFolderIds)
+                        CardFolderRepository.DeleteSubtree(connection, transaction, newFolderId, deleteCards: true);
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+    }
+
+    /// <summary>Renames a folder and updates all descendant folder/card paths.</summary>
+    public sealed class RenameCardFolderCommand : AuthoringCommandBase
+    {
+        private readonly string _folderId;
+        private readonly string _oldName;
+        private string _newName;
+
+        public RenameCardFolderCommand(Func<DbConnection> conn, string folderId, string oldName, string newName) : base(conn)
+        {
+            _folderId = folderId; _oldName = oldName; _newName = newName;
+        }
+
+        public override string Name => "Rename card folder";
+        public override string MergeKey => "cardfoldername:" + _folderId;
+        public override bool Merge(IAuthoringCommand incoming)
+        {
+            if (incoming is RenameCardFolderCommand rename && rename._folderId == _folderId)
+            {
+                _newName = rename._newName;
+                return true;
+            }
+            return false;
+        }
+
+        protected override void ExecuteCore(DbConnection connection) => CardFolderRepository.Rename(connection, _folderId, _newName);
+        protected override void UndoCore(DbConnection connection) => CardFolderRepository.Rename(connection, _folderId, _oldName);
+    }
+
+    /// <summary>Moves one or more selected Cards together in one undoable transaction.</summary>
+    public sealed class MoveCardsToFolderCommand : AuthoringCommandBase
+    {
+        private readonly List<string> _cardIds;
+        private readonly List<string> _oldFolders = new List<string>();
+        private readonly string _newFolder;
+
+        public MoveCardsToFolderCommand(Func<DbConnection> conn, IReadOnlyList<string> cardIds, string newFolder) : base(conn)
+        {
+            if (cardIds == null || cardIds.Count == 0) throw new ArgumentException("At least one card is required.", nameof(cardIds));
+            _cardIds = new List<string>(cardIds);
+            _newFolder = CardRepository.NormalizeFolder(newFolder);
+            using (var connection = conn())
+            {
+                for (var i = 0; i < _cardIds.Count; i++)
+                {
+                    string oldFolder = null;
+                    Sql.QueryAll(connection, "SELECT folder_path FROM card WHERE id = @id;",
+                        reader => oldFolder = reader.IsDBNull(0) ? "" : reader.GetString(0), ("id", _cardIds[i]));
+                    if (oldFolder == null) throw new InvalidOperationException($"Card '{_cardIds[i]}' not found.");
+                    _oldFolders.Add(CardRepository.NormalizeFolder(oldFolder));
+                }
+            }
+        }
+
+        public override string Name => "Move cards to folder";
+        protected override void ExecuteCore(DbConnection connection)
+        {
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    CardFolderRepository.SetCardsFolder(connection, transaction, _cardIds, _newFolder);
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+        }
+
+        protected override void UndoCore(DbConnection connection)
+        {
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    CardFolderRepository.SetCardsFolders(connection, transaction, _cardIds, _oldFolders);
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
         }
     }
 
@@ -2134,6 +2776,7 @@ namespace TruthCardGame.Content.Sqlite
     /// <summary>Stable catalog-kind keys shared by the catalog commands.</summary>
     public static class CatalogKinds
     {
+        public const string Resource = "resource";
         public const string SessionType = "session-type";
         public const string CardTag = "card-tag";
         public const string Kink = "kink";

@@ -6,7 +6,7 @@ namespace TruthCardGame.Content
     /// discriminators, the WPF editors, Unity host implementations — references
     /// these constants so the vocabulary cannot drift.
     ///
-    /// Flow-control types and the WaitForAll barrier are always blocking;
+    /// Flow-control types, PromptChoice, and the WaitForAll barrier are always blocking;
     /// <see cref="IsAlwaysBlocking"/> is the shared rule enforced by
     /// persistence, the registry, and the executor.
     /// </summary>
@@ -33,7 +33,7 @@ namespace TruthCardGame.Content
         public const string Return = "return";
         public const string EndSession = "end_session";
 
-        /// <summary>Flow-control actions can never be authored or run as nonblocking.</summary>
+        /// <summary>Actions whose semantics require completion can never be authored or run as nonblocking.</summary>
         public static bool IsAlwaysBlocking(string typeKey)
         {
             return typeKey == PhaseGoto
@@ -41,7 +41,8 @@ namespace TruthCardGame.Content
                 || typeKey == Return
                 || typeKey == EndSession
                 || typeKey == WaitForContinue
-                || typeKey == WaitForAll;
+                || typeKey == WaitForAll
+                || typeKey == PromptChoice;
         }
     }
 }

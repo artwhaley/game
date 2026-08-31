@@ -315,7 +315,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 if (TypeKey == ActionTypeKeys.Cutscene &&
                     (string.IsNullOrWhiteSpace(TextValue) || !ParameterOptions.Any(option => option.Id == TextValue)))
                     return "Select an existing Resource.";
-                if (TypeKey == ActionTypeKeys.ToyActivity &&
+                if ((TypeKey == ActionTypeKeys.ToyActivity || TypeKey == ActionTypeKeys.ToySetPattern) &&
                     (string.IsNullOrWhiteSpace(TextValue) || !ParameterOptions.Any(option => option.Id == TextValue)))
                     return "Select an existing Toy Capability.";
                 if ((TypeKey == ActionTypeKeys.ToyActivity || TypeKey == ActionTypeKeys.ToySetPattern) &&
@@ -326,6 +326,18 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     return "Select at least one Dialog Tag.";
                 return null;
             }
+        }
+
+        public void NotifyCatalogsRefreshed()
+        {
+            _phaseChoiceOptions = null;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ChoiceOptions)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedChoice)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PatternOptions)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedPatternChoice)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DialogTagOptions)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ValidationMessage)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDanger)));
         }
 
         public string TextValue
@@ -801,6 +813,17 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 .Select(item => new ActionParameterOption { Id = item.Id, Name = string.IsNullOrEmpty(item.Title) ? item.Id : item.Title })
                 .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
+
+        public void RefreshActionAuthoringCatalogs(GameContentDefinition content)
+        {
+            ConfigureActionCatalog(content);
+            foreach (var node in Nodes)
+            {
+                node.ActionSequence?.RefreshCatalogs(content);
+                foreach (var option in node.DecisionRows)
+                    option.ActionSequence?.RefreshCatalogs(content);
+            }
         }
 
         /// <summary>Builds the node/connection graph from content definitions.</summary>
@@ -1481,8 +1504,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 }
                 case ToySetPatternInstanceDefinition toySet:
                 {
-                    row.TextValue = toySet.CapabilityId;
-                    row.PatternValue = toySet.PatternResourceId;
+                    // Capture both persisted values before either property
+                    // setter synchronizes the row back into the definition.
+                    // Setting the capability first must not clear the pattern.
+                    var toyCapabilityId = toySet.CapabilityId;
+                    var toyPattern = toySet.PatternResourceId;
+                    row.TextValue = toyCapabilityId;
+                    row.PatternValue = toyPattern;
                     break;
                 }
                 case DialogFromTagsInstanceDefinition dialogFromTags:
@@ -1784,6 +1812,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 id != null && phasesById.TryGetValue(id, out var phase) ? phase : null;
             SelectSession(content.Sessions.Count > 0 ? content.Sessions[0] : null);
             SelectPhase(content.Phases.Count > 0 ? content.Phases[0] : null);
+        }
+
+        public void RefreshActionAuthoringCatalogs()
+        {
+            if (Content == null) return;
+            SessionGraph.RefreshActionAuthoringCatalogs(Content);
+            PhaseGraph.RefreshActionAuthoringCatalogs(Content);
         }
 
         /// <summary>Loads a phase by id into the Phase Graph pane; false when unknown.</summary>

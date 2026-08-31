@@ -73,6 +73,11 @@ namespace TruthCardGame.Core
                     $"Action '{instance.Id}' ({info.TypeKey}) is not legal in owner scope '{scope}' " +
                     $"(legal: {info.LegalScopes}).");
             }
+            if (info.IsAlwaysBlocking && !instance.IsBlocking)
+            {
+                throw new InvalidOperationException(
+                    $"Action '{instance.Id}' ({info.TypeKey}) must be blocking.");
+            }
         }
 
         public static string KeyOf(ActionInstanceDefinition instance)
@@ -267,6 +272,7 @@ namespace TruthCardGame.Core
                 AuthoringCategory = "Pacing/Input",
                 SearchKeywords = "choice input prompt",
                 LegalScopes = ActionOwnerScope.All,
+                IsAlwaysBlocking = true,
                 BlockingConfigurable = false,
                 DefaultBlocking = true,
                 EditorDiscriminator = "PromptChoice",

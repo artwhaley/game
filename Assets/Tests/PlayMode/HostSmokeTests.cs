@@ -50,7 +50,7 @@ namespace TruthCardGame.Tests
         private static PhaseDefinition StandardPhase(string id, params string[] includeTags)
         {
             var phase = new PhaseDefinition { Id = id, Title = id };
-            if (includeTags != null) phase.MustIncludeTags.AddRange(includeTags);
+            if (includeTags != null) phase.MustHaveAllCardTags.AddRange(includeTags);
             var exitId = "px-" + id + "-complete";
             phase.Exits.Add(new PhaseExitDefinition { Id = exitId, Name = "Complete" });
 
@@ -123,7 +123,7 @@ namespace TruthCardGame.Tests
 
             var stat = new StatIncreaseInstanceDefinition { Id = "action-stat", StatKey = "courage", Amount = 3 };
             var debug = new DebugInstanceDefinition { Id = "action-debug", Message = "scaled-time beat", DelaySeconds = 0.05f };
-            var card = new CardDefinition { Id = "card-smoke", Title = "Smoke Card", Tags = { "smoke" } };
+            var card = new CardDefinition { Id = "card-smoke", Title = "Smoke Card", CardTagIds = { "smoke" } };
             card.Sequence.Instances.Add(stat);
             card.Sequence.Instances.Add(debug);
             card.Sequence.Instances.Add(new IncrementProgressInstanceDefinition { Id = "card-progress", Amount = 10f });

@@ -50,7 +50,6 @@ namespace TruthCardGame
                 Title = title,
                 SessionTypeId = "type-standard",
             };
-            if (tags != null) definition.Tags.AddRange(tags);
 
             var start = new TruthCardGame.Content.SessionStartNodeDefinition { Id = "n-" + id + "-start" };
             start.Outputs.Add(new TruthCardGame.Content.GraphOutputDefinition { Id = start.Id + "-out" });

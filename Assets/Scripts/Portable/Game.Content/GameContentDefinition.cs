@@ -41,6 +41,7 @@ namespace TruthCardGame.Content
 
         public List<SessionDefinition> Sessions { get; set; } = new List<SessionDefinition>();
         public List<PhaseDefinition> Phases { get; set; } = new List<PhaseDefinition>();
+        public List<CardFolderDefinition> CardFolders { get; set; } = new List<CardFolderDefinition>();
         public List<CardDefinition> Cards { get; set; } = new List<CardDefinition>();
         public List<ResourceDefinition> Resources { get; set; } = new List<ResourceDefinition>();
     }

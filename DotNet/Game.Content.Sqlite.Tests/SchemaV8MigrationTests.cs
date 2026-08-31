@@ -128,7 +128,9 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 Sequence = new ActionSequenceDefinition { Id = "seq-ext" } };
             card.Sequence.Instances.Add(new ToyActivityInstanceDefinition
                 { Id = "toy-ext", CapabilityId = "vibrate", PatternResourceId = "res-pat", DurationSeconds = 5f, IsBlocking = true });
-            card.Sequence.Instances.Add(new DialogFromTagsInstanceDefinition { Id = "dft-ext", IsBlocking = true });
+            var dialogFromTags = new DialogFromTagsInstanceDefinition { Id = "dft-ext", IsBlocking = true };
+            dialogFromTags.RequiredDialogTagIds.Add("tag-giggle");
+            card.Sequence.Instances.Add(dialogFromTags);
             CardRepository.Create(connection: _connection, card: card);
 
             // Fake host extension row attached to a surviving action id.
@@ -156,6 +158,61 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 command.CommandText = "PRAGMA foreign_key_check;";
                 using (var reader = command.ExecuteReader()) Assert.IsFalse(reader.Read());
             }
+        }
+
+        [Test]
+        public void SmartToyCapabilityUsage_IncludesTimedAndSetActions_AndBlocksDeletion()
+        {
+            CoreMigrator.EnsureSchema(_connection);
+            CatalogRepositories.CreateSmartToyCapability(_connection,
+                new SmartToyCapabilityDefinition { Id = "cap-timed", Title = "Timed" });
+            CatalogRepositories.CreateSmartToyCapability(_connection,
+                new SmartToyCapabilityDefinition { Id = "cap-set", Title = "Set" });
+            ResourceRepository.Create(_connection,
+                new ResourceDefinition { Id = "pattern", Kind = ResourceKinds.ToyPattern, Name = "Pattern" });
+            var card = new CardDefinition
+            {
+                Id = "usage-card", Title = "Usage",
+                Sequence = new ActionSequenceDefinition { Id = "usage-sequence" }
+            };
+            card.Sequence.Instances.Add(new ToyActivityInstanceDefinition
+                { Id = "timed", CapabilityId = "cap-timed", PatternResourceId = "pattern", DurationSeconds = 1f });
+            card.Sequence.Instances.Add(new ToySetPatternInstanceDefinition
+                { Id = "set", CapabilityId = "cap-set", PatternResourceId = "pattern", IsBlocking = false });
+            CardRepository.Create(_connection, card);
+
+            var timed = CatalogRepositories.GetSmartToyCapabilityUsage(_connection, "cap-timed");
+            Assert.That(timed.TimedToyPatternActions, Is.EqualTo(1));
+            Assert.That(timed.SetToyPatternActions, Is.EqualTo(0));
+            Assert.Throws<InvalidOperationException>(() =>
+                CatalogRepositories.DeleteSmartToyCapabilityIfUnused(_connection, "cap-timed"));
+
+            var set = CatalogRepositories.GetSmartToyCapabilityUsage(_connection, "cap-set");
+            Assert.That(set.TimedToyPatternActions, Is.EqualTo(0));
+            Assert.That(set.SetToyPatternActions, Is.EqualTo(1));
+            Assert.Throws<InvalidOperationException>(() =>
+                CatalogRepositories.DeleteSmartToyCapabilityIfUnused(_connection, "cap-set"));
+        }
+
+        [Test]
+        public void SnapshotLoader_RejectsWrongResourceKindAfterReconstruction()
+        {
+            CoreMigrator.EnsureSchema(_connection);
+            CatalogRepositories.CreateSmartToyCapability(_connection,
+                new SmartToyCapabilityDefinition { Id = "cap", Title = "Capability" });
+            ResourceRepository.Create(_connection,
+                new ResourceDefinition { Id = "cut", Kind = ResourceKinds.Cutscene, Name = "Cutscene" });
+            var card = new CardDefinition
+            {
+                Id = "invalid-card", Title = "Invalid",
+                Sequence = new ActionSequenceDefinition { Id = "invalid-sequence" }
+            };
+            card.Sequence.Instances.Add(new ToyActivityInstanceDefinition
+                { Id = "invalid-toy", CapabilityId = "cap", PatternResourceId = "cut", DurationSeconds = 1f });
+            CardRepository.Create(_connection, card);
+
+            var error = Assert.Throws<InvalidOperationException>(() => GameContentSnapshotLoader.Load(_connection));
+            Assert.That(error.Message, Does.Contain("invalid-toy").And.Contain("cutscene").And.Contain("toy_pattern"));
         }
 
         // ---- helpers ----

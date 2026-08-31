@@ -42,7 +42,7 @@ namespace TruthCardGame
         public TruthCardGame.Content.CardDefinition ToDefinition(UnityContentGraphBuilder builder)
         {
             var definition = new TruthCardGame.Content.CardDefinition { Id = id, Title = title };
-            if (tags != null) definition.Tags.AddRange(tags);
+            if (tags != null) definition.CardTagIds.AddRange(tags);
             definition.Sequence = new TruthCardGame.Content.ActionSequenceDefinition { Id = "seq-" + id };
             if (actions != null)
             {

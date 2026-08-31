@@ -100,6 +100,7 @@ namespace TruthCardGame.Core.Tests
                          ActionTypeKeys.SessionGoto,
                          ActionTypeKeys.WaitForContinue,
                          ActionTypeKeys.WaitForAll,
+                         ActionTypeKeys.PromptChoice,
                          ActionTypeKeys.Return,
                          ActionTypeKeys.EndSession,
                      })
@@ -109,6 +110,15 @@ namespace TruthCardGame.Core.Tests
                 Assert.IsFalse(info.BlockingConfigurable, key + " blocking not configurable");
                 Assert.IsTrue(ActionTypeKeys.IsAlwaysBlocking(key), key + " shared rule agrees");
             }
+        }
+
+        [Test]
+        public void NonblockingPromptChoice_IsRejectedAtRegistryValidationBoundary()
+        {
+            var choice = new PromptChoiceInstanceDefinition { Id = "choice", IsBlocking = false };
+            var error = Assert.Throws<InvalidOperationException>(() =>
+                ActionTypeRegistry.ValidateScope(choice, ActionOwnerScope.CardSequence));
+            Assert.That(error.Message, Does.Contain("choice").And.Contain("prompt_choice").And.Contain("must be blocking"));
         }
 
         [Test]
@@ -405,20 +415,66 @@ namespace TruthCardGame.Core.Tests
         }
 
         [Test]
-        public void WaitForAll_IsRejectedInsidePromptChoiceDescendants()
+        public async Task PromptChoice_NestedTimedToy_WaitForAll_ThenParentResumes()
         {
+            var toy = new GatedToyActivityService();
+            var dialog = new FakeDialogService();
+            var prompts = new FakePromptService(0);
+            _services = new CoreServices(new FakeDelayService(), _log, prompts: prompts,
+                dialog: dialog, toyActivity: toy);
+            var context = Context(ActionOwnerScope.CardSequence);
             var nested = new ActionSequenceDefinition
             {
                 Id = "nested-wait",
                 Instances =
                 {
+                    new ToyActivityInstanceDefinition
+                    {
+                        Id = "nested-toy", CapabilityId = "vibrate", PatternResourceId = "res-pat-50",
+                        DurationSeconds = 5f, IsBlocking = false
+                    },
+                    new DialogInstanceDefinition { Id = "before-wait", Text = "Let's see...", IsBlocking = true },
                     new WaitForAllInstanceDefinition { Id = "nested-wait-action" },
+                    new DialogInstanceDefinition { Id = "after-wait", Text = "There. Finished.", IsBlocking = true },
                 },
             };
+            var prompt = new PromptChoiceInstanceDefinition { Id = "choice", Prompt = "Try it?", IsBlocking = true };
+            prompt.Options.Add(new PromptChoiceOptionDefinition { Id = "yes", Label = "Try it", Sequence = nested });
 
+            var run = Run(_executor, context, prompt,
+                new StatIncreaseInstanceDefinition { Id = "parent-after", StatKey = "resumed", Amount = 1f });
+
+            await Task.Yield();
+            Assert.That(toy.TimedCount, Is.EqualTo(1));
+            Assert.That(dialog.Shown, Is.EqualTo(new[] { "Let's see..." }));
+            Assert.That(run.IsCompleted, Is.False, "nested Wait For All must wait for the timed toy");
+            Assert.That(_player.Stats.Get("resumed"), Is.EqualTo(0));
+
+            toy.TimedAcknowledgement.TrySetResult(true);
+            await run;
+
+            Assert.That(dialog.Shown, Is.EqualTo(new[] { "Let's see...", "There. Finished." }));
+            Assert.That(_player.Stats.Get("resumed"), Is.EqualTo(1), "parent sequence resumes after PromptChoice");
+            Assert.That(_tracker.ActiveCount, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void PromptChoiceDescendant_StillRejectsSessionGoto_AndMoreThanThreeOptions()
+        {
+            var sessionGoto = new ActionSequenceDefinition { Id = "nested-session-goto" };
+            sessionGoto.Instances.Add(new SessionGotoInstanceDefinition { Id = "goto" });
             Assert.Throws<InvalidOperationException>(() =>
                 ActionSequenceScopeValidator.ValidatePromptChoiceDescendant(
-                    nested, ActionOwnerScope.CardSequence));
+                    sessionGoto, ActionOwnerScope.SessionDecisionPromptChoiceSequence));
+
+            var root = new ActionSequenceDefinition { Id = "root" };
+            var prompt = new PromptChoiceInstanceDefinition { Id = "too-many", IsBlocking = true };
+            for (var index = 0; index < 4; index++)
+                prompt.Options.Add(new PromptChoiceOptionDefinition
+                    { Id = "o" + index, Label = "O" + index, Sequence = new ActionSequenceDefinition { Id = "s" + index } });
+            root.Instances.Add(prompt);
+            Assert.Throws<InvalidOperationException>(() =>
+                ActionSequenceScopeValidator.ValidatePromptChoiceDescendant(root, ActionOwnerScope.CardSequence));
         }
 
         // ---------- flow reduction ----------

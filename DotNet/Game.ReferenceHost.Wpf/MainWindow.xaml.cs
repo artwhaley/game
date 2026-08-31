@@ -56,6 +56,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
         }
     }
 
+    /// <summary>Collapses when the bound bool is true — the inverse of BoolToVisible.</summary>
+    public sealed class BoolToCollapsedConverter : System.Windows.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            return value is bool flag && flag ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
     public partial class MainWindow : Window
     {
         private readonly WorkbenchViewModel _vm;
@@ -66,6 +80,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private bool _syncingPhaseMeta;
         private bool _loadingPlacementPhase;
         private bool _suppressDisconnectCommands;
+        private bool _hydratingSessionViewport;
+        private bool _hydratingPhaseViewport;
+        private int _sessionViewportHydrationGeneration;
+        private int _phaseViewportHydrationGeneration;
         private readonly ObservableCollection<ActionTypeChoice> _actionBrowserChoices = new ObservableCollection<ActionTypeChoice>();
         private Point _actionDragStart;
         private bool _actionDragInProgress;
@@ -152,7 +170,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
             _vm.SessionGraph.ViewportChanged += () => WithConnection(connection =>
             {
-                if (_vm.SelectedSession == null) return;
+                if (_hydratingSessionViewport || _vm.SelectedSession == null) return;
                 AuthoringLayoutRepository.SaveViewport(connection, "session", _vm.SelectedSession.Id,
                     _vm.SessionGraph.ViewportZoom, _vm.SessionGraph.ViewportLocation.X, _vm.SessionGraph.ViewportLocation.Y);
             });
@@ -209,7 +227,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
             _vm.PhaseGraph.ViewportChanged += () => WithConnection(connection =>
             {
-                if (_vm.SelectedPhase == null) return;
+                if (_hydratingPhaseViewport || _vm.SelectedPhase == null) return;
                 AuthoringLayoutRepository.SaveViewport(connection, "phase", _vm.SelectedPhase.Id,
                     _vm.PhaseGraph.ViewportZoom, _vm.PhaseGraph.ViewportLocation.X, _vm.PhaseGraph.ViewportLocation.Y);
             });
@@ -345,6 +363,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void Undo()
         {
             if (!_stack.CanUndo) return;
+            if (!CanApplyCatalogMutation(_stack.NextUndo, undo: true)) return;
             try
             {
                 _stack.Undo();
@@ -360,6 +379,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void Redo()
         {
             if (!_stack.CanRedo) return;
+            if (!CanApplyCatalogMutation(_stack.NextRedo, undo: false)) return;
             try
             {
                 _stack.Redo();
@@ -422,6 +442,30 @@ namespace TruthCardGame.ReferenceHost.Wpf
             ReloadSessionEditor();
             ReloadPhaseEditor();
             UpdatePhaseHeader();
+            RefreshActionAuthoringCatalogs();
+        }
+
+        private bool CanApplyCatalogMutation(IAuthoringCommand command, bool undo)
+        {
+            if (!(command is ICatalogMutationCommand mutation)) return true;
+            if (undo ? !mutation.DeletesOnUndo : !mutation.DeletesOnExecute) return true;
+            var message = UnsavedCatalogReferenceMessage(mutation.CatalogKind, mutation.CatalogId);
+            if (message == null) return true;
+            StatusText.Text = "Catalog change blocked by unsaved Card reference.";
+            MessageBox.Show(this, message, "Unsaved Card", MessageBoxButton.OK, MessageBoxImage.Information);
+            return false;
+        }
+
+        private string UnsavedCatalogReferenceMessage(string kind, string id)
+        {
+            if (_cardBuffer == null || string.IsNullOrEmpty(id)) return null;
+            if (kind == CatalogKinds.Resource && _cardBuffer.ReferencesResource(id))
+                return "Delete blocked:\nResource is referenced by the currently edited unsaved Card.";
+            if (kind == CatalogKinds.DialogTag && _cardBuffer.ReferencesDialogTag(id))
+                return "Delete blocked:\nDialog Tag is referenced by the currently edited unsaved Card.";
+            if (kind == CatalogKinds.SmartToyCapability && _cardBuffer.ReferencesSmartToyCapability(id))
+                return "This capability is referenced by the currently edited unsaved Card.";
+            return null;
         }
 
         private void SyncSessionListSelection(SessionDefinition session)
@@ -481,9 +525,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 StatusText.Text = "Add a cutscene Resource before authoring Play Cutscene.";
                 return;
             }
-            if (typeKey == ActionTypeKeys.ToyActivity && sequence.ToyCapabilityOptions.Count == 0)
+            var creationError = ActionAuthoringGuards.CreationError(sequence, typeKey);
+            if (creationError != null)
             {
-                StatusText.Text = "Add a Smart Toy Capability before authoring Toy Activity.";
+                StatusText.Text = creationError;
                 return;
             }
 
@@ -602,6 +647,27 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 if (query.Length == 0 || choice.SearchText.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
                     _actionBrowserChoices.Add(choice);
+            }
+        }
+
+        private void RefreshActionAuthoringCatalogs()
+        {
+            if (_vm?.Content == null) return;
+            _vm.RefreshActionAuthoringCatalogs();
+            if (CardActionSequenceHost?.Content is ActionSequenceEditorViewModel cardEditor)
+                cardEditor.RefreshCatalogs(_vm.Content);
+            RefreshVisibleDialogTagPickers(this);
+        }
+
+        private static void RefreshVisibleDialogTagPickers(DependencyObject root)
+        {
+            if (root == null) return;
+            for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+            {
+                var child = VisualTreeHelper.GetChild(root, index);
+                if (child is RelationPickerControl picker && picker.DataContext is ActionRowData)
+                    ConfigureActionDialogTagPicker(picker);
+                RefreshVisibleDialogTagPickers(child);
             }
         }
 
@@ -796,14 +862,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void AppendBrowserAction(ActionTypeChoice choice, ActionSequenceEditorViewModel sequence, int ordinal)
         {
             if (choice == null || sequence == null || sequence.OwnerNode == null) return;
-            if (sequence.IsPromptChoiceDescendant && choice.TypeKey == ActionTypeKeys.WaitForAll)
+            var creationError = ActionAuthoringGuards.CreationError(sequence, choice.TypeKey);
+            if (creationError != null)
             {
-                StatusText.Text = "Action rejected: Wait For All is not allowed inside Prompt Choice descendants.";
-                return;
-            }
-            if (choice.TypeKey == ActionTypeKeys.ToyActivity && sequence.ToyCapabilityOptions.Count == 0)
-            {
-                StatusText.Text = "Add a Smart Toy Capability before authoring Toy Activity.";
+                StatusText.Text = creationError;
                 return;
             }
             var instanceId = sequence.IdentityPrefix + "-action-" + Guid.NewGuid().ToString("N").Substring(0, 8);
@@ -861,11 +923,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var copy = ActionInstanceCloneUtility.Clone(source.Definition, newId);
             try
             {
-                if (target.IsPromptChoiceDescendant && copy is WaitForAllInstanceDefinition)
-                {
-                    StatusText.Text = "Copy rejected: Wait For All is not allowed inside Prompt Choice descendants.";
-                    return;
-                }
                 ActionTypeRegistry.ValidateScope(copy, target.OwnerScope);
                 if (target.OwnerScope == ActionOwnerScope.CardSequence)
                 {
@@ -1358,25 +1415,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 return;
             }
 
-            if (container.DataContext is CardDefinition card)
-            {
-                var newTitle = PromptForLibraryRename("Card", card.Title);
-                if (newTitle == null || string.Equals(newTitle, card.Title, StringComparison.Ordinal)) return;
-                PushOrMergeWithReload(new RenameCardCommand(OpenConnection, card.Id, card.Title ?? "", newTitle), () =>
-                {
-                    card.Title = newTitle;
-                    if (_cardBuffer?.CardId == card.Id)
-                    {
-                        _cardBuffer.Title = newTitle;
-                        SyncCardEditorFromBuffer();
-                    }
-                    BindCardList();
-                    CardList.SelectedItem = card;
-                    StatusText.Text = "Renamed card to '" + newTitle + "'.";
-                });
-                return;
-            }
-
             var oldCatalogValue = CaptureCatalogEdit(container.DataContext);
             if (oldCatalogValue == null) return;
             var catalogTitle = PromptForLibraryRename("Catalog Entry", oldCatalogValue.Title);
@@ -1389,6 +1427,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 BindCatalogEntries();
                 SelectCatalogEntry(newCatalogValue.Id);
                 BindSessionTypeBox();
+                if (newCatalogValue.Kind == CatalogKinds.SmartToyCapability || newCatalogValue.Kind == CatalogKinds.DialogTag)
+                    RefreshActionAuthoringCatalogs();
                 StatusText.Text = "Renamed catalog entry to '" + catalogTitle + "'.";
             });
         }
@@ -1653,8 +1693,21 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         AuthoringLayoutRepository.SaveSessionNodePosition(connection, _vm.SelectedSession.Id, pair.Key, pair.Value.X, pair.Value.Y);
                 }
                 var viewport = AuthoringLayoutRepository.LoadViewport(connection, "session", _vm.SelectedSession.Id);
+                var sessionId = _vm.SelectedSession.Id;
+                var hydrationGeneration = ++_sessionViewportHydrationGeneration;
+                _hydratingSessionViewport = true;
                 _vm.SelectedSession.Graph = graph;
                 _vm.SessionGraph.LoadFromDefinition(_vm.SelectedSession, filled, viewport);
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() =>
+                {
+                    if (hydrationGeneration != _sessionViewportHydrationGeneration) return;
+                    if (_vm.SelectedSession?.Id == sessionId && viewport.HasValue)
+                    {
+                        _vm.SessionGraph.ViewportZoom = viewport.Value.Zoom;
+                        _vm.SessionGraph.ViewportLocation = new Point(viewport.Value.X, viewport.Value.Y);
+                    }
+                    _hydratingSessionViewport = false;
+                }));
             });
         }
 
@@ -1682,7 +1735,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         AuthoringLayoutRepository.SavePhaseNodePosition(connection, _vm.SelectedPhase.Id, pair.Key, pair.Value.X, pair.Value.Y);
                 }
                 var viewport = AuthoringLayoutRepository.LoadViewport(connection, "phase", _vm.SelectedPhase.Id);
+                var phaseId = _vm.SelectedPhase.Id;
+                var hydrationGeneration = ++_phaseViewportHydrationGeneration;
+                _hydratingPhaseViewport = true;
                 _vm.PhaseGraph.LoadFromDefinition(_vm.SelectedPhase, filled, viewport);
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() =>
+                {
+                    if (hydrationGeneration != _phaseViewportHydrationGeneration) return;
+                    if (_vm.SelectedPhase?.Id == phaseId && viewport.HasValue)
+                    {
+                        _vm.PhaseGraph.ViewportZoom = viewport.Value.Zoom;
+                        _vm.PhaseGraph.ViewportLocation = new Point(viewport.Value.X, viewport.Value.Y);
+                    }
+                    _hydratingPhaseViewport = false;
+                }));
             });
         }
 

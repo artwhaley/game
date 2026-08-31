@@ -14,8 +14,10 @@ content/migration layer, WPF authoring host, and Unity compile-drift surface.
   origin, and remediation details. Explicit terminal actions are required.
 - `Set Toy Pattern` is acknowledged inline and is not tracked as a timed task.
   Blocking timed toy actions await completion; nonblocking timed toy actions are
-  tracked. `Wait For All` drains the current nonblocking set and is excluded
-  from PromptChoice descendant sequences.
+  tracked. `Wait For All` drains the current nonblocking set. The subsequent
+  Milestone C readiness correction made PromptChoice always blocking and permits
+  Wait For All in nested PromptChoice sequences; SessionGoto remains illegal
+  there and the three-option maximum remains.
 - Toy shutdown uses a real cancellation timeout and logs when cleanup exceeds
   the five-second bound.
 - Legacy toy migration IDs use exact IEEE-754 bit patterns, avoiding rounded

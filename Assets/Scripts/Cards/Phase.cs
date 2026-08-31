@@ -59,8 +59,13 @@ namespace TruthCardGame
                 Id = id,
                 Title = title,
             };
-            if (mustIncludeTags != null) definition.MustIncludeTags.AddRange(mustIncludeTags);
-            if (mustExcludeTags != null) definition.MustExcludeTags.AddRange(mustExcludeTags);
+            if (mustIncludeTags != null) definition.MustHaveAllCardTags.AddRange(mustIncludeTags);
+            if (mustExcludeTags != null && mustExcludeTags.Count > 0)
+            {
+                throw new System.InvalidOperationException(
+                    $"Unity Phase '{id}' still contains legacy exclusion tags. " +
+                    "The portable include-only Phase query has no exclusion semantics; remove those tags before play.");
+            }
 
             var exitId = "px-" + id + "-complete";
             definition.Exits.Add(new TruthCardGame.Content.PhaseExitDefinition { Id = exitId, Name = "Complete" });

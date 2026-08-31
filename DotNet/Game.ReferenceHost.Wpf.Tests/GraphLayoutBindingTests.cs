@@ -140,7 +140,7 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             Assert.That(sessionSequence.Rows[0].PromptOptions[0].ActionSequence.OwnerScope,
                 Is.EqualTo(ActionOwnerScope.SessionDecisionPromptChoiceSequence));
             Assert.That(sessionSequence.Rows[0].PromptOptions[0].ActionSequence.ActionTypePickerView
-                .Cast<ActionTypeChoice>().Any(choice => choice.TypeKey == ActionTypeKeys.WaitForAll), Is.False);
+                .Cast<ActionTypeChoice>().Any(choice => choice.TypeKey == ActionTypeKeys.WaitForAll), Is.True);
         }
 
         [Test]
@@ -542,7 +542,6 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
                 {
                     (List: "SessionList", Header: "Delete Session"),
                     (List: "PhaseList", Header: "Delete Phase"),
-                    (List: "CardList", Header: "Delete Card"),
                     (List: "CatalogEntryList", Header: "Delete Catalog Entry"),
                 })
                 {
@@ -551,6 +550,15 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
                     Assert.That(menu, Is.Not.Null);
                     Assert.That(((MenuItem)menu.Items[0]).Header, Is.EqualTo(pair.Header));
                 }
+
+                // The Cards drawer was replaced by the folder tree; its delete
+                // affordance is the shared CardFolderTree context menu.
+                var tree = (TreeView)window.FindName("CardFolderTree");
+                Assert.That(tree.ContextMenu, Is.Not.Null);
+                Assert.That(tree.ContextMenu.Items.OfType<MenuItem>()
+                    .Any(item => (string)item.Header == "Delete Card"), Is.True);
+                Assert.That(tree.ContextMenu.Items.OfType<MenuItem>()
+                    .Any(item => (string)item.Header == "Delete Folder"), Is.True);
             }
             finally
             {
@@ -573,7 +581,6 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
                 {
                     (Button: "SessionLibraryTabButton", List: "SessionList"),
                     (Button: "PhaseLibraryTabButton", List: "PhaseList"),
-                    (Button: "CardsLibraryTabButton", List: "CardList"),
                     (Button: "CatalogsLibraryTabButton", List: "CatalogEntryList"),
                 })
                 {
@@ -602,6 +609,39 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
 
                     Assert.That(dialogOpened, Is.True, target.List + " did not open the rename dialog.");
                 }
+
+                // The Cards drawer's rename affordance is a tree-node double
+                // click (OnCardTreeDoubleClick), not a ListBox double click.
+                ((Button)window.FindName("CardsLibraryTabButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                var tree = (TreeView)window.FindName("CardFolderTree");
+                tree.ItemsSource = new[]
+                {
+                    new CardFolderTreeNode("tree-card", "Rename me", "", false, false,
+                        new CardDefinition { Id = "tree-card", Title = "Rename me" }),
+                };
+                tree.UpdateLayout();
+                var treeItem = (TreeViewItem)tree.ItemContainerGenerator.ContainerFromIndex(0);
+                Assert.That(treeItem, Is.Not.Null, "CardFolderTree did not create an item container.");
+
+                var treeDialogOpened = false;
+                window.Dispatcher.BeginInvoke(DispatcherPriority.Background, new System.Action(() =>
+                {
+                    var dialog = window.OwnedWindows.OfType<TextInputDialog>().FirstOrDefault();
+                    if (dialog == null) return;
+                    treeDialogOpened = true;
+                    dialog.Close();
+                }));
+                var treeDoubleClick = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+                {
+                    RoutedEvent = Control.MouseDoubleClickEvent,
+                    Source = treeItem,
+                };
+                var treeDoubleClickHandler = typeof(MainWindow).GetMethod("OnCardTreeDoubleClick",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.That(treeDoubleClickHandler, Is.Not.Null);
+                treeDoubleClickHandler.Invoke(window, new object[] { tree, treeDoubleClick });
+
+                Assert.That(treeDialogOpened, Is.True, "CardFolderTree did not open the rename dialog.");
             }
             finally
             {

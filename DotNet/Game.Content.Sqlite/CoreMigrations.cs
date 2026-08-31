@@ -48,7 +48,10 @@ namespace TruthCardGame.Content.Sqlite
                 LoadEmbeddedScript("SQLITE-SCHEMA-V7-CARD-FOLDERS.sql")),
             new CoreMigration(8, "toy-pattern-dialog-catalog",
                 LoadEmbeddedScript("SQLITE-SCHEMA-V8-TOY-DIALOG.sql"),
-                Migration8Transform.Transform)
+                Migration8Transform.Transform),
+            new CoreMigration(9, "card-folder-hierarchy",
+                LoadEmbeddedScript("SQLITE-SCHEMA-V9-CARD-FOLDER-HIERARCHY.sql"),
+                Migration9Transform.Transform)
         };
 
         private static string LoadEmbeddedScript(string resourceName)

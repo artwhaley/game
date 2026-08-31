@@ -22,9 +22,11 @@ namespace TruthCardGame.Core
         private readonly IRandomSource _dialogRng;
         private readonly CardSelectionProfile _selectionProfile;
         private readonly int _executionBudget;
+        private readonly object _shutdownGate = new object();
 
         private SessionGraphVm _vm;
         private bool _busy;
+        private Task _shutdownTask;
 
         public Player Player { get; }
 
@@ -59,6 +61,8 @@ namespace TruthCardGame.Core
             _services = services ?? throw new ArgumentNullException(nameof(services));
 
             _content = content;
+            ActionSequenceScopeValidator.Validate(content);
+            ContentReferenceValidator.Validate(content);
             _catalog = new ContentCatalog(content);
             _session = _catalog.SessionById(sessionId);
             _tracker = new BackgroundActionTracker(_services.Log);
@@ -114,7 +118,17 @@ namespace TruthCardGame.Core
         /// uses its own token. Never throws; a host StopAll failure or timeout is
         /// logged so it cannot hide an original runtime error. Idempotent.
         /// </summary>
-        public async Task ShutdownAsync(string reason = "Session complete")
+        public Task ShutdownAsync(string reason = "Session complete")
+        {
+            lock (_shutdownGate)
+            {
+                if (_shutdownTask == null)
+                    _shutdownTask = ShutdownCoreAsync(reason);
+                return _shutdownTask;
+            }
+        }
+
+        private async Task ShutdownCoreAsync(string reason)
         {
             try
             {

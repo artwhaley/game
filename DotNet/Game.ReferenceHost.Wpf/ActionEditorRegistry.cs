@@ -284,14 +284,49 @@ namespace TruthCardGame.ReferenceHost.Wpf
             return instance;
         }
 
+        /// <summary>
+        /// Hot-refreshes lookup/display catalogs without replacing Rows or any
+        /// authored definition. Recurses through every PromptChoice option so a
+        /// dirty Card remains authoritative while catalog CRUD is immediate.
+        /// </summary>
+        public void RefreshCatalogs(GameContentDefinition content)
+        {
+            content = content ?? new GameContentDefinition();
+            Replace(ResourceOptions, content.Resources
+                .Where(item => string.Equals(item.Kind, ResourceKinds.Cutscene, StringComparison.OrdinalIgnoreCase))
+                .Select(item => new ActionParameterOption { Id = item.Id, Name = string.IsNullOrEmpty(item.Name) ? item.Id : item.Name })
+                .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase));
+            Replace(ToyPatternOptions, content.Resources
+                .Where(item => string.Equals(item.Kind, ResourceKinds.ToyPattern, StringComparison.OrdinalIgnoreCase))
+                .Select(item => new ActionParameterOption { Id = item.Id, Name = string.IsNullOrEmpty(item.Name) ? item.Id : item.Name })
+                .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase));
+            Replace(ToyCapabilityOptions, content.SmartToyCapabilityDefinitions
+                .Select(item => new ActionParameterOption { Id = item.Id, Name = string.IsNullOrEmpty(item.Title) ? item.Id : item.Title })
+                .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase));
+            Replace(DialogTagOptions, content.DialogTags
+                .Select(item => new RelationChoice { Id = item.Id, DisplayName = string.IsNullOrEmpty(item.Title) ? item.Id : item.Title })
+                .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase));
+
+            foreach (var row in Rows)
+            {
+                row.NotifyCatalogsRefreshed();
+                foreach (var option in row.PromptOptions)
+                    option.ActionSequence?.RefreshCatalogs(content);
+            }
+        }
+
+        private static void Replace<T>(List<T> target, IEnumerable<T> values)
+        {
+            target.Clear();
+            target.AddRange(values ?? Enumerable.Empty<T>());
+        }
+
         private void RefreshPicker()
         {
             var query = (_searchText ?? "").Trim();
             _pickerChoices.Clear();
             foreach (var choice in ActionEditorRegistry.PickerChoices(OwnerScope))
             {
-                if (IsPromptChoiceDescendant && choice.TypeKey == ActionTypeKeys.WaitForAll)
-                    continue;
                 if (query.Length == 0 || choice.SearchText.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
                     _pickerChoices.Add(choice);
             }
@@ -303,6 +338,20 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (string.IsNullOrEmpty(SelectedActionTypeKey) && _pickerChoices.Count > 0)
                 SelectedActionTypeKey = _pickerChoices[0].TypeKey;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ActionTypePickerView)));
+        }
+    }
+
+    public static class ActionAuthoringGuards
+    {
+        public static string CreationError(ActionSequenceEditorViewModel sequence, string typeKey)
+        {
+            if (sequence == null) return "Action sequence is unavailable.";
+            if ((typeKey == ActionTypeKeys.ToyActivity || typeKey == ActionTypeKeys.ToySetPattern) &&
+                sequence.ToyCapabilityOptions.Count == 0)
+            {
+                return "Add a Smart Toy Capability before authoring a toy pattern action.";
+            }
+            return null;
         }
     }
 

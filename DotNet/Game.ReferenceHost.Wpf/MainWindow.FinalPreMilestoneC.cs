@@ -88,6 +88,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 _vm.Content.Resources.Add(resource);
                 RefreshResourceBrowser();
                 ResourceBrowserList.SelectedItem = resource;
+                RefreshActionAuthoringCatalogs();
                 StatusText.Text = $"Created resource '{name}'.";
             });
         }
@@ -102,6 +103,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 resource.Name = name;
                 RefreshResourceBrowser();
                 ResourceBrowserList.SelectedItem = resource;
+                RefreshActionAuthoringCatalogs();
                 StatusText.Text = $"Renamed resource to '{name}'.";
             });
         }
@@ -109,6 +111,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private void OnDeleteResource(object sender, RoutedEventArgs e)
         {
             if (!(ResourceBrowserList.SelectedItem is ResourceDefinition resource)) return;
+            var unsavedMessage = UnsavedCatalogReferenceMessage(CatalogKinds.Resource, resource.Id);
+            if (unsavedMessage != null)
+            {
+                MessageBox.Show(this, unsavedMessage, "Unsaved Card", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
             var usage = WithConnectionResult(connection => ResourceRepository.GetUsage(connection, resource.Id).TotalReferences);
             if (usage > 0)
             {
@@ -123,6 +131,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 _vm.Content.Resources.RemoveAll(item => item.Id == resource.Id);
                 RefreshResourceBrowser();
+                RefreshActionAuthoringCatalogs();
                 StatusText.Text = $"Deleted resource '{resource.Name}'.";
             });
         }

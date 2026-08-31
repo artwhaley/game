@@ -68,16 +68,103 @@ namespace TruthCardGame.Content.Sqlite
             content.SmartToyCapabilityDefinitions.AddRange(LoadSmartToyCapabilityDefinitions(connection));
             content.DialogTags.AddRange(TableExists(connection, "dialog_tag_definition") ? LoadDialogTags(connection) : new List<DialogTagDefinition>());
             content.DialogSnippets.AddRange(TableExists(connection, "dialog_snippet") ? LoadDialogSnippets(connection) : new List<DialogSnippetDefinition>());
+            content.CardFolders.AddRange(TableExists(connection, "card_folder") ? CardFolderRepository.Load(connection) : new List<CardFolderDefinition>());
             content.Cards.AddRange(LoadCards(connection, sequences));
             content.Phases.AddRange(LoadPhases(connection, sequences));
             content.Sessions.AddRange(LoadSessions(connection, sequences));
+
+            // Pre-kind resource rows existed before the resource catalog exposed
+            // a discriminator. Infer only those legacy empty values from their
+            // typed action references in the in-memory snapshot. This never
+            // rewrites SQLite, and a nonempty wrong kind still fails below.
+            NormalizeLegacyResourceKinds(content);
 
             // Validate recursively-owned action scopes after the complete
             // snapshot exists. This catches malformed legacy/dev rows before a
             // host can project a nested SessionGoto onto the wrong Session node.
             ActionSequenceScopeValidator.Validate(content);
+            ContentReferenceValidator.Validate(content);
 
             return content;
+        }
+
+        private static void NormalizeLegacyResourceKinds(GameContentDefinition content)
+        {
+            var resources = new Dictionary<string, ResourceDefinition>(StringComparer.Ordinal);
+            foreach (var resource in content.Resources)
+            {
+                if (resource != null && !string.IsNullOrEmpty(resource.Id) && !resources.ContainsKey(resource.Id))
+                    resources.Add(resource.Id, resource);
+            }
+
+            foreach (var card in content.Cards)
+                NormalizeLegacyResourceKinds(card?.Sequence, resources);
+
+            foreach (var phase in content.Phases)
+            {
+                if (phase?.Graph?.Nodes == null) continue;
+                foreach (var node in phase.Graph.Nodes)
+                {
+                    if (node is ActionNodeDefinition action)
+                    {
+                        NormalizeLegacyResourceKinds(action.Sequence, resources);
+                    }
+                    else if (node is PhaseDecisionNodeDefinition decision)
+                    {
+                        foreach (var option in decision.Options ?? new List<PhaseDecisionOptionDefinition>())
+                            NormalizeLegacyResourceKinds(option?.Sequence, resources);
+                    }
+                }
+            }
+
+            foreach (var session in content.Sessions)
+            {
+                if (session?.Graph?.Nodes == null) continue;
+                foreach (var node in session.Graph.Nodes)
+                {
+                    if (!(node is SessionDecisionNodeDefinition decision)) continue;
+                    foreach (var option in decision.Options ?? new List<SessionDecisionOptionDefinition>())
+                        NormalizeLegacyResourceKinds(option?.Sequence, resources);
+                }
+            }
+        }
+
+        private static void NormalizeLegacyResourceKinds(ActionSequenceDefinition sequence,
+            Dictionary<string, ResourceDefinition> resources)
+        {
+            if (sequence?.Instances == null) return;
+            foreach (var instance in sequence.Instances)
+            {
+                switch (instance)
+                {
+                    case CutsceneInstanceDefinition cutscene:
+                        InferLegacyResourceKind(cutscene.ResourceId, ResourceKinds.Cutscene, resources);
+                        break;
+                    case ToyActivityInstanceDefinition timedToy:
+                        InferLegacyResourceKind(timedToy.PatternResourceId, ResourceKinds.ToyPattern, resources);
+                        break;
+                    case ToySetPatternInstanceDefinition setToy:
+                        InferLegacyResourceKind(setToy.PatternResourceId, ResourceKinds.ToyPattern, resources);
+                        break;
+                }
+
+                if (instance is PromptChoiceInstanceDefinition prompt)
+                {
+                    foreach (var option in prompt.Options ?? new List<PromptChoiceOptionDefinition>())
+                        NormalizeLegacyResourceKinds(option?.Sequence, resources);
+                }
+            }
+        }
+
+        private static void InferLegacyResourceKind(string resourceId, string expectedKind,
+            Dictionary<string, ResourceDefinition> resources)
+        {
+            if (!string.IsNullOrEmpty(resourceId) &&
+                resources.TryGetValue(resourceId, out var resource) &&
+                string.IsNullOrEmpty(resource.Kind))
+            {
+                resource.Kind = expectedKind;
+            }
         }
 
         // ---- simple entities ----

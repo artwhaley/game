@@ -26,7 +26,9 @@ Branch: `final-pre-milestone-c-corrections` (unpushed)
   explicit terminal actions are required.
 - Set Toy Pattern runs inline, timed toy actions distinguish blocking and
   nonblocking execution, and Wait For All drains the current nonblocking set.
-  Wait For All is rejected in PromptChoice descendant sequences.
+  Subsequent Milestone C readiness correction made PromptChoice always blocking
+  and permits Wait For All in its nested sequences; SessionGoto remains illegal
+  there and the three-option maximum remains.
 - Toy shutdown has a real five-second cancellation timeout and diagnostic
   logging.
 - Legacy toy migration IDs use exact IEEE-754 bit patterns.

@@ -286,13 +286,41 @@ namespace TruthCardGame.Content.Sqlite
 
         public static int CountSmartToyCapabilityUsage(DbConnection connection, string capabilityId)
         {
-            var count = 0;
+            return GetSmartToyCapabilityUsage(connection, capabilityId).TotalReferences;
+        }
+
+        public static SmartToyCapabilityUsage GetSmartToyCapabilityUsage(DbConnection connection, string capabilityId)
+        {
+            var usage = new SmartToyCapabilityUsage { CapabilityId = capabilityId ?? "" };
             Sql.QueryAll(connection,
-                "SELECT (SELECT COUNT(*) FROM card_required_smart_toy_capability WHERE capability_id = @id) + " +
-                "(SELECT COUNT(*) FROM session_type_required_smart_toy_capability WHERE capability_id = @id);",
-                reader => count = reader.GetInt32(0),
+                "SELECT " +
+                "(SELECT COUNT(*) FROM card_required_smart_toy_capability WHERE capability_id = @id), " +
+                "(SELECT COUNT(*) FROM session_type_required_smart_toy_capability WHERE capability_id = @id), " +
+                "(SELECT COUNT(*) FROM action_instance_toy_activity WHERE capability_id = @id), " +
+                "(SELECT COUNT(*) FROM action_instance_toy_set_pattern WHERE capability_id = @id);",
+                reader =>
+                {
+                    usage.Cards = reader.GetInt32(0);
+                    usage.SessionTypes = reader.GetInt32(1);
+                    usage.TimedToyPatternActions = reader.GetInt32(2);
+                    usage.SetToyPatternActions = reader.GetInt32(3);
+                },
                 ("id", capabilityId));
-            return count;
+            return usage;
+        }
+
+        public static void DeleteSmartToyCapabilityIfUnused(DbConnection connection, string capabilityId)
+        {
+            if (string.IsNullOrEmpty(capabilityId))
+                throw new ArgumentException("Smart Toy Capability id required.", nameof(capabilityId));
+            var usage = GetSmartToyCapabilityUsage(connection, capabilityId);
+            if (usage.TotalReferences > 0)
+            {
+                throw new InvalidOperationException(
+                    $"Smart Toy Capability '{capabilityId}' is referenced ({usage.Describe()}); delete blocked.");
+            }
+            Sql.Execute(connection, null,
+                "DELETE FROM smart_toy_capability_definition WHERE id = @id;", ("id", capabilityId));
         }
 
         // ---- shared helpers ----
@@ -337,6 +365,23 @@ namespace TruthCardGame.Content.Sqlite
                 reader => count = reader.GetInt32(0),
                 ("id", id));
             return count;
+        }
+    }
+
+    public sealed class SmartToyCapabilityUsage
+    {
+        public string CapabilityId { get; set; } = "";
+        public int Cards { get; set; }
+        public int SessionTypes { get; set; }
+        public int TimedToyPatternActions { get; set; }
+        public int SetToyPatternActions { get; set; }
+        public int TotalReferences => Cards + SessionTypes + TimedToyPatternActions + SetToyPatternActions;
+
+        public string Describe()
+        {
+            return $"{Cards} Cards, {SessionTypes} Session Types, " +
+                   $"{TimedToyPatternActions} Timed Toy Pattern Actions, " +
+                   $"{SetToyPatternActions} Set Toy Pattern Actions";
         }
     }
 }

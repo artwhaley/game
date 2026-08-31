@@ -4,6 +4,9 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
 using Microsoft.Data.Sqlite;
 using TruthCardGame.Content;
 using TruthCardGame.Content.Sqlite;
@@ -32,7 +35,23 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private bool _syncingCardEditor;
         private bool _syncingWeighting;
         private bool _syncingCatalogEditor;
-        private bool _syncingCardFolderFilter;
+        private string _selectedCardFolderId = "";
+        private string _activeCardId;
+        private Point _cardTreeDragStart;
+        private bool _cardTreeDragInProgress;
+        private readonly Dictionary<string, CardFolderTreeNode> _cardFolderNodesById = new Dictionary<string, CardFolderTreeNode>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, CardFolderTreeNode> _cardTreeNodesByCardId = new Dictionary<string, CardFolderTreeNode>(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _selectedCardIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _selectedCardFolderIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        /// <summary>Flattened visual order of card nodes for Shift+click ranges.</summary>
+        private readonly List<string> _cardVisualOrder = new List<string>();
+        private string _cardSelectionAnchorId;
+        /// <summary>Members added by the most recent Shift+click range, so the
+        /// next Shift+click can replace just that range.</summary>
+        private readonly HashSet<string> _lastCardRangeIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private const string UnassignedFolderId = "__unassigned__";
+        private bool _restoringCardTreeSelection;
+        private bool _cardTreeEverBuilt;
         private UserProfileWindow _profileWindow;
         private CardEditBuffer _cardBuffer;
 
@@ -288,6 +307,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 BindCatalogEntries();
                 SelectCatalogEntry(newValue.Id);
                 BindSessionTypeBox();
+                if (newValue.Kind == CatalogKinds.SmartToyCapability || newValue.Kind == CatalogKinds.DialogTag)
+                    RefreshActionAuthoringCatalogs();
                 StatusText.Text = "Saved catalog entry.";
             });
         }
@@ -347,8 +368,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case "Smart Toys":
                     if (CatalogEntryList.SelectedItem is SmartToyCapabilityDefinition capability)
                     {
-                        var count = WithConnectionResult(connection => CatalogRepositories.CountSmartToyCapabilityUsage(connection, capability.Id));
-                        text = $"Required by {count} card(s)/session type(s).";
+                        var usage = WithConnectionResult(connection => CatalogRepositories.GetSmartToyCapabilityUsage(connection, capability.Id));
+                        text = "Used by: " + usage.Describe() + ".";
                     }
                     break;
                 case "Dialog Tags":
@@ -394,6 +415,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     _vm.Content.DialogTags.Add(tag);
                     BindCatalogEntries();
                     SelectCatalogEntry(id);
+                    RefreshActionAuthoringCatalogs();
                     StatusText.Text = $"Created dialog tag '{title}'.";
                 });
                 return;
@@ -408,6 +430,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 BindCatalogEntries();
                 BindSessionTypeBox();
                 SelectCatalogEntry(id);
+                if (kindKey == CatalogKinds.SmartToyCapability)
+                    RefreshActionAuthoringCatalogs();
                 StatusText.Text = $"Created '{title}'.";
             });
         }
@@ -509,6 +533,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             string id;
             string title;
             int usage;
+            SmartToyCapabilityUsage capabilityUsage = null;
 
             switch (kind)
             {
@@ -535,7 +560,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case "Smart Toys":
                     if (!(CatalogEntryList.SelectedItem is SmartToyCapabilityDefinition capability)) return;
                     id = capability.Id; title = capability.Title;
-                    usage = WithConnectionResult(connection => CatalogRepositories.CountSmartToyCapabilityUsage(connection, id));
+                    capabilityUsage = WithConnectionResult(connection => CatalogRepositories.GetSmartToyCapabilityUsage(connection, id));
+                    usage = capabilityUsage.TotalReferences;
                     break;
                 case "Dialog Tags":
                     if (!(CatalogEntryList.SelectedItem is DialogTagDefinition dialogTag)) return;
@@ -551,10 +577,25 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     return;
             }
 
+            var kindKey = CatalogKindOf(kind);
+            var unsavedMessage = UnsavedCatalogReferenceMessage(kindKey, id);
+            if (unsavedMessage != null)
+            {
+                MessageBox.Show(this, unsavedMessage, "Unsaved Card", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
             if (usage > 0)
             {
+                var usageMessage = capabilityUsage == null
+                    ? $"'{title}' is referenced by {usage} item(s) and cannot be deleted.\n\nRemove the references first."
+                    : $"'{title}' cannot be deleted.\n\nUsed by:\n" +
+                      $"{capabilityUsage.Cards} Cards\n" +
+                      $"{capabilityUsage.SessionTypes} Session Types\n" +
+                      $"{capabilityUsage.TimedToyPatternActions} Timed Toy Pattern Actions\n" +
+                      $"{capabilityUsage.SetToyPatternActions} Set Toy Pattern Actions";
                 MessageBox.Show(this,
-                    $"'{title}' is referenced by {usage} item(s) and cannot be deleted.\n\nRemove the references first.",
+                    usageMessage,
                     "Catalog", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -562,7 +603,6 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (MessageBox.Show(this, $"Delete '{title}'?", "Catalog",
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
 
-            var kindKey = CatalogKindOf(kind);
             IAuthoringCommand deleteCommand;
             if (kindKey == CatalogKinds.DialogTag)
                 deleteCommand = new DeleteDialogTagCommand(OpenConnection, (DialogTagDefinition)CatalogEntryList.SelectedItem);
@@ -575,6 +615,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 RemoveCatalogEntryFromContent(kindKey, id);
                 BindCatalogEntries();
                 BindSessionTypeBox();
+                if (kindKey == CatalogKinds.SmartToyCapability || kindKey == CatalogKinds.DialogTag)
+                    RefreshActionAuthoringCatalogs();
                 StatusText.Text = $"Deleted '{title}'.";
             });
         }
@@ -633,66 +675,309 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         private void BindCardList()
         {
-            // Remember the selection across rebinds (filter typing must not
-            // silently close a dirty card editor).
-            var selectedId = (CardList.SelectedItem as CardDefinition)?.Id;
+            // A few headless layout tests switch library modes before the
+            // collapsed Cards drawer has materialized its named child.
+            if (CardFolderTree == null || _vm?.Content == null) return;
+            if (!_restoringCardTreeSelection && CardFolderTree.SelectedItem is CardFolderTreeNode selectedNode && !selectedNode.IsCard)
+                _selectedCardFolderId = selectedNode.IsAllCards ? "" : selectedNode.Id;
+            BuildCardFolderTree();
+        }
 
-            const string allFolders = "(All folders)";
-            var selectedFolder = CardFolderFilter.SelectedItem as string;
-            _syncingCardFolderFilter = true;
-            CardFolderFilter.ItemsSource = new[] { allFolders }
-                .Concat(_vm.Content.Cards.Select(c => CardRepository.NormalizeFolder(c.FolderPath))
-                    .Where(folder => folder.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(folder => folder, StringComparer.OrdinalIgnoreCase)).ToList();
-            CardFolderFilter.SelectedItem = !string.IsNullOrEmpty(selectedFolder) && CardFolderFilter.Items.Contains(selectedFolder)
-                ? selectedFolder : allFolders;
-            _syncingCardFolderFilter = false;
+        private void BuildCardFolderTree()
+        {
+            // Snapshot expansion from the live containers before replacing the tree.
+            var expandedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var hadExpandedSnapshot = CaptureExpandedFolderIds(CardFolderTree, expandedIds);
+            if (!hadExpandedSnapshot && !_cardTreeEverBuilt)
+                expandedIds.Add(""); // first build: expand the root so the tree is not one collapsed line
 
-            var folder = CardFolderFilter.SelectedItem as string;
-            var query = (CardFilter.Text ?? "").Trim();
-            var cards = _vm.Content.Cards
-                .Where(c => folder == allFolders || string.Equals(CardRepository.NormalizeFolder(c.FolderPath), folder, StringComparison.OrdinalIgnoreCase))
-                .Where(c => string.IsNullOrEmpty(query) ||
-                    (c.Title ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    (c.Id ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    (c.FolderPath ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
-                .OrderBy(c => c.FolderPath, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(c => c.Title, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            CardList.ItemsSource = cards;
-            CardList.DisplayMemberPath = nameof(CardDefinition.Title);
+            var allCards = new CardFolderTreeNode("", "All Cards", "", true);
+            var unassigned = new CardFolderTreeNode(UnassignedFolderId, "UNASSIGNED", "", false, true);
+            _cardFolderNodesById.Clear();
+            _cardTreeNodesByCardId.Clear();
+            _cardVisualOrder.Clear();
+            allCards.AddChild(unassigned);
+            _cardFolderNodesById[allCards.Id] = allCards;
+            _cardFolderNodesById[unassigned.Id] = unassigned;
 
-            if (selectedId != null)
+            var byPath = new Dictionary<string, CardFolderTreeNode>(StringComparer.OrdinalIgnoreCase);
+            foreach (var folder in (_vm.Content.CardFolders ?? new List<CardFolderDefinition>())
+                .Where(folder => !string.IsNullOrWhiteSpace(folder.Path))
+                .OrderBy(folder => folder.Path.Count(ch => ch == '/'))
+                .ThenBy(folder => folder.Path, StringComparer.OrdinalIgnoreCase))
             {
-                var restore = cards.FirstOrDefault(c => c.Id == selectedId);
-                if (restore != null) CardList.SelectedItem = restore;
+                var path = CardRepository.NormalizeFolder(folder.Path);
+                if (path.Length == 0 || byPath.ContainsKey(path)) continue;
+                var node = new CardFolderTreeNode(folder.Id, folder.Name, path);
+                var separator = path.LastIndexOf('/');
+                var parentPath = separator < 0 ? "" : path.Substring(0, separator);
+                CardFolderTreeNode parent;
+                if (!byPath.TryGetValue(parentPath, out parent)) parent = allCards;
+                parent.AddChild(node);
+                node.IsSelected = _selectedCardFolderIds.Contains(node.Id);
+                byPath[path] = node;
+                _cardFolderNodesById[node.Id] = node;
+            }
+
+            var query = (CardFilter?.Text ?? "").Trim();
+            foreach (var card in _vm.Content.Cards
+                .Where(card => string.IsNullOrEmpty(query) ||
+                    (card.Title ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    (card.Id ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    (card.FolderPath ?? "").IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+                .OrderBy(card => card.Title, StringComparer.OrdinalIgnoreCase))
+            {
+                var cardPath = CardRepository.NormalizeFolder(card.FolderPath);
+                CardFolderTreeNode parent;
+                if (!byPath.TryGetValue(cardPath, out parent)) parent = unassigned;
+                var cardNode = new CardFolderTreeNode(card.Id,
+                    string.IsNullOrWhiteSpace(card.Title) ? "(untitled card)" : card.Title,
+                    cardPath, false, parent.IsUnassigned, card);
+                cardNode.IsSelected = _selectedCardIds.Contains(card.Id);
+                parent.AddChild(cardNode);
+                _cardTreeNodesByCardId[card.Id] = cardNode;
+                _cardVisualOrder.Add(card.Id);
+            }
+
+            CardFolderTree.ItemsSource = new[] { allCards };
+            if (!_cardFolderNodesById.ContainsKey(_selectedCardFolderId)) _selectedCardFolderId = "";
+            _selectedCardFolderIds.RemoveWhere(id => !_cardFolderNodesById.ContainsKey(id));
+            _selectedCardIds.RemoveWhere(id => !_cardTreeNodesByCardId.ContainsKey(id));
+            _cardSelectionAnchorId =
+                _cardSelectionAnchorId != null && _cardTreeNodesByCardId.ContainsKey(_cardSelectionAnchorId)
+                    ? _cardSelectionAnchorId
+                    : null;
+            var restoreId = _selectedCardFolderId;
+            _cardTreeEverBuilt = true;
+            CardFolderTree.Dispatcher.BeginInvoke(DispatcherPriority.Loaded,
+                new Action(() => RestoreCardFolderSelection(restoreId, expandedIds)));
+        }
+
+        private static bool CaptureExpandedFolderIds(ItemsControl owner, HashSet<string> expandedIds)
+        {
+            var foundContainer = false;
+            var count = owner.Items.Count;
+            for (var index = 0; index < count; index++)
+            {
+                if (!(owner.ItemContainerGenerator.ContainerFromIndex(index) is TreeViewItem item)) continue;
+                foundContainer = true;
+                CaptureExpandedFolderIds(item, expandedIds);
+            }
+            return foundContainer;
+        }
+
+        private static void CaptureExpandedFolderIds(TreeViewItem item, HashSet<string> expandedIds)
+        {
+            if (item.IsExpanded && item.DataContext is CardFolderTreeNode node && !node.IsCard)
+                expandedIds.Add(node.Id);
+            var count = item.Items.Count;
+            for (var index = 0; index < count; index++)
+            {
+                if (!(item.ItemContainerGenerator.ContainerFromIndex(index) is TreeViewItem child)) continue;
+                CaptureExpandedFolderIds(child, expandedIds);
             }
         }
 
-        private void OnCardFolderFilterChanged(object sender, SelectionChangedEventArgs e)
+        private void RestoreCardFolderSelection(string folderId, HashSet<string> expandedIds)
         {
-            if (!_syncingCardFolderFilter) BindCardList();
+            if (CardFolderTree == null || CardFolderTree.Items.Count == 0) return;
+            var root = CardFolderTree.Items[0] as CardFolderTreeNode;
+            if (root == null) return;
+            _restoringCardTreeSelection = true;
+            try
+            {
+                ApplyCardTreeExpandedState(CardFolderTree, expandedIds);
+                CardFolderTreeNode target;
+                if (_cardFolderNodesById.TryGetValue(folderId ?? "", out target) && !target.IsCard)
+                    SelectCardFolderByAncestorChain(target);
+            }
+            finally
+            {
+                _restoringCardTreeSelection = false;
+            }
+        }
+
+        /// <summary>Expands only the target's ancestors, leaving every other
+        /// folder's collapsed state untouched, then selects the target.</summary>
+        private bool SelectCardFolderByAncestorChain(CardFolderTreeNode target)
+        {
+            var chain = new List<CardFolderTreeNode>();
+            for (var current = target; current != null; current = current.Parent) chain.Add(current);
+            chain.Reverse();
+            ItemsControl container = CardFolderTree;
+            for (var index = 0; index < chain.Count; index++)
+            {
+                var item = container.ItemContainerGenerator.ContainerFromItem(chain[index]) as TreeViewItem;
+                if (item == null) return false;
+                if (index == chain.Count - 1)
+                {
+                    item.IsSelected = true;
+                    item.BringIntoView();
+                    return true;
+                }
+                item.IsExpanded = true;
+                item.UpdateLayout();
+                container = item;
+            }
+            return false;
+        }
+
+        private static void ApplyCardTreeExpandedState(ItemsControl owner, HashSet<string> expandedIds)
+        {
+            if (expandedIds.Count == 0) return;
+            var count = owner.Items.Count;
+            for (var index = 0; index < count; index++)
+            {
+                if (!(owner.ItemContainerGenerator.ContainerFromIndex(index) is TreeViewItem item)) continue;
+                ApplyCardTreeExpandedState(item, expandedIds);
+            }
+        }
+
+        private static void ApplyCardTreeExpandedState(TreeViewItem item, HashSet<string> expandedIds)
+        {
+            if (item.DataContext is CardFolderTreeNode node && !node.IsCard && expandedIds.Contains(node.Id))
+                item.IsExpanded = true;
+            if (!item.IsExpanded) return;
+            item.UpdateLayout();
+            var count = item.Items.Count;
+            for (var index = 0; index < count; index++)
+            {
+                if (!(item.ItemContainerGenerator.ContainerFromIndex(index) is TreeViewItem child)) continue;
+                ApplyCardTreeExpandedState(child, expandedIds);
+            }
+        }
+
+        private string SelectedCardFolderPath()
+        {
+            CardFolderTreeNode node;
+            return _cardFolderNodesById.TryGetValue(_selectedCardFolderId ?? "", out node) ? node.Path : "";
+        }
+
+        private CardFolderTreeNode SelectedCardFolderNode()
+        {
+            CardFolderTreeNode node;
+            return _cardFolderNodesById.TryGetValue(_selectedCardFolderId ?? "", out node) && !node.IsCard ? node : null;
+        }
+
+        private void OnCardTreeSelectionChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+        {
+            var node = e.NewValue as CardFolderTreeNode;
+            if (node == null || _restoringCardTreeSelection) return;
+            if (node.IsCard)
+            {
+                // A Ctrl+click toggle must not wipe the rest of the selection when
+                // the TreeView re-selects the toggled card natively.
+                if (_selectedCardIds.Contains(node.Card.Id)) _activeCardId = node.Card.Id;
+                else SelectSingleCard(node, true);
+                return;
+            }
+            // A Ctrl+click on a folder extends the batch; plain folder clicks
+            // reset to just that folder.
+            if ((Keyboard.Modifiers & ModifierKeys.Control) != 0 && node.IsFolder && _selectedCardFolderIds.Contains(node.Id))
+            {
+                _selectedCardFolderId = node.Id;
+                return;
+            }
+            SelectSingleFolder(node);
         }
 
         private void OnCardFilterChanged(object sender, TextChangedEventArgs e)
         {
-            // Preserve the open editor during filter rebinds: the selection
-            // restore in BindCardList keeps the same card selected, so this
-            // path never fires a null-selection close while typing.
             BindCardList();
         }
 
-        private void OnCardListChanged(object sender, SelectionChangedEventArgs e)
+        private void SelectFolder(CardFolderTreeNode node)
         {
-            if (CardList.SelectedItem is CardDefinition card)
+            if (node == null || node.IsCard) return;
+            ClearCardSelection();
+            ClearFolderSelection();
+            _activeCardId = null;
+            _selectedCardFolderId = node.IsAllCards ? "" : node.Id;
+            node.IsSelected = true;
+        }
+
+        /// <summary>Plain-click selection of a folder node: resets to just that
+        /// folder (also the anchor for future Ctrl+clicks).</summary>
+        private void SelectSingleFolder(CardFolderTreeNode node)
+        {
+            if (node == null || node.IsCard) return;
+            ClearCardSelection();
+            ClearFolderSelection();
+            _activeCardId = null;
+            if (node.IsAllCards)
             {
-                // Same card re-selected (filter rebind restore) — no-op.
-                if (_cardBuffer != null && _cardBuffer.CardId == card.Id) return;
-                OpenCardEditor(card);
+                _selectedCardFolderId = "";
+                return; // the virtual root is never part of a batch
             }
-            // Null selection (list emptied by filter) keeps the editor open so
-            // unsaved work survives the keystroke; the editor closes through
-            // explicit paths (card switch, library tab switch, app close).
+            _selectedCardFolderId = node.Id;
+            _selectedCardFolderIds.Add(node.Id);
+            node.IsSelected = true;
+        }
+
+        private void ClearCardSelection()
+        {
+            foreach (var node in _cardTreeNodesByCardId.Values) node.IsSelected = false;
+            _selectedCardIds.Clear();
+        }
+
+        private void ClearFolderSelection()
+        {
+            foreach (var folder in _cardFolderNodesById.Values) folder.IsSelected = false;
+            _selectedCardFolderIds.Clear();
+        }
+
+        /// <summary>Plain-click selection of one card: resets everything to it.</summary>
+        private void SelectSingleCard(CardFolderTreeNode node, bool openEditor)
+        {
+            if (node == null || !node.IsCard) return;
+            ClearCardSelection();
+            ClearFolderSelection();
+            _selectedCardIds.Add(node.Card.Id);
+            node.IsSelected = true;
+            _activeCardId = node.Card.Id;
+            _cardSelectionAnchorId = node.Card.Id;
+            _selectedCardFolderId = node.Parent == null || node.Parent.IsAllCards ? "" : node.Parent.Id;
+            if (openEditor && (_cardBuffer == null || _cardBuffer.CardId != node.Card.Id)) OpenCardEditor(node.Card);
+        }
+
+        /// <summary>Ctrl+click on a card: toggles it in the mixed selection
+        /// (cards and real folders coexist in one batch).</summary>
+        private void ToggleTreeSelection(CardFolderTreeNode node)
+        {
+            if (node == null) return;
+            if (node.IsCard)
+            {
+                if (_selectedCardIds.Contains(node.Card.Id))
+                {
+                    _selectedCardIds.Remove(node.Card.Id);
+                    node.IsSelected = false;
+                    if (_activeCardId == node.Card.Id) _activeCardId = _selectedCardIds.FirstOrDefault();
+                }
+                else
+                {
+                    _selectedCardIds.Add(node.Card.Id);
+                    node.IsSelected = true;
+                    _activeCardId = node.Card.Id;
+                }
+                _cardSelectionAnchorId = node.Card.Id;
+            }
+            else if (node.IsFolder)
+            {
+                if (_selectedCardFolderIds.Contains(node.Id))
+                {
+                    _selectedCardFolderIds.Remove(node.Id);
+                    node.IsSelected = false;
+                    if (string.Equals(_selectedCardFolderId, node.Id, StringComparison.OrdinalIgnoreCase))
+                        _selectedCardFolderId = _selectedCardFolderIds.FirstOrDefault() ?? "";
+                }
+                else
+                {
+                    _selectedCardFolderIds.Add(node.Id);
+                    node.IsSelected = true;
+                    _selectedCardFolderId = node.Id;
+                }
+            }
+            // All Cards / UNASSIGNED roots stay single-select.
         }
 
         private void OnNewCard(object sender, RoutedEventArgs e)
@@ -700,50 +985,497 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var title = PromptForTitle("New Card", "Title:");
             if (string.IsNullOrWhiteSpace(title)) return;
             var id = StableIds.New();
-            PushOrMergeWithReload(new CreateCardCommand(OpenConnection, id, title), () =>
+            PushOrMergeWithReload(new CreateCardCommand(OpenConnection, id, title, SelectedCardFolderPath()), () =>
             {
+                _selectedCardIds.Clear();
+                _activeCardId = id;
                 LoadContent();
                 var created = _vm.Content.Cards.FirstOrDefault(c => c.Id == id);
                 if (created != null)
                 {
-                    CardList.SelectedItem = created;
-                    OpenCardEditor(created);
+                    SelectTreeCard(created.Id, true);
                 }
+            });
+        }
+
+        private void OnNewCardFolder(object sender, RoutedEventArgs e)
+        {
+            var name = PromptForTitle("New Card Folder", "Folder name:");
+            if (string.IsNullOrWhiteSpace(name)) return;
+            var parent = CardFolderTree.SelectedItem as CardFolderTreeNode;
+            if (parent != null && parent.IsCard) parent = parent.Parent;
+            var id = StableIds.New();
+            PushOrMergeWithReload(new CreateCardFolderCommand(OpenConnection, id, name,
+                parent == null || parent.IsAllCards ? null : parent.Id), () =>
+            {
+                _selectedCardFolderId = id;
+                LoadContent();
+                StatusText.Text = "Created card folder '" + name + "'.";
+            });
+        }
+
+        private void OnRenameCardFolder(object sender, RoutedEventArgs e)
+        {
+            var folder = SelectedCardFolderNode();
+            if (folder == null || folder.IsAllCards) return;
+            var name = PromptForLibraryRename("Card Folder", folder.Name);
+            if (name == null || string.Equals(name, folder.Name, StringComparison.Ordinal)) return;
+            PushOrMergeWithReload(new RenameCardFolderCommand(OpenConnection, folder.Id, folder.Name, name), () =>
+            {
+                _selectedCardFolderId = folder.Id;
+                LoadContent();
+                StatusText.Text = "Renamed card folder to '" + name + "'.";
+            });
+        }
+
+        private void OnDeleteCardFolder(object sender, RoutedEventArgs e)
+        {
+            var folder = SelectedCardFolderNode();
+            if (folder == null || folder.IsAllCards) return;
+            DeleteCardFolderWithChoice(folder);
+        }
+
+        /// <summary>Deletes a folder: empty folders confirm simply; non-empty
+        /// folders choose between cascading contents or keeping the cards.</summary>
+        private void DeleteCardFolderWithChoice(CardFolderTreeNode folder)
+        {
+            if (folder == null || folder.IsAllCards) return;
+
+            var subfolderCount = 0;
+            var cardCount = 0;
+            CountFolderContents(folder, ref subfolderCount, ref cardCount);
+
+            if (subfolderCount == 0 && cardCount == 0)
+            {
+                if (MessageBox.Show(this, "Delete empty card folder '" + folder.Name + "'?",
+                    "Card Folders", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+                PushOrMergeWithReload(new DeleteCardFolderCommand(OpenConnection, folder.Id), () =>
+                {
+                    _selectedCardFolderId = "";
+                    LoadContent();
+                    StatusText.Text = "Deleted card folder '" + folder.Name + "'.";
+                });
+                return;
+            }
+
+            var dialog = new CardFolderDeleteDialog(folder.Name, subfolderCount, cardCount) { Owner = this };
+            if (dialog.ShowDialog() != true || dialog.DeleteCards == null) return;
+            var deleteCards = dialog.DeleteCards.Value;
+            var name = folder.Name;
+            PushOrMergeWithReload(new DeleteCardFolderTreeCommand(OpenConnection, folder.Id, deleteCards), () =>
+            {
+                _selectedCardFolderId = "";
+                LoadContent();
+                StatusText.Text = deleteCards
+                    ? "Deleted folder '" + name + "' and its " + (cardCount == 1 ? "card" : cardCount + " cards") + "."
+                    : "Deleted folder '" + name + "'; " + (cardCount == 1 ? "its card moved" : cardCount + " cards moved") + " to UNASSIGNED.";
+            });
+        }
+
+        private void CountFolderContents(CardFolderTreeNode node, ref int subfolderCount, ref int cardCount)
+        {
+            foreach (var child in node.Children)
+            {
+                if (child.IsCard) cardCount++;
+                else
+                {
+                    subfolderCount++;
+                    CountFolderContents(child, ref subfolderCount, ref cardCount);
+                }
+            }
+        }
+
+        private void OnCardTreeRightClick(object sender, MouseButtonEventArgs e)
+        {
+            var item = FindCardFolderTreeItem(e.OriginalSource as DependencyObject);
+            var node = item?.DataContext as CardFolderTreeNode;
+            if (item == null || node == null) return;
+            item.IsSelected = true;
+            item.Focus();
+            if (node.IsCard)
+            {
+                _activeCardId = node.Card.Id;
+                if (!_selectedCardIds.Contains(node.Card.Id)) SelectSingleCard(node, false);
+            }
+            else SelectFolder(node);
+        }
+
+        /// <summary>Tailors the shared tree context menu to the node under the
+        /// pointer: folders get Rename/Delete Folder, cards get Delete/Duplicate.</summary>
+        private void OnCardTreeContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            var node = FindCardTreeNode(Mouse.DirectlyOver as DependencyObject);
+            var isFolder = node != null && node.IsFolder;
+            var isCard = node != null && node.IsCard;
+            RenameCardFolderMenuItem.Visibility = isFolder ? Visibility.Visible : Visibility.Collapsed;
+            DeleteCardFolderMenuItem.Visibility = isFolder ? Visibility.Visible : Visibility.Collapsed;
+            CardTreeMenuSeparator.Visibility = isCard ? Visibility.Visible : Visibility.Collapsed;
+            DeleteCardMenuItem.Visibility = isCard ? Visibility.Visible : Visibility.Collapsed;
+            DuplicateCardMenuItem.Visibility = isCard ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private static TreeViewItem FindCardFolderTreeItem(DependencyObject source)
+        {
+            while (source != null)
+            {
+                var item = source as TreeViewItem;
+                if (item != null) return item;
+                source = VisualTreeHelper.GetParent(source);
+            }
+            return null;
+        }
+
+        private void OnCardTreeMouseDown(object sender, MouseButtonEventArgs e)
+        {
+            _cardTreeDragStart = e.GetPosition(CardFolderTree);
+            _cardTreeDragInProgress = false;
+            var node = FindCardTreeNode(e.OriginalSource as DependencyObject);
+            if (node == null) return;
+            var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+            var shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+            if (node.IsCard)
+            {
+                if (shift)
+                {
+                    SelectCardRange(node);
+                    // Never treat a shift-click as a drag start or editor open.
+                    return;
+                }
+                // Explorer-style: plain-clicking an already-selected card keeps
+                // the selection so a group drag can start from any member.
+                if (ctrl) ToggleTreeSelection(node);
+                else if (!_selectedCardIds.Contains(node.Card.Id)) SelectSingleCard(node, true);
+                else _cardSelectionAnchorId = node.Card.Id; // clicked a selected card: re-anchor
+                // Never handle the click here — the TreeViewItem still needs
+                // it for native double-click (rename) and focus behavior.
+            }
+            else if (node.IsFolder || node.IsAllCards || node.IsUnassigned)
+            {
+                if (ctrl && node.IsFolder) ToggleTreeSelection(node);
+                else if (!ctrl && !shift) SelectSingleFolder(node);
+                // Shift+click on a folder is ignored (ranges span cards only);
+                // Ctrl+click on a virtual root does nothing (single-select only).
+            }
+        }
+
+        /// <summary>Explorer-style Shift+click: select the visual range from the
+        /// anchor to the clicked card. The previous Shift-range (if any) is
+        /// replaced; Ctrl-toggled members stay. First-ever Shift+click (no
+        /// anchor) ranges from the first card.</summary>
+        private void SelectCardRange(CardFolderTreeNode node)
+        {
+            if (node == null || !node.IsCard) return;
+            var anchorIndex = 0;
+            if (_cardSelectionAnchorId != null)
+            {
+                var knownAnchor = _cardVisualOrder.IndexOf(_cardSelectionAnchorId);
+                if (knownAnchor >= 0) anchorIndex = knownAnchor;
+            }
+            var clickedIndex = _cardVisualOrder.IndexOf(node.Card.Id);
+            if (clickedIndex < 0) return;
+
+            var from = Math.Min(anchorIndex, clickedIndex);
+            var to = Math.Max(anchorIndex, clickedIndex);
+
+            // Drop the previous range's members (unless they were also
+            // Ctrl-toggled in — those are respected and simply re-added below
+            // if they fall inside the new range anyway).
+            foreach (var id in _lastCardRangeIds)
+            {
+                if (!_selectedCardIds.Contains(id)) continue;
+                _selectedCardIds.Remove(id);
+                CardFolderTreeNode member;
+                if (_cardTreeNodesByCardId.TryGetValue(id, out member)) member.IsSelected = false;
+            }
+            _lastCardRangeIds.Clear();
+
+            for (var index = from; index <= to; index++)
+            {
+                var id = _cardVisualOrder[index];
+                _lastCardRangeIds.Add(id);
+                if (_selectedCardIds.Contains(id)) continue;
+                _selectedCardIds.Add(id);
+                CardFolderTreeNode member;
+                if (_cardTreeNodesByCardId.TryGetValue(id, out member)) member.IsSelected = true;
+            }
+            _activeCardId = node.Card.Id;
+            // The clicked card becomes the new anchor so the next Shift+click
+            // ranges from here.
+            _cardSelectionAnchorId = node.Card.Id;
+        }
+
+        private void OnCardTreeMouseMove(object sender, MouseEventArgs e)
+        {
+            if (_cardTreeDragInProgress || e.LeftButton != MouseButtonState.Pressed) return;
+            var point = e.GetPosition(CardFolderTree);
+            if (Math.Abs(point.X - _cardTreeDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(point.Y - _cardTreeDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            var cardIds = _selectedCardIds.ToList();
+            var folderIds = _selectedCardFolderIds.ToList();
+            if (cardIds.Count == 0 && folderIds.Count == 0) return;
+            _cardTreeDragInProgress = true;
+            try
+            {
+                var payload = new DataObject();
+                payload.SetData("TruthCardGame.CardIds", cardIds);
+                payload.SetData("TruthCardGame.CardFolderIds", folderIds);
+                DragDrop.DoDragDrop(CardFolderTree, payload, DragDropEffects.Move);
+            }
+            finally
+            {
+                _cardTreeDragInProgress = false;
+            }
+        }
+
+        private void OnCardTreeDragOver(object sender, DragEventArgs e)
+        {
+            var node = FindCardFolderNode(e.OriginalSource as DependencyObject);
+            var hasPayload = e.Data.GetDataPresent("TruthCardGame.CardIds") || e.Data.GetDataPresent("TruthCardGame.CardFolderIds");
+            // A folder being dragged cannot drop onto itself.
+            if (node != null && hasPayload &&
+                e.Data.GetData("TruthCardGame.CardFolderIds") is IEnumerable<string> folders &&
+                folders.Any(id => string.Equals(id, node.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                e.Effects = DragDropEffects.None;
+                e.Handled = true;
+                return;
+            }
+            e.Effects = node != null && hasPayload ? DragDropEffects.Move : DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private void OnCardTreeDrop(object sender, DragEventArgs e)
+        {
+            var cardIds = (e.Data.GetData("TruthCardGame.CardIds") as IEnumerable<string>)
+                ?.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                ?? new List<string>();
+            var folderIds = (e.Data.GetData("TruthCardGame.CardFolderIds") as IEnumerable<string>)
+                ?.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                ?? new List<string>();
+            if (cardIds.Count == 0 && folderIds.Count == 0) return;
+            var node = FindCardFolderNode(e.OriginalSource as DependencyObject);
+            if (node == null) return;
+
+            // Never drop a folder onto itself.
+            if (folderIds.Any(id => string.Equals(id, node.Id, StringComparison.OrdinalIgnoreCase)))
+            {
+                e.Handled = true;
+                return;
+            }
+
+            var destinationId = node.IsAllCards ? null : node.Id;
+            var destinationName = node.Name;
+            var movedCardCount = cardIds.Count;
+            var movedFolderCount = folderIds.Count;
+            PushOrMergeWithReload(new MoveCardSelectionCommand(OpenConnection, cardIds, folderIds, destinationId), () =>
+            {
+                ClearCardSelection();
+                ClearFolderSelection();
+                _activeCardId = null;
+                _selectedCardFolderId = node.IsAllCards ? "" : node.Id;
+                LoadContent();
+                var what = movedCardCount + (movedCardCount == 1 ? " card" : " cards");
+                if (movedFolderCount > 0) what += " and " + movedFolderCount + (movedFolderCount == 1 ? " folder" : " folders");
+                StatusText.Text = "Moved " + what + " to '" + destinationName + "'.";
+            });
+            e.Handled = true;
+        }
+
+        private static CardFolderTreeNode FindCardFolderNode(DependencyObject source)
+        {
+            while (source != null)
+            {
+                var item = source as TreeViewItem;
+                if (item != null)
+                {
+                    var node = item.DataContext as CardFolderTreeNode;
+                    return node != null && !node.IsCard ? node : null;
+                }
+                source = VisualTreeHelper.GetParent(source);
+            }
+            return null;
+        }
+
+        private static CardFolderTreeNode FindCardTreeNode(DependencyObject source)
+        {
+            while (source != null)
+            {
+                var item = source as TreeViewItem;
+                if (item != null) return item.DataContext as CardFolderTreeNode;
+                source = VisualTreeHelper.GetParent(source);
+            }
+            return null;
+        }
+
+        private void SelectTreeCard(string cardId, bool openEditor)
+        {
+            CardFolderTreeNode node;
+            if (_cardTreeNodesByCardId.TryGetValue(cardId ?? "", out node)) SelectSingleCard(node, openEditor);
+        }
+
+        private void OnCardTreeDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            var node = FindCardTreeNode(e.OriginalSource as DependencyObject);
+            if (node == null || !node.IsCard) return;
+            var newTitle = PromptForLibraryRename("Card", node.Card.Title);
+            if (newTitle == null || string.Equals(newTitle, node.Card.Title, StringComparison.Ordinal)) return;
+            PushOrMergeWithReload(new RenameCardCommand(OpenConnection, node.Card.Id, node.Card.Title ?? "", newTitle), () =>
+            {
+                node.Card.Title = newTitle;
+                if (_cardBuffer?.CardId == node.Card.Id)
+                {
+                    _cardBuffer.Title = newTitle;
+                    SyncCardEditorFromBuffer();
+                }
+                _activeCardId = node.Card.Id;
+                _selectedCardIds.Clear();
+                _selectedCardIds.Add(node.Card.Id);
+                LoadContent();
+                StatusText.Text = "Renamed card to '" + newTitle + "'.";
             });
         }
 
         private void OnDeleteCard(object sender, RoutedEventArgs e)
         {
-            if (!(CardList.SelectedItem is CardDefinition card)) return;
-            var deletedIndex = CardList.SelectedIndex;
-            if (MessageBox.Show(this, $"Delete card '{card.Title}'? Only card-owned data is removed.",
-                "Cards", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            DeleteSelectedCardsAndFolders();
+        }
 
-            PushOrMergeWithReload(new DeleteCardCommand(OpenConnection, card.Id), () =>
+        /// <summary>Batch delete: explicitly selected cards always delete; selected
+        /// folders get the cascade/keep choice (one dialog for the whole batch).</summary>
+        private void DeleteSelectedCardsAndFolders()
+        {
+            var cardIds = _selectedCardIds.ToList();
+            var folderIds = _selectedCardFolderIds.ToList();
+
+            // Single-folder path keeps the tailored dialogs.
+            if (cardIds.Count == 0 && folderIds.Count == 1)
             {
-                _cardBuffer = null; // deleting the buffered card discards the buffer with it
+                CardFolderTreeNode folder;
+                if (_cardFolderNodesById.TryGetValue(folderIds[0], out folder))
+                    DeleteCardFolderWithChoice(folder);
+                return;
+            }
+            if (cardIds.Count == 0 && folderIds.Count == 0)
+            {
+                // Legacy fallback: the folder shown as selected in the tree.
+                var folder = SelectedCardFolderNode();
+                if (folder != null && !folder.IsAllCards) DeleteCardFolderWithChoice(folder);
+                return;
+            }
+            if (cardIds.Count == 1 && folderIds.Count == 0)
+            {
+                var card = _vm.Content.Cards.FirstOrDefault(candidate => candidate.Id == cardIds[0]);
+                if (card == null) return;
+                if (MessageBox.Show(this, $"Delete card '{card.Title}'? Only card-owned data is removed.",
+                    "Cards", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+                PushOrMergeWithReload(new DeleteCardCommand(OpenConnection, card.Id), () =>
+                {
+                    _cardBuffer = null;
+                    CardEditorInspectorPanel.Visibility = Visibility.Collapsed;
+                    CardActionSequenceHost.Content = null;
+                    ClearCardSelection();
+                    ClearFolderSelection();
+                    _activeCardId = null;
+                    LoadContent();
+                });
+                return;
+            }
+
+            // Mixed batch: one confirmation, one choice for all folders.
+            var totalCards = cardIds.Count;
+            var folderCardCounts = new List<int>();
+            foreach (var folderId in folderIds)
+            {
+                CardFolderTreeNode folder;
+                if (_cardFolderNodesById.TryGetValue(folderId, out folder))
+                {
+                    var subfolders = 0;
+                    var cards = 0;
+                    CountFolderContents(folder, ref subfolders, ref cards);
+                    totalCards += cards;
+                }
+            }
+            bool deleteFolderCards;
+            if (folderIds.Count > 0)
+            {
+                var dialog = new CardFolderDeleteDialog(null, folderIds.Count, totalCards) { Owner = this };
+                if (dialog.ShowDialog() != true || dialog.DeleteCards == null) return;
+                deleteFolderCards = dialog.DeleteCards.Value;
+            }
+            else
+            {
+                if (MessageBox.Show(this, $"Delete {cardIds.Count} cards? Only card-owned data is removed.",
+                    "Cards", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+                deleteFolderCards = false;
+            }
+
+            PushOrMergeWithReload(new DeleteCardSelectionCommand(OpenConnection, cardIds, folderIds, deleteFolderCards), () =>
+            {
+                _cardBuffer = null;
                 CardEditorInspectorPanel.Visibility = Visibility.Collapsed;
                 CardActionSequenceHost.Content = null;
+                ClearCardSelection();
+                ClearFolderSelection();
+                _activeCardId = null;
+                _selectedCardFolderId = "";
                 LoadContent();
-                BindCardList();
-                if (CardList.Items.Count > 0)
-                    CardList.SelectedIndex = Math.Min(Math.Max(deletedIndex, 0), CardList.Items.Count - 1);
+                StatusText.Text = "Deleted " + cardIds.Count + (cardIds.Count == 1 ? " card" : " cards")
+                    + (folderIds.Count > 0 ? " and " + folderIds.Count + (folderIds.Count == 1 ? " folder" : " folders") + " (cards " + (deleteFolderCards ? "deleted" : "kept") + ")" : "") + ".";
             });
         }
 
         private void OnDuplicateCard(object sender, RoutedEventArgs e)
         {
-            if (!(CardList.SelectedItem is CardDefinition card)) return;
-            var id = StableIds.New();
-            PushOrMergeWithReload(new DuplicateCardCommand(OpenConnection, card.Id, id, card.Title + " (copy)"), () =>
+            var cardIds = _selectedCardIds.ToList();
+            var folderIds = _selectedCardFolderIds.ToList();
+
+            // Single-card path keeps the existing behavior.
+            if (folderIds.Count == 0 && cardIds.Count <= 1)
             {
-                LoadContent();
-                var created = _vm.Content.Cards.FirstOrDefault(c => c.Id == id);
-                if (created != null)
+                var card = _vm.Content.Cards.FirstOrDefault(candidate => candidate.Id == _activeCardId);
+                if (card == null && cardIds.Count == 1)
+                    card = _vm.Content.Cards.FirstOrDefault(candidate => candidate.Id == cardIds[0]);
+                if (card == null) return;
+                var id = StableIds.New();
+                PushOrMergeWithReload(new DuplicateCardCommand(OpenConnection, card.Id, id, card.Title + " (copy)"), () =>
                 {
-                    CardList.SelectedItem = created;
-                    OpenCardEditor(created);
+                    ClearCardSelection();
+                    _activeCardId = id;
+                    LoadContent();
+                    var created = _vm.Content.Cards.FirstOrDefault(c => c.Id == id);
+                    if (created != null)
+                    {
+                        SelectTreeCard(created.Id, true);
+                    }
+                });
+                return;
+            }
+
+            // Batch: duplicate everything, then select the copies.
+            var command = new DuplicateCardSelectionCommand(OpenConnection, cardIds, folderIds);
+            PushOrMergeWithReload(command, () =>
+            {
+                var newCardIds = command.NewCardIds.ToList();
+                var newFolderIds = command.NewFolderIds.ToList();
+                ClearCardSelection();
+                ClearFolderSelection();
+                _activeCardId = null;
+                LoadContent();
+                // Deselect originals happened above; select the duplicates.
+                foreach (var newId in newCardIds) _selectedCardIds.Add(newId);
+                foreach (var newId in newFolderIds) _selectedCardFolderIds.Add(newId);
+                var firstNewFolder = newFolderIds.FirstOrDefault();
+                _selectedCardFolderId = firstNewFolder ?? "";
+                var firstNewCard = newCardIds.FirstOrDefault();
+                if (firstNewCard != null)
+                {
+                    _activeCardId = firstNewCard;
+                    var created = _vm.Content.Cards.FirstOrDefault(c => c.Id == firstNewCard);
+                    if (created != null) SelectTreeCard(created.Id, true);
                 }
+                LoadContent(); // rebuild so the new selection state paints
+                StatusText.Text = "Duplicated " + newCardIds.Count + (newCardIds.Count == 1 ? " card" : " cards")
+                    + (newFolderIds.Count > 0 ? " in " + newFolderIds.Count + (newFolderIds.Count == 1 ? " folder" : " folders") : "") + ".";
             });
         }
 
@@ -873,7 +1605,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             _cardBuffer = new CardEditBuffer(card);
             SyncCardEditorFromBuffer();
             BindCardList();
-            CardList.SelectedItem = card;
+            SelectTreeCard(card.Id, false);
             StatusText.Text = $"Saved card '{card.Title}' (one undo step).";
             return true;
         }

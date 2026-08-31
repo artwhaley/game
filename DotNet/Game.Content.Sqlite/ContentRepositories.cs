@@ -75,43 +75,13 @@ namespace TruthCardGame.Content.Sqlite
 
         public static void Create(DbConnection connection, CardDefinition card)
         {
-            if (card == null) throw new ArgumentNullException(nameof(card));
-            if (string.IsNullOrEmpty(card.Id)) throw new ArgumentException("Card id required.", nameof(card));
-
-            if (card.Sequence == null || string.IsNullOrEmpty(card.Sequence.Id))
-            {
-                card.Sequence = new ActionSequenceDefinition
-                {
-                    Id = $"cseq-{card.Id}",
-                    Instances =
-                    {
-                        new WaitForContinueInstanceDefinition
-                        {
-                            Id = $"inst-{card.Id}-default-wait",
-                        },
-                        new IncrementProgressInstanceDefinition
-                        {
-                            Id = $"inst-{card.Id}-default-progress",
-                            Amount = DefaultProgressAmount,
-                        },
-                    },
-                };
-            }
+            EnsureCreatable(card);
 
             using (var transaction = connection.BeginTransaction())
             {
                 try
                 {
-                    ActionSequenceWriter.Write(connection, transaction, card.Sequence);
-                    Sql.Execute(connection, transaction,
-                        "INSERT INTO card (id, title, body_text, folder_path, action_sequence_id) VALUES (@id, @title, @body, @folder, @seq);",
-                        ("id", card.Id), ("title", (object)card.Title ?? DBNull.Value),
-                        ("body", (object)card.BodyText ?? DBNull.Value), ("folder", NormalizeFolder(card.FolderPath)),
-                        ("seq", card.Sequence.Id));
-                    ReplaceRelations(connection, transaction, card.Id, card.CardTagIds);
-                    ReplaceRelationTable(connection, transaction, "card_kink", "card_id", "kink_id", card.Id, card.KinkIds);
-                    ReplaceRelationTable(connection, transaction, "card_required_equipment", "card_id", "equipment_id", card.Id, card.RequiredEquipmentIds);
-                    ReplaceRelationTable(connection, transaction, "card_required_smart_toy_capability", "card_id", "capability_id", card.Id, card.RequiredCapabilityIds);
+                    WriteCard(connection, transaction, card);
                     transaction.Commit();
                 }
                 catch
@@ -120,6 +90,46 @@ namespace TruthCardGame.Content.Sqlite
                     throw;
                 }
             }
+        }
+
+        /// <summary>Ambient-transaction variant for callers that own the transaction
+        /// (e.g. folder subtree restore). Caller commits/rolls back.</summary>
+        public static void Create(DbConnection connection, DbTransaction transaction, CardDefinition card)
+        {
+            EnsureCreatable(card);
+            WriteCard(connection, transaction, card);
+        }
+
+        private static void EnsureCreatable(CardDefinition card)
+        {
+            if (card == null) throw new ArgumentNullException(nameof(card));
+            if (string.IsNullOrEmpty(card.Id)) throw new ArgumentException("Card id required.", nameof(card));
+
+            // The default wait+progress pair applies ONLY to a card that arrives
+            // with no authored instances; an authored sequence is used verbatim
+            // (an id is generated when missing).
+            if (card.Sequence == null) card.Sequence = new ActionSequenceDefinition();
+            if (string.IsNullOrEmpty(card.Sequence.Id)) card.Sequence.Id = $"cseq-{card.Id}";
+            if (card.Sequence.Instances.Count == 0)
+            {
+                card.Sequence.Instances.Add(new WaitForContinueInstanceDefinition { Id = $"inst-{card.Id}-default-wait" });
+                card.Sequence.Instances.Add(new IncrementProgressInstanceDefinition { Id = $"inst-{card.Id}-default-progress", Amount = DefaultProgressAmount });
+            }
+        }
+
+        private static void WriteCard(DbConnection connection, DbTransaction transaction, CardDefinition card)
+        {
+            ActionSequenceWriter.Write(connection, transaction, card.Sequence);
+            CardFolderRepository.EnsurePath(connection, transaction, card.FolderPath);
+            Sql.Execute(connection, transaction,
+                "INSERT INTO card (id, title, body_text, folder_path, action_sequence_id) VALUES (@id, @title, @body, @folder, @seq);",
+                ("id", card.Id), ("title", (object)card.Title ?? DBNull.Value),
+                ("body", (object)card.BodyText ?? DBNull.Value), ("folder", NormalizeFolder(card.FolderPath)),
+                ("seq", card.Sequence.Id));
+            ReplaceRelations(connection, transaction, card.Id, card.CardTagIds);
+            ReplaceRelationTable(connection, transaction, "card_kink", "card_id", "kink_id", card.Id, card.KinkIds);
+            ReplaceRelationTable(connection, transaction, "card_required_equipment", "card_id", "equipment_id", card.Id, card.RequiredEquipmentIds);
+            ReplaceRelationTable(connection, transaction, "card_required_smart_toy_capability", "card_id", "capability_id", card.Id, card.RequiredCapabilityIds);
         }
 
         private static void ReplaceRelations(DbConnection connection, DbTransaction transaction, string cardId, IReadOnlyList<string> tagIds)
@@ -152,9 +162,22 @@ namespace TruthCardGame.Content.Sqlite
 
         public static void SetFolder(DbConnection connection, string cardId, string folderPath)
         {
-            Sql.Execute(connection, null,
-                "UPDATE card SET folder_path = @folder WHERE id = @id;",
-                ("folder", NormalizeFolder(folderPath)), ("id", cardId));
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    var normalized = CardFolderRepository.EnsurePath(connection, transaction, folderPath);
+                    Sql.Execute(connection, transaction,
+                        "UPDATE card SET folder_path = @folder WHERE id = @id;",
+                        ("folder", normalized), ("id", cardId));
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
         }
 
         public static string NormalizeFolder(string folderPath)
@@ -206,17 +229,7 @@ namespace TruthCardGame.Content.Sqlite
             {
                 try
                 {
-                    string sequenceId = null;
-                    Sql.QueryAll(connection,
-                        "SELECT action_sequence_id FROM card WHERE id = @id;",
-                        reader => sequenceId = reader.IsDBNull(0) ? null : reader.GetString(0),
-                        ("id", cardId));
-
-                    Sql.Execute(connection, transaction, "DELETE FROM card WHERE id = @id;", ("id", cardId));
-                    if (!string.IsNullOrEmpty(sequenceId))
-                    {
-                        ActionSequenceWriter.Delete(connection, transaction, sequenceId);
-                    }
+                    DeleteCore(connection, transaction, cardId);
                     transaction.Commit();
                 }
                 catch
@@ -227,11 +240,63 @@ namespace TruthCardGame.Content.Sqlite
             }
         }
 
+        /// <summary>Ambient-transaction variant for callers that own the transaction
+        /// (e.g. folder subtree delete). Caller commits/rolls back.</summary>
+        public static void Delete(DbConnection connection, DbTransaction transaction, string cardId)
+        {
+            if (string.IsNullOrEmpty(cardId)) throw new ArgumentException("Card id required.", nameof(cardId));
+            DeleteCore(connection, transaction, cardId);
+        }
+
+        private static void DeleteCore(DbConnection connection, DbTransaction transaction, string cardId)
+        {
+            string sequenceId = null;
+            Sql.QueryAll(connection,
+                "SELECT action_sequence_id FROM card WHERE id = @id;",
+                reader => sequenceId = reader.IsDBNull(0) ? null : reader.GetString(0),
+                ("id", cardId));
+
+            Sql.Execute(connection, transaction, "DELETE FROM card WHERE id = @id;", ("id", cardId));
+            if (!string.IsNullOrEmpty(sequenceId))
+            {
+                ActionSequenceWriter.Delete(connection, transaction, sequenceId);
+            }
+        }
+
         /// <summary>
         /// Deep-clones a card to a new id: relations copied, Action Instances cloned to
         /// new ids, Resource references preserved. Returns the cloned definition.
         /// </summary>
         public static CardDefinition Duplicate(DbConnection connection, string sourceCardId, string newCardId, string title)
+        {
+            var clone = BuildDuplicate(connection, sourceCardId, newCardId, title);
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    WriteDuplicate(connection, transaction, clone);
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+            return clone;
+        }
+
+        /// <summary>Ambient-transaction variant for batch commands that own the
+        /// transaction. Caller commits/rolls back.</summary>
+        public static CardDefinition Duplicate(DbConnection connection, DbTransaction transaction,
+            string sourceCardId, string newCardId, string title)
+        {
+            var clone = BuildDuplicate(connection, sourceCardId, newCardId, title);
+            WriteDuplicate(connection, transaction, clone);
+            return clone;
+        }
+
+        private static CardDefinition BuildDuplicate(DbConnection connection, string sourceCardId, string newCardId, string title)
         {
             if (string.IsNullOrEmpty(sourceCardId)) throw new ArgumentException("Source card id required.", nameof(sourceCardId));
             if (string.IsNullOrEmpty(newCardId)) throw new ArgumentException("New card id required.", nameof(newCardId));
@@ -269,31 +334,22 @@ namespace TruthCardGame.Content.Sqlite
             // Clone the sequence with fresh instance ids, preserving subtype values.
             var newSequenceId = $"cseq-{newCardId}";
             clone.Sequence = CloneSequence(connection, sourceSequenceId, newSequenceId, newCardId);
-
-            using (var transaction = connection.BeginTransaction())
-            {
-                try
-                {
-                    ActionSequenceWriter.Write(connection, transaction, clone.Sequence);
-                    Sql.Execute(connection, transaction,
-                        "INSERT INTO card (id, title, body_text, folder_path, action_sequence_id) VALUES (@id, @title, @body, @folder, @seq);",
-                        ("id", clone.Id), ("title", (object)clone.Title ?? DBNull.Value),
-                        ("body", (object)clone.BodyText ?? DBNull.Value), ("folder", clone.FolderPath ?? ""),
-                        ("seq", clone.Sequence.Id));
-                    ReplaceRelationTable(connection, transaction, "card_tag", "card_id", "tag_id", clone.Id, clone.CardTagIds);
-                    ReplaceRelationTable(connection, transaction, "card_kink", "card_id", "kink_id", clone.Id, clone.KinkIds);
-                    ReplaceRelationTable(connection, transaction, "card_required_equipment", "card_id", "equipment_id", clone.Id, clone.RequiredEquipmentIds);
-                    ReplaceRelationTable(connection, transaction, "card_required_smart_toy_capability", "card_id", "capability_id", clone.Id, clone.RequiredCapabilityIds);
-                    transaction.Commit();
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
-            }
-
             return clone;
+        }
+
+        private static void WriteDuplicate(DbConnection connection, DbTransaction transaction, CardDefinition clone)
+        {
+            ActionSequenceWriter.Write(connection, transaction, clone.Sequence);
+            CardFolderRepository.EnsurePath(connection, transaction, clone.FolderPath);
+            Sql.Execute(connection, transaction,
+                "INSERT INTO card (id, title, body_text, folder_path, action_sequence_id) VALUES (@id, @title, @body, @folder, @seq);",
+                ("id", clone.Id), ("title", (object)clone.Title ?? DBNull.Value),
+                ("body", (object)clone.BodyText ?? DBNull.Value), ("folder", clone.FolderPath ?? ""),
+                ("seq", clone.Sequence.Id));
+            ReplaceRelationTable(connection, transaction, "card_tag", "card_id", "tag_id", clone.Id, clone.CardTagIds);
+            ReplaceRelationTable(connection, transaction, "card_kink", "card_id", "kink_id", clone.Id, clone.KinkIds);
+            ReplaceRelationTable(connection, transaction, "card_required_equipment", "card_id", "equipment_id", clone.Id, clone.RequiredEquipmentIds);
+            ReplaceRelationTable(connection, transaction, "card_required_smart_toy_capability", "card_id", "capability_id", clone.Id, clone.RequiredCapabilityIds);
         }
 
         private static List<string> RelationIds(DbConnection connection, string sql, string cardId)

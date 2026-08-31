@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.Linq;
 using TruthCardGame.Content;
 
 namespace TruthCardGame.Content.Sqlite
@@ -138,6 +139,12 @@ namespace TruthCardGame.Content.Sqlite
                     "INSERT OR IGNORE INTO resource (id, kind, name) VALUES (@id, @kind, @name);",
                     ("id", resource.Id), ("kind", resource.Kind), ("name", (object)resource.Name ?? DBNull.Value));
             }
+
+            foreach (var folder in (content.CardFolders ?? new List<CardFolderDefinition>())
+                .OrderBy(folder => (folder.Path ?? "").Count(ch => ch == '/')))
+            {
+                CardFolderRepository.CreateExact(connection, transaction, folder);
+            }
         }
 
         // ---- cards ----
@@ -153,6 +160,7 @@ namespace TruthCardGame.Content.Sqlite
 
             // The sequence row must exist before the card row references it (FK).
             ActionSequenceWriter.Write(connection, transaction, card.Sequence);
+            CardFolderRepository.EnsurePath(connection, transaction, card.FolderPath);
 
             Sql.Execute(connection, transaction,
                 "INSERT INTO card (id, title, body_text, folder_path, action_sequence_id) VALUES (@id, @title, @body, @folder, @seq);",

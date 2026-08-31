@@ -109,13 +109,9 @@ namespace TruthCardGame.Core
             ActionTypeRegistry.ValidateScope(instance, context.ActiveScope);
             context.Services.Log.Info($"ACTION START {info.DisplayLabel} [{instance.Id}]");
 
-            if (info.IsAlwaysBlocking && !instance.IsBlocking)
-            {
-                throw new InvalidOperationException(
-                    $"Flow-control action '{instance.Id}' ({info.TypeKey}) must be blocking.");
-            }
-
-            if (info.IsAlwaysBlocking && !(instance is WaitForAllInstanceDefinition))
+            if (info.IsAlwaysBlocking &&
+                !(instance is WaitForAllInstanceDefinition) &&
+                !(instance is PromptChoiceInstanceDefinition))
             {
                 // Transfer mechanics land with the graph VM; reduce to the request now.
                 var flow = ReduceFlow(instance, info.TypeKey);

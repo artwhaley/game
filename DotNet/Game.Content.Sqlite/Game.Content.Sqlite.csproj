@@ -22,6 +22,7 @@
     <EmbeddedResource Include="SQLITE-SCHEMA-V6-ACTIONS.sql" />
     <EmbeddedResource Include="SQLITE-SCHEMA-V7-CARD-FOLDERS.sql" />
     <EmbeddedResource Include="SQLITE-SCHEMA-V8-TOY-DIALOG.sql" />
+    <EmbeddedResource Include="SQLITE-SCHEMA-V9-CARD-FOLDER-HIERARCHY.sql" />
   </ItemGroup>
 
 </Project>

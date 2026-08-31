@@ -314,5 +314,123 @@ namespace TruthCardGame.ReferenceHost.Wpf.Tests
             Assert.That(buffer.FieldsChanged, Is.True);
             Assert.That(buffer.IsDirty, Is.True);
         }
+
+        [Test]
+        public void ToyRows_RequireAnExistingCapability_ForTimedAndSetActions()
+        {
+            var content = new GameContentDefinition();
+            content.SmartToyCapabilityDefinitions.Add(new SmartToyCapabilityDefinition { Id = "cap", Title = "Capability" });
+            content.Resources.Add(new ResourceDefinition { Id = "pattern", Name = "Pattern", Kind = ResourceKinds.ToyPattern });
+            var card = Card("toy-validation", "Toy validation");
+            card.Sequence.Instances.Clear();
+            card.Sequence.Instances.Add(new ToyActivityInstanceDefinition
+                { Id = "timed", CapabilityId = "", PatternResourceId = "pattern" });
+            card.Sequence.Instances.Add(new ToySetPatternInstanceDefinition
+                { Id = "set-empty", CapabilityId = "", PatternResourceId = "pattern", IsBlocking = false });
+            card.Sequence.Instances.Add(new ToySetPatternInstanceDefinition
+                { Id = "set-stale", CapabilityId = "stale", PatternResourceId = "pattern", IsBlocking = false });
+
+            var editor = CardEditorSequenceHost.Build(card, content);
+            Assert.That(editor.Rows[0].ValidationMessage, Is.EqualTo("Select an existing Toy Capability."));
+            Assert.That(editor.Rows[1].ValidationMessage, Is.EqualTo("Select an existing Toy Capability."));
+            Assert.That(editor.Rows[2].ValidationMessage, Is.EqualTo("Select an existing Toy Capability."));
+            Assert.That(editor.Rows.All(row => row.IsDanger), Is.True);
+        }
+
+        [Test]
+        public void ToyCreationGuard_TreatsTimedAndSetIdenticallyWhenNoCapabilitiesExist()
+        {
+            var card = Card("guard", "Guard");
+            var editor = CardEditorSequenceHost.Build(card, new GameContentDefinition());
+
+            Assert.That(ActionAuthoringGuards.CreationError(editor, ActionTypeKeys.ToyActivity), Is.Not.Null);
+            Assert.That(ActionAuthoringGuards.CreationError(editor, ActionTypeKeys.ToySetPattern), Is.Not.Null);
+        }
+
+        [Test]
+        public void CatalogRefresh_IsRecursiveAndPreservesDirtyCardBuffer()
+        {
+            var content = new GameContentDefinition();
+            var pattern = new ResourceDefinition { Id = "pattern", Name = "Slow Pulse", Kind = ResourceKinds.ToyPattern };
+            content.Resources.Add(pattern);
+            content.SmartToyCapabilityDefinitions.Add(new SmartToyCapabilityDefinition { Id = "cap", Title = "Vibrate" });
+            content.DialogTags.Add(new DialogTagDefinition { Id = "tag", Title = "giggle" });
+
+            var card = Card("refresh", "Original");
+            card.Sequence.Instances.Clear();
+            var nested = new ActionSequenceDefinition { Id = "nested" };
+            nested.Instances.Add(new ToySetPatternInstanceDefinition
+                { Id = "set", CapabilityId = "cap", PatternResourceId = "pattern", IsBlocking = false });
+            var dialog = new DialogFromTagsInstanceDefinition { Id = "dialog" };
+            dialog.RequiredDialogTagIds.Add("tag");
+            nested.Instances.Add(dialog);
+            var prompt = new PromptChoiceInstanceDefinition { Id = "prompt", Prompt = "Choose" };
+            prompt.Options.Add(new PromptChoiceOptionDefinition { Id = "option", Label = "Try", Sequence = nested });
+            card.Sequence.Instances.Add(prompt);
+
+            var buffer = new CardEditBuffer(card) { Title = "Dirty title", BodyText = "Dirty body" };
+            buffer.RequiredCapabilityIds.Add("cap");
+            var editor = CardEditorSequenceHost.Build(buffer.Sequence, card.Id, buffer.Title, content);
+            var originalIds = buffer.Sequence.Instances.Select(instance => instance.Id).ToArray();
+
+            pattern.Name = "Slow Pulse 2";
+            content.Resources.Add(new ResourceDefinition { Id = "pattern-new", Name = "New Pattern", Kind = ResourceKinds.ToyPattern });
+            content.DialogTags.Add(new DialogTagDefinition { Id = "tag-new", Title = "new tag" });
+            content.SmartToyCapabilityDefinitions.Add(new SmartToyCapabilityDefinition { Id = "cap-new", Title = "New Capability" });
+            editor.RefreshCatalogs(content);
+
+            var nestedEditor = editor.Rows.Single().PromptOptions.Single().ActionSequence;
+            var setRow = nestedEditor.Rows.Single(row => row.InstanceId == "set");
+            var dialogRow = nestedEditor.Rows.Single(row => row.InstanceId == "dialog");
+            Assert.That(setRow.SelectedPatternChoice.Name, Is.EqualTo("Slow Pulse 2"));
+            Assert.That(setRow.PatternOptions.Any(option => option.Id == "pattern-new"), Is.True);
+            Assert.That(setRow.ChoiceOptions.Any(option => option.Id == "cap-new"), Is.True);
+            Assert.That(dialogRow.DialogTagOptions.Any(option => option.Id == "tag-new"), Is.True);
+            Assert.That(buffer.Title, Is.EqualTo("Dirty title"));
+            Assert.That(buffer.BodyText, Is.EqualTo("Dirty body"));
+            Assert.That(buffer.RequiredCapabilityIds, Does.Contain("cap"));
+            Assert.That(buffer.Sequence.Instances.Select(instance => instance.Id), Is.EqualTo(originalIds));
+            Assert.That(buffer.IsDirty, Is.True);
+        }
+
+        [Test]
+        public void UnsavedCardReferenceInspection_IsRecursiveForEveryProtectedCatalog()
+        {
+            var card = Card("refs", "References");
+            card.Sequence.Instances.Clear();
+            var nested = new ActionSequenceDefinition { Id = "nested" };
+            nested.Instances.Add(new CutsceneInstanceDefinition { Id = "cut", ResourceId = "resource-cut" });
+            nested.Instances.Add(new ToyActivityInstanceDefinition
+                { Id = "timed", CapabilityId = "cap-timed", PatternResourceId = "resource-pattern" });
+            nested.Instances.Add(new ToySetPatternInstanceDefinition
+                { Id = "set", CapabilityId = "cap-set", PatternResourceId = "resource-set", IsBlocking = false });
+            var dialog = new DialogFromTagsInstanceDefinition { Id = "dialog" };
+            dialog.RequiredDialogTagIds.Add("tag");
+            nested.Instances.Add(dialog);
+            var prompt = new PromptChoiceInstanceDefinition { Id = "prompt" };
+            prompt.Options.Add(new PromptChoiceOptionDefinition { Id = "option", Label = "Option", Sequence = nested });
+            card.Sequence.Instances.Add(prompt);
+            var buffer = new CardEditBuffer(card);
+            buffer.RequiredCapabilityIds.Add("cap-relation");
+
+            Assert.That(buffer.ReferencesResource("resource-cut"), Is.True);
+            Assert.That(buffer.ReferencesResource("resource-pattern"), Is.True);
+            Assert.That(buffer.ReferencesResource("resource-set"), Is.True);
+            Assert.That(buffer.ReferencesDialogTag("tag"), Is.True);
+            Assert.That(buffer.ReferencesSmartToyCapability("cap-timed"), Is.True);
+            Assert.That(buffer.ReferencesSmartToyCapability("cap-set"), Is.True);
+            Assert.That(buffer.ReferencesSmartToyCapability("cap-relation"), Is.True);
+        }
+
+        [Test]
+        public void PromptChoiceDescendantPicker_IncludesWaitForAll()
+        {
+            var owner = new GraphNodeViewModel { Id = "owner" };
+            var editor = new ActionSequenceEditorViewModel(owner, "sequence", ActionOwnerScope.CardSequence,
+                new ActionInstanceDefinition[0], null, null, null, isPromptChoiceDescendant: true);
+
+            Assert.That(editor.ActionTypePickerView.Cast<ActionTypeChoice>()
+                .Any(choice => choice.TypeKey == ActionTypeKeys.WaitForAll), Is.True);
+        }
     }
 }

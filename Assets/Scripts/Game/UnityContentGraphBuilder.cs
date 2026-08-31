@@ -29,10 +29,12 @@ namespace TruthCardGame
         private readonly Dictionary<string, Phase> _phaseSources = new Dictionary<string, Phase>();
         private readonly Dictionary<string, Card> _cardSources = new Dictionary<string, Card>();
         private readonly Dictionary<string, string> _resourceIds = new Dictionary<string, string>();
+        private readonly HashSet<string> _cardTagIds = new HashSet<string>();
 
         public List<PhaseDefinition> Phases { get; } = new List<PhaseDefinition>();
         public List<CardDefinition> Cards { get; } = new List<CardDefinition>();
         public List<ResourceDefinition> Resources { get; } = new List<ResourceDefinition>();
+        public List<CardTagDefinition> CardTags { get; } = new List<CardTagDefinition>();
 
         public UnityContentGraphBuilder(CutsceneBindingRegistry registry)
         {
@@ -44,13 +46,20 @@ namespace TruthCardGame
             if (session == null) throw new ArgumentNullException(nameof(session));
             if (deck == null) throw new ArgumentNullException(nameof(deck));
 
+            foreach (var card in deck.Cards)
+                CollectCard(card);
+
             return new GameContentDefinition
             {
-                Deck = deck.ToDefinition(this),
+                SessionTypes =
+                {
+                    new SessionTypeDefinition { Id = "type-standard", Title = "Standard" },
+                },
                 Sessions = { session.ToDefinition(this) },
                 Phases = Phases,
                 Cards = Cards,
-                Resources = Resources
+                Resources = Resources,
+                CardTagDefinitions = CardTags,
             };
         }
 
@@ -68,7 +77,10 @@ namespace TruthCardGame
                 return;
             }
             _phaseSources[phase.Id] = phase;
-            Phases.Add(phase.ToDefinition());
+            var definition = phase.ToDefinition();
+            Phases.Add(definition);
+            CollectCardTags(definition.MustHaveAllCardTags);
+            CollectCardTags(definition.MustHaveAnyCardTags);
         }
 
         public void CollectCard(Card card)
@@ -85,7 +97,19 @@ namespace TruthCardGame
                 return;
             }
             _cardSources[card.Id] = card;
-            Cards.Add(card.ToDefinition(this));
+            var definition = card.ToDefinition(this);
+            Cards.Add(definition);
+            CollectCardTags(definition.CardTagIds);
+        }
+
+        private void CollectCardTags(IEnumerable<string> tagIds)
+        {
+            if (tagIds == null) return;
+            foreach (var tagId in tagIds)
+            {
+                if (string.IsNullOrEmpty(tagId) || !_cardTagIds.Add(tagId)) continue;
+                CardTags.Add(new CardTagDefinition { Id = tagId, Title = tagId });
+            }
         }
 
         /// <summary>

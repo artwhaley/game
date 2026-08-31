@@ -61,11 +61,11 @@ namespace TruthCardGame.Core
         /// <summary>Validates a sequence owned by a PromptChoice descendant.</summary>
         public static void ValidatePromptChoiceDescendant(ActionSequenceDefinition sequence, ActionOwnerScope inheritedScope)
         {
-            ValidateSequence(sequence, inheritedScope, "PromptChoice descendant", null, true);
+            ValidateSequence(sequence, inheritedScope, "PromptChoice descendant");
         }
 
         private static void ValidateSequence(ActionSequenceDefinition sequence,
-            ActionOwnerScope scope, string owner, HashSet<string> active = null, bool insidePromptChoice = false)
+            ActionOwnerScope scope, string owner, HashSet<string> active = null)
         {
             if (sequence == null)
                 throw new InvalidOperationException(owner + " has no ActionSequence.");
@@ -84,11 +84,6 @@ namespace TruthCardGame.Core
 
                     try
                     {
-                        if (insidePromptChoice && instance is WaitForAllInstanceDefinition)
-                        {
-                            throw new InvalidOperationException(
-                                "Wait For All is not legal inside a PromptChoice descendant sequence.");
-                        }
                         ActionTypeRegistry.ValidateScope(instance, scope);
                     }
                     catch (InvalidOperationException ex)
@@ -100,13 +95,18 @@ namespace TruthCardGame.Core
 
                     if (instance is PromptChoiceInstanceDefinition prompt)
                     {
+                        if (prompt.Options.Count > 3)
+                        {
+                            throw new InvalidOperationException(
+                                owner + " PromptChoice '" + instance.Id + "' supports at most three options.");
+                        }
                         var nestedScope = ActionOwnerScopes.NestedPromptChoice(scope);
                         foreach (var option in prompt.Options)
                         {
                             if (option == null)
                                 throw new InvalidOperationException(owner + " PromptChoice '" + instance.Id + "' contains a null option.");
                             ValidateSequence(option.Sequence, nestedScope,
-                                owner + " PromptChoice '" + instance.Id + "' option '" + option.Id + "'", active, true);
+                                owner + " PromptChoice '" + instance.Id + "' option '" + option.Id + "'", active);
                         }
                     }
                 }

@@ -6,7 +6,7 @@ using TruthCardGame.Content;
 namespace TruthCardGame.Content.Sqlite
 {
     /// <summary>Semantic undo commands for the Resource and Dialog catalogs.</summary>
-    public sealed class CreateResourceCommand : AuthoringCommandBase
+    public sealed class CreateResourceCommand : AuthoringCommandBase, ICatalogMutationCommand
     {
         private readonly ResourceDefinition _resource;
         public CreateResourceCommand(Func<DbConnection> conn, ResourceDefinition resource) : base(conn)
@@ -14,6 +14,10 @@ namespace TruthCardGame.Content.Sqlite
             _resource = Copy(resource);
         }
         public override string Name => "Create resource";
+        public string CatalogKind => CatalogKinds.Resource;
+        public string CatalogId => _resource.Id;
+        public bool DeletesOnExecute => false;
+        public bool DeletesOnUndo => true;
         protected override void ExecuteCore(DbConnection connection) => ResourceRepository.Create(connection, Copy(_resource));
         protected override void UndoCore(DbConnection connection) => ResourceRepository.DeleteIfUnused(connection, _resource.Id);
         internal static ResourceDefinition Copy(ResourceDefinition resource) => new ResourceDefinition
@@ -46,7 +50,7 @@ namespace TruthCardGame.Content.Sqlite
         protected override void UndoCore(DbConnection connection) => ResourceRepository.Rename(connection, _id, _oldName);
     }
 
-    public sealed class DeleteResourceCommand : AuthoringCommandBase
+    public sealed class DeleteResourceCommand : AuthoringCommandBase, ICatalogMutationCommand
     {
         private readonly ResourceDefinition _resource;
         public DeleteResourceCommand(Func<DbConnection> conn, ResourceDefinition resource) : base(conn)
@@ -54,11 +58,15 @@ namespace TruthCardGame.Content.Sqlite
             _resource = CreateResourceCommand.Copy(resource);
         }
         public override string Name => "Delete resource";
+        public string CatalogKind => CatalogKinds.Resource;
+        public string CatalogId => _resource.Id;
+        public bool DeletesOnExecute => true;
+        public bool DeletesOnUndo => false;
         protected override void ExecuteCore(DbConnection connection) => ResourceRepository.DeleteIfUnused(connection, _resource.Id);
         protected override void UndoCore(DbConnection connection) => ResourceRepository.Create(connection, CreateResourceCommand.Copy(_resource));
     }
 
-    public sealed class CreateDialogTagCommand : AuthoringCommandBase
+    public sealed class CreateDialogTagCommand : AuthoringCommandBase, ICatalogMutationCommand
     {
         private readonly DialogTagDefinition _tag;
         public CreateDialogTagCommand(Func<DbConnection> conn, DialogTagDefinition tag) : base(conn)
@@ -66,6 +74,10 @@ namespace TruthCardGame.Content.Sqlite
             _tag = Copy(tag);
         }
         public override string Name => "Create dialog tag";
+        public string CatalogKind => CatalogKinds.DialogTag;
+        public string CatalogId => _tag.Id;
+        public bool DeletesOnExecute => false;
+        public bool DeletesOnUndo => true;
         protected override void ExecuteCore(DbConnection connection) => DialogCatalogRepository.CreateTag(connection, Copy(_tag));
         protected override void UndoCore(DbConnection connection) => DialogCatalogRepository.DeleteTagIfUnused(connection, _tag.Id);
         internal static DialogTagDefinition Copy(DialogTagDefinition tag) => new DialogTagDefinition
@@ -98,7 +110,7 @@ namespace TruthCardGame.Content.Sqlite
         protected override void UndoCore(DbConnection connection) => DialogCatalogRepository.RenameTag(connection, _id, _oldTitle);
     }
 
-    public sealed class DeleteDialogTagCommand : AuthoringCommandBase
+    public sealed class DeleteDialogTagCommand : AuthoringCommandBase, ICatalogMutationCommand
     {
         private readonly DialogTagDefinition _tag;
         public DeleteDialogTagCommand(Func<DbConnection> conn, DialogTagDefinition tag) : base(conn)
@@ -106,6 +118,10 @@ namespace TruthCardGame.Content.Sqlite
             _tag = CreateDialogTagCommand.Copy(tag);
         }
         public override string Name => "Delete dialog tag";
+        public string CatalogKind => CatalogKinds.DialogTag;
+        public string CatalogId => _tag.Id;
+        public bool DeletesOnExecute => true;
+        public bool DeletesOnUndo => false;
         protected override void ExecuteCore(DbConnection connection) => DialogCatalogRepository.DeleteTagIfUnused(connection, _tag.Id);
         protected override void UndoCore(DbConnection connection) => DialogCatalogRepository.CreateTag(connection, CreateDialogTagCommand.Copy(_tag));
     }
