@@ -1,295 +1,435 @@
-# Testing Methodology — "House Party Shakedown" (WPF) and Unity Parity Assessment
+# Milestone C Testing Methodology
 
-Status: **living plan for the hand-authored shakedown session**. Branch: `nodify-graph-live-follow`.
-Scope: (A) author and execute one representative ~20-card test session that touches every
-feature of the Graph Workbench / Core engine, ending in a deterministic seeded run whose
-saved trace becomes the Unity parity target; (B) the current Unity status report and the
-path to playback parity.
+## 1. Purpose and acceptance standard
 
----
+This procedure validates Milestone C in two layers:
 
-## Part A — The WPF shakedown session
+1. **Part A - WPF authoring and runtime:** author a realistic card library, play it through genuinely random multi-card phases, exercise graph control flow and all action families, test profile eligibility, and preserve reproducible evidence.
+2. **Part B - Unity integration:** run the same database, profiles, seeds, and scripted choices in Unity and compare normalized engine behavior.
 
-### A.0 Preflight — canonical DB
+The primary acceptance scenario must resemble actual use of the tool. It uses four substantial phases with overlapping semantic card pools and weighted random selection. A small deterministic diagnostic session exists only for control-flow paths that ordinary random play cannot reliably force. It is not presented as normal gameplay or as the card-coverage test.
 
-The canonical content store is `Content/GameContent.db` (current schema: v10 Action Blocks,
-v11 portal pairs). Per `Docs/CONTENT-DATABASE-VERSIONING.md`:
+Milestone C is complete only when all automated tests pass, the realistic seeded runs collectively cover all cards and required branches, the random-distribution audit passes, all negative and cancellation scenarios have evidence, WPF and Unity traces agree, and the final database passes SQLite integrity checks.
 
-1. Close all writers (quit the WPF host). Confirm no `GameContent.db-wal` / `-shm` companions.
-2. Run `PRAGMA integrity_check;` (must be `ok`) and `PRAGMA foreign_key_check;` (must return 0 rows).
-3. Take a backup snapshot.
-4. **Delete the inherited starter fixture** (1 Session, 1 Phase, 3 Cards) — decision made.
-   Delete via the Library UI, in dependency order: **session first, then phases, then cards**
-   (phase deletion is protected while a phase is placed in a session). All deletions are
-   normal Library operations with cascade + undo.
-5. **One test must be relaxed first**: `CanonicalDatabase_LoadsThroughV2Loader`
-   (`DotNet/Game.Content.Sqlite.Tests/CanonicalDatabaseTests.cs`) hard-asserts the canonical
-   DB has >0 sessions/phases/cards. Change it to assert load invariants (well-formed rows
-   when present, graphs/sequences non-null) instead of non-emptiness, so an empty-but-valid
-   DB is a legal state (rule 8: keep the harness fitted). This is the only canonical-content
-   shape assertion in the suite — `PassesIntegrityChecks`, `MigratesCopy`,
-   `PlaysThroughTheSessionVm`, and `UserProfileBoundary` are all shape-agnostic; the
-   MilestoneB tests use temp/legacy fixtures, not the canonical DB.
-6. After emptying the DB, restart the workbench once to confirm it loads an empty-but-valid
-   DB cleanly, then run `dotnet test Game.Workbench.sln` (expected green; current baseline 384 tests).
-7. Launch the WPF host and leave it running for the authoring session (rule 12).
+The timestamped WPF log is supplemental diagnostic evidence. The parity oracle is the normalized structured trace in section 10.
 
-Note on `CanonicalDatabase_PlaysThroughTheSessionVm`: once the new session exists, this test
-will run it to completion in CI. It self-skips only on unwired projected exit sockets — so
-keep every GOTO exit wired (the design below does).
+## 2. Safety rules and preflight
 
-### A.1 Authoring order (dependency-first)
+### 2.1 Files and processes
 
-Everything below is UI work in the running WPF workbench — **no code changes required**.
+- Work on a backup or an explicitly designated test copy before changing content.
+- Close the WPF application and every SQLite client before copying, checking, or committing a database.
+- Never edit the canonical database with ad hoc SQL except for a planned schema migration. Use a disposable copy for malformed-data fixtures.
+- Do not delete or overwrite the user's local profile database. The content `--db` argument does not redirect the profile database.
+- After every authoring batch, close all writers and confirm that no `-wal` or `-shm` sidecar remains.
 
-1. **Catalogs** (Library → Catalogs)
-   - Session Types: `party` (+ a second `tech-demo` type that requires a capability — proves
-     Play-by-Type ineligibility filtering).
-   - Card Tags: `truth`, `dare`, `physical`, `talkative`, `cozy`, `spicy`.
-   - Kinks: `romance`, `playful`, `intense`, `humiliation`.
-   - Equipment: `blindfold` (category `gear`).
-   - Capabilities: `vibrate`, `rotate`.
-   - Resources: cutscene `arrival`; toy patterns `pulse`, `wave`, `steady`.
-   - Dialog Tags: `tease`, `praise`, with 2–3 snippets each.
-2. **Action Blocks** (reusable blocks, deep-cloned on insert):
-   - `Pacing Beat` = Dialog → WaitForContinue → IncrementProgress +10.
-   - `Encourage` = StatIncrease `boldness` +1 (nonblocking) → Dialog.
-   Proves block creation, scope validation, and drag/drop insertion.
-3. **Profile** (Profile window → `UserProfile.db`, separate from content):
-   - romance = **Love**, playful = **Like**, intense = **Torture**, humiliation = **DontConsent**.
-   - Equipment/capability inventories stay empty by design (inventory UI is deferred) — that is
-     exactly what makes the equipment/capability exclusion tests bite.
-4. **Card folders** (Cards pane): create `Cozy/`, `Truth/`, `Dare/`, `Physical/`.
-5. **Cards** — the 20 cards below, authored in batches; save + restart between batches to
-   verify persistence each time.
-6. **Phases** (4) with graphs and exits.
-7. **Session graph** with decisions, SessionGoto sockets, portal pairs.
-8. **Runs** (Passes 1–4 in A.6).
+### 2.2 Starting state
 
-### A.2 The 20 cards
+The repository database is expected to begin at schema version 10 with no authored sessions, phases, or cards. Starter-content deletion and the loader-test relaxation are already complete; do not repeat those changes.
 
-Sequence column = the card's owned Action sequence; blocking notes shown only where
-non-default (nb = nonblocking).
+Record the branch, commit, database checksum, and automated-test result. Then run:
 
-| # | Card (folder) | Tags | Kinks | Req. | Owned sequence → coverage |
-|---|---|---|---|---|---|
-| 1 | Soft Landing (Cozy) | cozy, truth | romance | — | Dialog (welcome) → ModifyTemperature happiness +5 (nb) → WaitForContinue — *dialog, temperature mutation, wait pacing, Love-weighted draw* |
-| 2 | Fireside Flatter (Cozy) | cozy, talkative | romance | — | DialogFromTags (tease) → StatIncrease boldness +1 (nb) → WaitForContinue — *DialogFromTags + snippet RNG, stat* |
-| 3 | Two Truths or a Lie (Cozy) | cozy, truth | playful | — | PromptChoice, 3 options: A Dialog → IncrementProgress 10 → Wait; B Dialog → WaitForAll → Dialog; C StatIncrease boldness +1 (nb) → Debug (nb) → Wait — *PromptChoice 3-option max, nested option sequences, WaitForAll barrier, Debug* |
-| 4 | Butterfly Round (Cozy) | cozy | playful | — | ToySetPattern (vibrate, wave) (nb) → Delay 2s (blocking) → Dialog → Wait — *SetPattern persistent toy state, blocking Delay* |
-| 5 | Midnight Murmur (Cozy) | cozy, spicy | romance | — | ToyActivity (vibrate, pulse, 5s, nb) → WaitForContinue — *timed nonblocking toy on the background tracker* |
-| 6 | Roast Battle (Truth) | dare, physical | playful | — | Dialog → IncrementProgress 15 → Wait |
-| 7 | Seven Minutes (Dare) | dare, spicy, physical | intense | — | ToyActivity (rotate, steady, 8s, **blocking**) → Dialog → Wait — *blocking timed toy* |
-| 8 | Blind Draw (Dare) | dare, physical | intense | **blindfold** | Dialog → Wait — *exclusion: MissingEquipment (typed reason in diagnostics)* |
-| 9 | The Spin (Dare) | dare, physical | playful | **vibrate** | ToySetPattern (vibrate, steady) (nb) → Wait — *exclusion: MissingCapability* |
-| 10 | Truth Cannon (Dare) | dare, spicy | humiliation | — | Dialog → StatIncrease (nb) → Wait — *exclusion: KinkDontConsent* |
-| 11 | Confessional (Dare) | dare, spicy | intense | — | ModifyTemperature happiness −20 → Dialog → Wait — *happiness drop swings Torture weight up* |
-| 12 | Echo Chamber (Dare) | dare, spicy | playful | — | Cutscene (`arrival`, blocking) → IncrementProgress 10 → Wait — *cutscene host + resource id* |
-| 13 | Trial by Laughter (Dare) | dare, physical | intense | — | ToyActivity (vibrate, pulse, 6s, nb) → **WaitForAll** → IncrementProgress 5 → Wait — *barrier drains a real background toy* |
-| 14 | Slow Burn (Dare) | dare, spicy | — | — | Delay 4s (blocking) → Debug (nb) → Wait |
-| 15 | The Gauntlet (Dare) | dare | intense | — | ToySetPattern (vibrate, steady) (nb) → ToyActivity (rotate, pulse, 10s, nb) → Wait — *two capabilities coexist; set + timed supersede rule* |
-| 16 | Truth or Dare Spin (Dare) | dare, spicy | playful | — | PromptChoice, 2 options: A Dialog → StatIncrease (nb); B ToyActivity (vibrate, wave, 4s, nb) → Dialog → Wait — *choice leading into a toy* |
-| 17 | Mercy Card (Cozy) | cozy, truth | romance | — | Delay 2s **(nb)** → Dialog → Wait — *nonblocking Delay* |
-| 18 | The Anchor (Dare) | dare, spicy | intense | — | Dialog → IncrementProgress 10 → Wait — *heavy Torture base; shows weighted draw when happiness is low* |
-| 19 | Silent Witness (Truth) | truth, talkative | *(none)* | — | Dialog → StatIncrease boldness **−1** (nb) → Wait — *zero-kink neutral weight path, negative stat* |
-| 20 | Final Word (Dare) | dare, spicy | intense | — | Dialog → IncrementProgress **20** → Wait — *finale draw; progress 20 triggers the encore recursion via the phase check* |
-
-**Coverage summary — all 17 action types appear at least once:**
-
-| Type | Where |
-|---|---|
-| debug | 3C, 14 |
-| statIncrease | 2, 3C, 10, 16A, 19 (+ phase ActionNode bump in P2) |
-| increment_progress | 3A, 6, 12, 13, 18, 20 (+ phases) |
-| modify_temperature | 1, 11 |
-| cutscene | 12 |
-| dialog | most cards |
-| dialog_from_tags | 2 |
-| delay | 4 (blocking), 14 (blocking), 17 (nb) |
-| toy_activity | 5, 7, 13, 15, 16B |
-| toy_set_pattern | 4, 9, 15 |
-| wait_for_all | 3B, 13 |
-| prompt_choice | 3, 16 |
-| wait_for_continue | ubiquitous pacing |
-| phase_goto | P2/P4 graphs, PhaseDecision options, nested PromptChoice in a P2 ActionNode (legal ChoiceOption inheritance) — *not* in card sequences (see A.5 negative tests) |
-| session_goto | SessionDecision "Intermission" option |
-| return | P3 Return node, P4 Return node |
-| end_session | SessionDecision "Call it a night" option |
-
-Also exercised across the cards: blocking vs nonblocking forms of Delay and timed ToyActivity;
-SetPattern always-nonblocking; three distinct kink-preference weight paths (Love/Like/Torture)
-plus a zero-kink neutral card; all three exclusion kinds with typed rejection reasons.
-
-### A.3 Phases and graphs
-
-- **P1 Warm-Up** — tags ALL `cozy`; exit `open-door`.
-  Entry → Draw → VariableCheck *Happiness ≥ 55* → True: ActionNode (Dialog + IncrementProgress 20)
-  → PhaseGoto `open-door`; False: ActionNode (ModifyTemperature +5, WaitForContinue) → loop back to Draw.
-  *Covers: temperature check, temperature raise, loop-back edge (revisit Draw), exit GOTO.*
-- **P2 Main Event** — tags ALL `dare`, ANY `physical`/`talkative`/`spicy`; exits `finish-strong`, `early-out`.
-  Entry → Draw → ActionNode (StatIncrease boldness +1 nb, WaitForAll, and a **nested PromptChoice
-  whose one option contains PhaseGoto `early-out`** — the legal ChoiceOption-inheritance case) →
-  VariableCheck *progress ≥ 60* → True: ActionNode (finale Dialog + IncrementProgress 10) →
-  PhaseGoto `finish-strong`; False: PhaseDecision "Another round?" → [One more → loop back to Draw],
-  [Wrap it up → PhaseGoto `early-out`].
-  *Covers: progress check, phase-level ActionNode, WaitForAll across cards, nested-choice GOTO
-  inheritance, PhaseDecision, repeated draws at one location.*
-- **P3 Spin-Off** — tags ALL `truth`; no exits.
-  Entry → Draw → ActionNode (Dialog + IncrementProgress 10) → **Return node**.
-  *Covers: SessionGoto target; RETURN restores the suspended SessionDecision continuation; its own
-  fresh PhaseRun (independent progress + card RNG).*
-- **P4 Grand Finale** — tags ALL `spicy`; exit `encore`.
-  Entry → Draw → VariableCheck *progress ≥ 20* → True: ActionNode (farewell Dialog) → PhaseGoto
-  `encore` (**wired back to the same placement = recursive PhaseRun #2**) ; False: **Return node** →
-  session resumes → End.
-  *Covers: recursion, per-PhaseRun independent progress (run #2 starts at 0), return-to-session.*
-
-### A.4 Session graph — "House Party Shakedown" (type `party`)
-
-```
-Start → P1 (Warm-Up)
-        open-door → P2 (Main Event)
-        finish-strong → SessionDecision "Intermission"
-        early-out → P4 (skip intermission)
-
-SessionDecision "Intermission" options:
-  • "Take a breather" — Dialog → SessionGoto → P3 (Spin-Off); P3 Return resumes the option
-    sequence → common normal output → P4
-  • "Power through"   — StatIncrease → normal → P4
-  • "Call it a night" — EndSession (absolute terminal, discards the whole continuation stack)
-
-P4 encore → P4 (self-recursion); P4 post-Return → End
+```sql
+PRAGMA integrity_check;
+PRAGMA foreign_key_check;
+SELECT MAX(version) FROM core_schema_migration;
 ```
 
-- Add **portal pairs** on the long P2 `early-out` → P4 edge and on one session edge; verify the
-  pair persists across restart and that undo/redo restores the same pair + endpoint identities
-  (schema v11).
-- Verify projected exit sockets on the P1/P2 placements update live when exits are edited.
+Expected before migration:
 
-### A.5 Negative tests (throwaway `--db <tempfile>` copy — never the canonical file)
+- `integrity_check` returns `ok`.
+- `foreign_key_check` returns no rows.
+- `MAX(version)` in `core_schema_migration` is 10.
 
-Run the workbench against a temp DB for these, or author-and-delete inside a scratch copy:
+Launch the WPF application once against the designated content database, allow the Milestone C migration to complete, close it, and rerun the checks. Commit the schema migration separately before authoring content. Expected `MAX(version)` after migration: 11. `PRAGMA user_version` is not the authoritative schema indicator for this repository and must not be used for this gate.
 
-1. **PhaseGoto added to a card's sequence** → loud scope rejection (PhaseGoto is phase-owned;
-   a card's nested PromptChoice inherits Card scope — this is the illegal case, distinct from
-   the legal P2 case).
-2. **SessionGoto added anywhere outside a SessionDecision option** → loud rejection.
-3. **Temp phase with ALL `[nonexistent-tag]`** → `NoEligibleCard` loud error with the full
-   per-card rejection summary (typed reasons).
-4. **Temp phase Entry → Return** (empty continuation stack) → loud runtime error.
-5. **Unwire a GOTO exit** (temporarily delete the edge) → "unwired export" error naming
-   Session / Phase placement / Phase / exit.
-6. **Dead-end ActionNode** (no outgoing edge) → graph error.
-7. *(Conditional)* delete one profile kink row → `KinkUnconfigured` exclusion in diagnostics.
+### 2.3 Test profiles
 
-Each fixture is cleaned up afterward; nothing broken ever lands in the canonical DB.
+Use the profile UI; do not directly alter or delete rows in the real profile database.
 
-### A.6 Execution passes
+| State | Kinks | Equipment | Capabilities | Use |
+|---|---|---|---|---|
+| Permissive coverage | romance = Love; playful = Like; intense = Torture; humiliation = Like | blindfold owned | vibrate and rotate available | Realistic positive-path, seed-discovery, and canonical playback runs |
+| Restrictive diagnostic | romance = Love; playful = Like; intense = Torture; humiliation = Don't Consent | blindfold not owned | vibrate and rotate unavailable | Eligibility and filtering tests |
 
-1. **Reference Player, pinned seed** — enter an explicit integer seed; follow the scripted
-   choice path. Verify in the log: seed line; candidate eligible/rejected lines with typed
-   reasons and weights; check evaluations; edge traversals; phase enter/leave; CARD START with
-   the full card body; dialog lines presented; cutscene start/finished; toy timing and
-   supersede behavior; pause/resume mid-run. **Restart with the same seed → identical replay**
-   (same card order). Save the full log.
-2. **Live Preview (Preview ▸ → Start ▶)** — watch amber node rings, BringIntoView follow, and
-   edge highlight/trail on both canvases; exercise the **dirty-card pause gate**: edit a card
-   body mid-run → execution pauses with an explanation → Save or Revert → resume is guarded
-   until the buffer is clean.
-3. **Play by Type** — consumer flow: the `tech-demo` session type (requires an unavailable
-   capability) is filtered out; uniform pick among eligible sessions; profile-driven selection.
-4. **Authoring regressions** — undo/redo chains across both graph panes (Ctrl+Z / Ctrl+Y);
-   restart persistence of everything; Copy Session / Duplicate Phase / Make Unique + the port
-   lock popup; Action Block insert with deep clone; folder batch operations (drag, cascade
-   delete, duplicate with "(copy)" names); exit rename preserves wiring; portal pair undo.
+Restore the permissive state at the end. Automated tests, not the user's profile database, own malformed, missing, and wholly unconfigured profile cases.
 
-### A.7 Artifacts
+The canonical playback harness must build a deterministic permissive `CardSelectionProfile` from canonical content: configure every kink and enable every required equipment item and capability. It must never load the user's profile. An empty profile is not a valid permissive profile because kinked cards are correctly ineligible.
 
-- Canonical DB checkpointed and committed **in batches** per `Docs/CONTENT-DATABASE-VERSIONING.md`
-  (close writers, integrity + FK checks before and after, no WAL/SHM companions).
-- Saved seed + full Reference Player log committed under `Docs/TestSessionShakedown/` with a
-  short report — this is the **Unity parity target trace**.
-- The canonical DB after this milestone contains only the hand-authored session (the starter
-  fixture is gone).
+## 3. Canonical catalog
 
----
+Author these items before the cards. Resources are managed under **Inspector -> Resources**.
 
-## Part B — Unity status and the path to playback parity
+### 3.1 Session types and tags
 
-### B.1 Where Unity actually stands (facts, not hopes)
+- Session types: `party`, `diagnostic`, `tech-demo`.
+- Gameplay card tags: `truth`, `dare`, `physical`, `talkative`, `cozy`, `spicy`.
+- Diagnostic addressing tags: `fixture-warmup`, `fixture-return-node`, `fixture-tech`, `fixture-loop`, `fixture-return-action`, and `fixture-encore`.
+- Negative-test tag: `no-card`; create it but assign it to no card.
 
-- **"We kept compiling against Unity in our build tests" is half true.** `dotnet test
-  Game.Workbench.sln` compiles the *same physical portable sources* Unity uses
-  (`Assets/Scripts/Portable/**` — Game.Content, Game.Core, Game.Profile), so the engine layer is
-  continuously compile-tested (current baseline 384 tests green). But Unity's **host code** —
-  GameManager, SceneBuilder, the ScriptableObject bridge, adapters, UI — compiles only inside
-  the Unity editor. The last verified headless editor compile + EditMode run (18/18) was at the
-  GraphWorkbench baseline. Since then `Docs/ToyPatternDialog/17-unity-compile-drift.md`
-  (2026-08-30) explicitly records *"editor compile remains unverified"* — only a static audit
-  plus one stale `CardDeck` reference fix was done. **Step zero of any Unity work is a headless
-  editor compile on 6000.5.9f1 to find the real drift.**
-- **It is not in parity.** Unity currently:
-  - Reads content **only via the ScriptableObject bridge** (`UnityContentGraphBuilder`) — there
-    is no SQLite provider anywhere in `Assets`, and `Packages/manifest.json` has none, so Unity
-    cannot load `Content/GameContent.db` (or `UserProfile.db`) at all.
-  - Synthesizes a fixed linear graph from legacy `Session`/`Phase`/`CardDeck` ScriptableObjects —
-    it cannot run authored decisions, VariableChecks, or GOTO/RETURN exits, so it cannot run the
-    session built in Part A.
-  - Has no adapters/wrappers for Dialog, Delay, Toy Activity, ModifyTemperature, PromptChoice,
-    DialogFromTags, or WaitForAll — the post-Milestone-B action vocabulary.
-  - Has no selection-pipeline wiring (weighting/kinks/equipment/capability/profile) and uses
-    `UnityEngine.Random` (unseeded, unreplayable) instead of the existing
-    `SessionSpawnOptions.Seed` + per-domain RNG.
-  - Shows the card **title only** — no body text; no dialog presentation.
-- **But the shape is already right.** The portable `CoreServices` seam (delay / log / prompt /
-  cutscene / dialog / toy / pause) is exactly the finished-product seam, and Unity implements 4
-  of 7 (`UnityGameDelay`, `UnityGameLog`, `UnityPromptService`, and `DirectorPlayer` +
-  `CutsceneBindingRegistry` for Timeline). The engine emits the same trace events WPF consumes
-  (`GraphEdgeTraversal`, node/phase change, selection evaluation). Dialog is a small UI adapter
-  (reuse the prompt-overlay pattern); toy is a logging no-op for v1 that hardware slots into
-  later; seeded spawn + per-domain RNG (`PhaseRunRngFactory`) already exist — Unity just needs
-  to use them.
+Gameplay phases query only gameplay tags. The six `fixture-*` tags are assigned to Cards 1, 2, 9, 13, 19, and 20 respectively and are used only by the diagnostic and tech-demo sessions. Do not create one fixture tag or one phase per card.
 
-### B.2 The one infrastructure decision (rule 4 — new dependency, must ask before adding)
+### 3.2 Eligibility and resources
 
-How Unity gets SQLite:
+- Kinks: `romance`, `playful`, `intense`, `humiliation`.
+- Equipment: `blindfold`.
+- Toy capabilities: `vibrate`, `rotate`.
+- Cutscene resource: `arrival`.
+- Toy patterns: `pulse`, `wave`, `steady`.
+- Dialog tags: `tease`, `praise`.
+- Create exactly three distinct, non-empty snippets for each dialog tag.
 
-- **(Recommended) SQLitePCLRaw + Microsoft.Data.Sqlite packaged into `Assets/Plugins`** — the
-  provider-neutral `Game.Content.Sqlite` / `Game.Profile.Sqlite` loaders then run as-is in
-  Unity; same DB, same loader, same engine in every host. Feature-forward: content packs,
-  runtime profile, shipping builds. This is the honest "finished product" direction.
-- JSON snapshot export from the workbench → Unity reads the snapshot. Zero new dependency, but
-  a sync step and drift risk — wrong direction for shipping.
-- Editor-time DB→ScriptableObject bridge. Duplicated state, cannot represent the graph model —
-  worst fit.
+`happiness` is the seeded reference definition used by the runtime. Verify it exists; do not recreate it through the catalog UI.
 
-### B.3 Work items (medium, well-scoped)
+### 3.3 Sessions
 
-1. Headless editor compile (`6000.5.9f1 -batchmode`) and repair drift in host code.
-2. Unity packaging of `Game.Content.Sqlite` + `Game.Profile.Sqlite` + SQLite provider (asmdefs
-   + platform native libs).
-3. Rework `GameManager` (DB loader instead of SO bridge, seeded spawn), `GameSetup` (session
-   list from the DB instead of `SessionLibrary` SO), `GamePanel` (card body text, dialog
-   presentation).
-4. New Unity adapters: `IDialogService` (UI), `IToyActivityService` (logging no-op for v1),
-   seeded per-domain RNG (replace `UnityRandomSource`), pause gate optional for v1.
-5. `SceneBuilder` updates for the new GamePanel surface.
-6. **Parity harness**: run the Part A pinned seed through Unity and diff the engine event
-   traces against the committed expected trace; a PlayMode test replays it.
+Create exactly four sessions:
 
-The WPF shakedown in Part A produces that expected trace (A.7) — the two halves of this
-methodology are deliberately sequenced: **author + shakedown in WPF first, then wire Unity to
-reproduce the same run.**
+| Session | Type | Purpose | Requirements |
+|---|---|---|---|
+| House Party Standard | party | primary realistic random-play acceptance session | none beyond card-level requirements |
+| House Party After Dark | party | same realistic phase graph with a different weighting profile | none beyond card-level requirements |
+| Control Flow Lab | diagnostic | forced transfers, returns, recursion, and stack cleanup | none beyond card-level requirements |
+| Tech Demo Fixture | tech-demo | session-type filtering and a minimal toy run | capability `vibrate` |
 
----
+Use distinct weighting configurations:
 
-## Rules that govern this work (from agents.md, abbreviated)
+| Session | Love base/gain | Like base/gain | Torture base/unhappiness gain |
+|---|---:|---:|---:|
+| House Party Standard | 3.0 / 2.0 | 1.0 / 0.5 | 0.5 / 4.0 |
+| House Party After Dark | 1.5 / 1.0 | 2.5 / 1.0 | 1.0 / 4.0 |
 
-- No new dependencies without asking (rule 4) — the SQLite provider choice in B.2 is a
-  decision point.
-- Keep README current after each feature (rule 6).
-- Fix root causes, never band-aids (rule 7).
-- Data and tests are not sacred; keep the harness fitted to the current app state (rule 8).
-- Fail noisy — no silent recovery (rule 10).
-- Report verification honestly; a clean build is not a substitute for running the app (rules
-  11–12): launch the WPF host and leave it running after every app change.
+Record the saved values in the evidence. The diagnostic and tech-demo sessions may use defaults because they do not test card-weight distribution.
+
+Both party sessions use the four realistic phases in section 5. This gives Play-by-Type at least two real party candidates and tests that the session's weighting configuration affects card selection without changing the authored phase pools.
+
+## 4. Canonical cards
+
+### 4.1 Authoring rules
+
+- Give every card a unique, non-empty body that identifies its purpose.
+- Assign the gameplay tags listed below. Assign diagnostic tags only to the six cards identified in section 3.1.
+- New cards begin with `WaitForContinue -> IncrementProgress +10`. Delete both generated actions before creating the listed sequence.
+- Every card ends with exactly one `IncrementProgress +1`. The small common increment makes a realistic phase draw several cards before advancing.
+- Use short durations of 0.5 to 2.0 seconds so asynchronous behavior remains observable without making sessions tedious.
+- Add `WaitForContinue` and `WaitForAll` only where listed.
+- Every action that addresses a toy capability must have a matching card capability requirement.
+
+### 4.2 Card matrix
+
+| # | Name and body intent | Gameplay tags / eligibility | Required action sequence |
+|---:|---|---|---|
+| 1 | Soft Landing - introductory romance prompt | `truth`, `cozy`; kink romance; diagnostic `fixture-warmup` | blocking Dialog; Modify `happiness` +5 nonblocking; WaitForContinue; IncrementProgress +1 |
+| 2 | Fireside Voices - tagged-dialog prompt | `talkative`, `cozy`; kink playful; diagnostic `fixture-return-node` | DialogFromTags `tease` blocking; DialogFromTags `praise` nonblocking; StatIncrease `encouragement` +1 nonblocking; WaitForAll; WaitForContinue; IncrementProgress +1 |
+| 3 | Pick a Spark - three-way choice | `dare`, `talkative`; kink playful | PromptChoice: A = Dialog; B = short nonblocking Debug, WaitForAll, Dialog; C = StatIncrease `boldness` +1, Dialog; common WaitForContinue; IncrementProgress +1 |
+| 4 | Wave Check - direct pattern | `physical`; kink playful; capability vibrate | SetPattern vibrate/wave; Delay 1.0 blocking; Dialog; WaitForContinue; IncrementProgress +1 |
+| 5 | Pulse Timer - nonblocking timed pattern | `physical`; kink playful; capability vibrate | TimedPattern vibrate/pulse 1.5 nonblocking; WaitForContinue; IncrementProgress +1 |
+| 6 | Pacing Beat - reusable sequence source | `talkative`, `cozy`; kink romance | Dialog; WaitForContinue; IncrementProgress +1 |
+| 7 | Turning Point - blocking timed pattern | `physical`, `spicy`; kink intense; capability rotate | TimedPattern rotate/steady 1.5 blocking; Dialog; WaitForContinue; IncrementProgress +1 |
+| 8 | Eyes Closed - equipment gate | `truth`, `cozy`; kink romance; equipment blindfold | Dialog; WaitForContinue; IncrementProgress +1 |
+| 9 | Steady Signal - capability gate | `physical`; kink playful; capability vibrate; diagnostic `fixture-tech` | SetPattern vibrate/steady; WaitForContinue; IncrementProgress +1 |
+| 10 | Hard Boundary - non-consent gate | `talkative`, `spicy`; kink humiliation | Dialog; Debug with 0.25-second blocking delay; StatIncrease `boundary_checks` +1 nonblocking; WaitForContinue; IncrementProgress +1 |
+| 11 | Mood Dip - negative reference change | `truth`, `spicy`; kink intense | Modify `happiness` -20; Dialog; WaitForContinue; IncrementProgress +1 |
+| 12 | Arrival Replay - blocking and nonblocking cutscene | `talkative`; kink playful | Cutscene `arrival` blocking; Cutscene `arrival` nonblocking; WaitForAll; WaitForContinue; IncrementProgress +1 |
+| 13 | Synchronized Pulse - explicit join | `physical`; kink playful; capability vibrate; diagnostic `fixture-loop` | TimedPattern vibrate/pulse 1.5 nonblocking; WaitForAll; WaitForContinue; IncrementProgress +1 |
+| 14 | Quiet Delay - delay/debug join | `talkative`, `cozy`; kink romance | Delay 1.0 blocking; short Debug nonblocking; WaitForAll; WaitForContinue; IncrementProgress +1 |
+| 15 | Command Supersession - replacement and coexistence | `dare`, `physical`, `spicy`; kink intense; capabilities vibrate and rotate | SetPattern vibrate/steady; TimedPattern rotate/pulse 1.5 nonblocking; TimedPattern vibrate/wave 1.5 nonblocking; SetPattern vibrate/pulse; WaitForAll; WaitForContinue; IncrementProgress +1 |
+| 16 | Mixed Signals - multi-kink weighted choice | `dare`, `talkative`, `spicy`; kinks playful and intense; capability vibrate | PromptChoice: A = Dialog nonblocking, WaitForAll, StatIncrease `mixed_choice_a` +1; B = TimedPattern vibrate/pulse 1.0 nonblocking, Dialog blocking, WaitForAll; common WaitForContinue; IncrementProgress +1 |
+| 17 | Deferred Word - nonblocking delay | `talkative`; kink playful | Delay 1.0 nonblocking; WaitForAll; Dialog; WaitForContinue; IncrementProgress +1 |
+| 18 | Joined Conversation - nonblocking dialog | `talkative`, `cozy`; kink romance | Dialog nonblocking; WaitForAll; WaitForContinue; IncrementProgress +1 |
+| 19 | Honest Return - return-lab payload | `truth`, `talkative`; kink romance; diagnostic `fixture-return-action` | Dialog; StatIncrease `boldness` -1 nonblocking; WaitForContinue; IncrementProgress +1 |
+| 20 | Encore - recursion-lab payload | `dare`, `spicy`; kink intense; diagnostic `fixture-encore` | Dialog; WaitForContinue; IncrementProgress +1 |
+
+Card 15 is reachable by a challenge query using ANY `dare`, `physical`, or `spicy`, and it deliberately tests replacement on vibrate while rotate continues independently. Card 16 is the mixed-kink weighting case.
+
+### 4.3 Action Blocks
+
+Action Blocks cannot be created before a source sequence exists. After Cards 2 and 6 exist:
+
+1. Save Card 6's complete sequence as `Pacing Beat`.
+2. Save a StatIncrease-plus-Dialog subsequence as `Encourage`.
+3. Insert each block twice into disposable authoring fixtures.
+4. Confirm every insertion receives fresh action and nested-option identifiers.
+5. Edit one clone and confirm the stored block and the other clone do not change.
+6. Confirm incompatible-scope actions are rejected.
+7. Delete the disposable fixtures before the final checkpoint.
+
+### 4.4 Action coverage check
+
+Before running sessions, verify the authored content collectively contains every runtime action definition: Dialog, DialogFromTags, Delay, Cutscene, SetPattern, TimedPattern, Debug, ModifyReference, IncrementProgress, StatIncrease, PromptChoice, WaitForContinue, WaitForAll, Return, PhaseGoto, SessionGoto, and EndSession. The Return action is exercised in F3A. The separate graph Return node is exercised in F3B and F4; it does not count as the Return action definition.
+
+## 5. Primary realistic random-play session
+
+### 5.1 Phase design
+
+Create four shared gameplay phases. Each phase draws repeatedly from a semantic pool. Selection is random and weighted by the active session and profile. Repeats are allowed because the current selector has no repeat-suppression rule.
+
+| Phase | Query | Cards per normal visit | Cumulative progress threshold | Intended candidate pool under permissive profile |
+|---|---|---:|---:|---|
+| P1 Arrival | ALL `cozy` | 5 | 5 | 1, 2, 6, 8, 14, 18 |
+| P2 Connection | ANY `truth`, `talkative` | 7 | 12 | 1, 2, 3, 6, 8, 10, 11, 12, 14, 16, 17, 18, 19 |
+| P3 Challenge | ANY `dare`, `physical`, `spicy` | 8 | 20 | 3, 4, 5, 7, 9, 10, 11, 13, 15, 16, 20 |
+| P4 Aftercare | ANY `cozy`, `talkative` | 5 | 25 | 1, 2, 3, 6, 8, 10, 12, 14, 16, 17, 18, 19 |
+
+For each phase, wire:
+
+`Entry -> DrawCard -> progress threshold check`
+
+- False loops to `DrawCard`.
+- True executes `PhaseGoto next`.
+- P4 uses `PhaseGoto done`.
+
+For both party sessions, wire `Start -> P1`, each projected `next` exit to the following phase placement, and `P4.done -> SessionEnd`.
+
+The expected normal run is 25 randomly selected cards across four meaningful pools. It must visibly tolerate repeats. Do not add fixture tags to these queries, force a particular card order, or claim that one session is guaranteed to draw every card.
+
+Before seed discovery, use the selector's eligibility diagnostics to confirm that each listed candidate pool is correct under the permissive profile and that every canonical card is reachable from at least one gameplay phase.
+
+### 5.2 Real-selector seed discovery
+
+Exact useful seeds cannot be known honestly until the final database IDs, insertion order, profile, weights, and snippets exist. Generate and freeze them from the completed database as follows:
+
+1. Target `House Party Standard` directly with the permissive generated profile.
+2. Sweep seeds **61001 through 61999** using the real runtime selector, automatic Continue input, and choice policy A.
+3. Choice policy A selects option A for every PromptChoice. Policy B selects B. Policy C selects C when present and otherwise A.
+4. For every run, record phase, complete candidate set, effective weight for each candidate, selected card, dialog snippet, progress, and choice.
+5. Apply deterministic greedy set cover: select the seed covering the most still-uncovered card IDs; break ties by choosing the lower seed. Continue until all 20 cards have appeared.
+6. The covering set must contain no more than eight sessions. If eight sessions do not cover all cards, fix an unreachable or excessively rare card, rebalance the pool/weights, or increase draws per phase. Do not paper over the problem with hundreds of seeds.
+7. From seeds where Card 3 appears, replay one with policy B and one with policy C. From a seed where Card 16 appears, replay with policy B. These branch replays are in addition to the card-covering set only when the selected coverage seeds cannot carry the required policy.
+8. If the selected runs do not cover all three snippets for both dialog tags, select the lowest additional seed or seeds from the same sweep that complete snippet coverage.
+9. Replay every selected seed and policy twice. The card sequence, candidate/weight records, snippets, actions, and final state must match exactly.
+
+Save the result as the **Realistic Seed Manifest**:
+
+| Seed | Choice policy | Cards newly covered | Choice branches | Snippets newly covered | Trace artifact |
+|---:|---|---|---|---|---|
+| _filled from the final database_ | | | | | |
+
+The seed manifest is a release artifact. After any content, stable-ID, ordering, profile, or weighting change, regenerate it rather than assuming old seeds still mean the same thing.
+
+### 5.3 Randomness and weighting audit
+
+Card coverage proves reachability, not correct randomness. Run a separate deterministic sweep of seeds **62001 through 63000** for each party session.
+
+For every draw, calculate the expected probability from the trace's eligible candidate set and effective weights. For each card within each phase, accumulate:
+
+- observed selections `O`;
+- expected selections `E = sum(p)`;
+- variance `V = sum(p * (1 - p))`.
+
+Flag a card/phase result when `abs(O - E) > max(5, 4 * sqrt(V))`. Because the seed range is fixed, this audit is reproducible; do not repeatedly rerun until it passes. Investigate candidate construction, weighting, or PRNG use when it fails.
+
+Also verify:
+
+- every eligible card appears at least once in the 1,000-session sweep;
+- no ineligible card is selected;
+- at least one repeated card occurs within a phase and completes normally;
+- the same seed is deterministic;
+- different seeds produce more than one sequence;
+- Standard and After Dark produce distributions consistent with their different coefficients;
+- Card 16's mixed playful/intense weight uses the documented combination rule at multiple happiness values.
+
+## 6. Deterministic control-flow lab
+
+This session tests graph mechanics that random gameplay cannot reliably force. It addresses only six existing cards with fixture tags; it is not the gameplay or card-coverage example.
+
+Every exact fixture query below means ALL = the named `fixture-*` tag with no ANY tags. Confirm it resolves to exactly one card before running the lab.
+
+### 6.1 Phase graphs
+
+Create five phases:
+
+- **F1 Warm-up:** check `happiness >= 55` before drawing `fixture-warmup`. False modifies happiness +5, waits, and loops to the check. True draws the exact fixture and uses `PhaseGoto open-door`.
+- **F2 Main:** draw `fixture-loop`, then execute an ActionNode containing StatIncrease `loop_count` +1 nonblocking, WaitForAll, and a nested PromptChoice. `Continue` exits normally; `Early` executes `PhaseGoto early-out`. After normal completion, check `loop_count >= 3`. True executes `PhaseGoto finish`; false enters a PhaseDecision where `One More` returns normally to the draw and `Wrap` executes `PhaseGoto early-out`.
+- **F3A Return Action:** draw `fixture-return-action`; an ActionNode performs Dialog followed by the Return action definition. This tests `ReturnInstanceDefinition`.
+- **F3B Return Node:** draw `fixture-return-node`; then execute the graph Return node. This separately tests graph-node return behavior.
+- **F4 Encore:** check session-global `encore_once >= 1`. On first entry, draw `fixture-encore`, then execute one sequence in this order: Dialog; StatIncrease `encore_once` +1; `PhaseGoto encore`; EndSession. On recursive entry, the true branch executes a graph Return node. That Return pops the recursive continuation and resumes the first F4 sequence after `PhaseGoto`, where EndSession clears the remaining stack.
+
+The F4 order is essential. `Return -> End` is not a valid graph because Return resumes a captured continuation and has no normal output to wire to EndSession.
+
+### 6.2 Session graph and scripted runs
+
+Wire `Start -> F1 -> F2`. Wire `F2.finish` to a SessionDecision with:
+
+- `Return action detour`: Dialog, then SessionGoto F3A;
+- `Return node detour`: Dialog, then SessionGoto F3B;
+- `Call it a night`: EndSession.
+
+The decision's normal continuation goes to F4 after either returning detour. Wire `F2.early-out -> F4` and `F4.encore -> F4`.
+
+| Seed | Scripted path | Required observation |
+|---:|---|---|
+| 42001 | Continue and One More until threshold; Return action detour | three F2 iterations, Return action resumes, one recursion, clean EndSession |
+| 42002 | Continue and One More until threshold; Return node detour | graph Return resumes, one recursion, clean EndSession |
+| 42003 | choose Early on first F2 iteration | nested PhaseGoto bypasses remaining F2 flow and reaches F4 |
+| 42004 | normal F2; choose Call it a night | EndSession terminates directly and clears stack/background work |
+| 42005 | choose Wrap at the first PhaseDecision | decision-side PhaseGoto reaches F4 without another draw |
+
+These are scripted-choice scenarios. A seed does not select UI choices and is not evidence that mutually exclusive branches ran.
+
+## 7. Tech-demo and profile eligibility
+
+Create T1 with an exact `fixture-tech` query followed by `PhaseGoto done`. Wire `Tech Demo Fixture` as `Start -> T1 -> SessionEnd`.
+
+Run and trace these transitions:
+
+1. Restrictive state: tech-demo is filtered because vibrate is unavailable.
+2. Enable vibrate: tech-demo becomes selectable and completes.
+3. Disable vibrate: it becomes filtered again.
+4. In restrictive state, Card 8 is excluded for missing blindfold; enable blindfold and verify it becomes eligible in its normal phase pool.
+5. Card 10 is excluded for Don't Consent to humiliation; change humiliation to Like and verify it becomes eligible.
+6. Restore the permissive state and rerun one seed-manifest party session.
+
+When playing by type `party`, verify both party sessions participate in uniform session selection before their separate card-weight rules apply. Filtering by `diagnostic` must return only Control Flow Lab. Filtering by `tech-demo` must return only Tech Demo Fixture when vibrate is available.
+
+## 8. Negative, resilience, and teardown tests
+
+Run malformed-data cases only against a disposable content database passed with `--db`. Do not mutate canonical content or the user's profile database.
+
+Required cases:
+
+- Phase query ALL = `no-card`, a valid tag assigned to no card: expect `NoEligibleCard` with a useful reason.
+- Return action and Return node with an empty continuation stack: controlled failure, not a crash or hang.
+- Unwired projected PhaseGoto and SessionGoto exits: validation or controlled runtime error.
+- Dead-end ActionNode: graph validation identifies it.
+- Non-yielding graph cycle: execution budget stops it deterministically.
+- Invalid PhaseGoto/SessionGoto scope: controlled fixture or incompatible Action Block drop is rejected.
+- Missing or invalid resource reference: isolated automated fixture or disposable-database change produces a named error.
+- Unconfigured and malformed profiles: isolated automated tests only.
+
+For nonblocking Delay, TimedPattern, Dialog, and Cutscene operations, separately test Halt, window close, and EndSession while work is active. Verify toy output stops, pending work is canceled or joined, no continuation resumes after termination, no unobserved exception appears, and a clean subsequent session can start.
+
+With Card 15, verify that each later vibrate command replaces the earlier vibrate command while rotate continues independently. `WaitForAll` must wait for rotate and must not hang on superseded vibrate work.
+
+## 9. Authoring UI regression pass
+
+Exercise and record:
+
+- create, rename, duplicate, copy/paste, folder move, and delete for sessions, phases, and cards;
+- graph node creation, connection, deletion, projected sockets, and live socket rename propagation;
+- portal-pair creation on several long realistic-session edges and persistence after reload;
+- Action Block save, insert, clone independence, and invalid-scope rejection;
+- Inspector validation for missing names, bodies, tags, resources, and graph wiring;
+- resource creation and selection under Inspector -> Resources;
+- restart and reload after each major authoring batch.
+
+Delete all duplicate, copy/paste, folder, and invalid-content fixtures before the final checkpoint.
+
+## 10. Evidence and normalized traces
+
+### 10.1 Automated gates
+
+Run the complete automated suite before migration, after migration, after each five-card batch, after session/phase graphs, after every defect fix, and at the final checkpoint.
+
+The canonical playback harness must load the final database with its generated permissive profile and scripted inputs. It must complete both realistic party sessions, all five flow-lab scripts, and tech-demo without reading the user's profile.
+
+### 10.2 Trace schema
+
+Capture a machine-readable ordered trace containing stable data only:
+
+- schema/version, seed, and choice policy;
+- session, phase, card, edge, action, resource, and dialog-snippet stable IDs;
+- candidates, exclusion reasons, effective weights, expected probabilities, and selection;
+- scripted choices;
+- action start, completion, cancellation, and transfer type;
+- reference, stat, and progress values before and after mutation;
+- continuation push, pop, resume, and clear events;
+- final completion or controlled-error code.
+
+Exclude wall-clock timestamps, host paths, UI prose, thread IDs, and semantically irrelevant concurrent ordering. Apply one documented canonical ordering rule where concurrent completions are genuinely unordered.
+
+Capture at minimum:
+
+- every entry in the Realistic Seed Manifest and its branch replays;
+- flow seeds 42001 through 42005;
+- one positive and one negative profile transition;
+- every controlled error class;
+- each cancellation mode;
+- aggregate output from the fixed distribution sweep.
+
+The WPF log, screenshots, and manual notes are supplemental evidence linked to the normalized trace run ID.
+
+## 11. Batch verification and final checkpoint
+
+After every authoring batch:
+
+1. Save and close the app.
+2. Run the automated suite.
+3. Run `integrity_check`, `foreign_key_check`, and inspect `MAX(version)` from `core_schema_migration`.
+4. Confirm there is no WAL/SHM sidecar.
+5. Record database checksum, test output, and trace artifacts.
+6. Reopen and verify content and graph wiring persist.
+
+Expected final canonical authored counts:
+
+- 4 sessions;
+- 10 phases: 4 realistic gameplay, 5 control-flow, and 1 tech-demo;
+- 20 cards;
+- 2 Action Blocks;
+- schema version 11;
+- zero foreign-key violations;
+- `integrity_check = ok`;
+- no temporary duplicates, folders, malformed fixtures, WAL, or SHM files.
+
+Verify every card has a unique non-empty body, the listed gameplay tags, requirements, and sequence; only six cards have diagnostic addressing tags.
+
+## 12. Part B - Unity integration
+
+Part B begins only after Part A's final database, Realistic Seed Manifest, and normalized traces are frozen.
+
+### 12.1 Dependency and build proof
+
+Do not treat SQLite packaging as complete merely because Editor play mode works. Before adopting a provider, prove:
+
+- headless Unity compilation;
+- Editor execution;
+- at least one supported standalone player build;
+- an IL2CPP build when IL2CPP is supported;
+- native library placement for every target architecture;
+- assembly-definition references;
+- managed-code stripping/linker preservation;
+- read-only packaged content-database access and writable profile-database placement;
+- clean failure reporting for a missing, locked, or incompatible database.
+
+Record the provider/version decision. Do not install a dependency until its platform proof and license are reviewed.
+
+### 12.2 Unity work items
+
+- Compile engine and adapters in Unity-compatible assemblies without WPF dependencies.
+- Implement game setup/session selection, game manager, and game panel.
+- Implement Unity adapters for dialog, cutscene, delay, toy, prompt choice, continue, logging, and cancellation.
+- Show full card body and dialog text.
+- Apply the same profile, session-type, equipment, capability, kink, weighting, and random-selection rules as WPF.
+- Add EditMode tests for loading, selection, graphs, actions, transfers, and trace serialization.
+- Add PlayMode tests for UI binding, input, asynchronous completion, Halt, scene unload, and quit.
+- Run the canonical database in Editor and a standalone build.
+
+### 12.3 Parity gate
+
+Feed Unity the same frozen database, generated profiles, seeds, and scripted choices used for WPF. Compare normalized traces for:
+
+- every Realistic Seed Manifest entry and branch replay;
+- flow seeds 42001 through 42005;
+- representative eligibility transitions;
+- cancellation during delay, toy, dialog, and cutscene work;
+- controlled error classes supported by the Unity host.
+
+Run at least a reduced fixed-seed distribution audit in Unity and compare candidate sets, effective probabilities, and aggregate selections with WPF. Parity passes only when stable engine decisions, transfers, mutations, selected IDs, cancellation, and completion status match. Host presentation and timestamps may differ.
+
+## 13. Exit report
+
+The report must include:
+
+- branch and commit;
+- final database checksum and schema version;
+- automated-test commands and results;
+- completed Realistic Seed Manifest with trace links;
+- distribution-audit results for both party sessions;
+- control-flow, profile, negative, and cancellation scenario results;
+- final catalog/content counts;
+- SQLite integrity and foreign-key results;
+- WPF and Unity build targets tested;
+- SQLite provider/platform proof;
+- every deviation, limitation, or waived scenario with an owner and follow-up issue.
+
+Do not sign off from a single lucky playthrough or from the deterministic diagnostic lab. Sign off from reproducible random gameplay through realistic phase pools, compact seed-based card and branch coverage, fixed-seed distribution checks, control-flow diagnostics, resilience tests, authoring cleanup, and WPF/Unity trace parity.

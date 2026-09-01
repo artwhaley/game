@@ -157,8 +157,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         /// <summary>
         /// Canonical DB location: an explicit --db &lt;path&gt; command-line
-        /// argument, else the repo-relative dev path Content/GameContent.db.
-        /// Never a hardcoded machine path.
+        /// argument, else the SQLITE_CANONICAL_DB test override, else the
+        /// repo-relative dev path Content/GameContent.db. Never a hardcoded
+        /// machine path.
         /// </summary>
         internal static string ResolveDatabasePath()
         {
@@ -167,6 +168,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
             {
                 if (args[i] == "--db") return Path.GetFullPath(args[i + 1]);
             }
+
+            var testOverride = Environment.GetEnvironmentVariable("SQLITE_CANONICAL_DB");
+            if (!string.IsNullOrWhiteSpace(testOverride)) return Path.GetFullPath(testOverride);
 
             return Path.GetFullPath(Path.Combine(
                 AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Content", "GameContent.db"));
