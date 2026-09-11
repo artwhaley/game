@@ -16,6 +16,8 @@ Run meaningful targeted tests and launch/leave the affected main app running aft
 
 **Context:** README and UnityContentGraphBuilder explicitly point to the same SQLite schema. Game.Content.Sqlite is netstandard2.1/provider-neutral. Unity currently has no provider/bootstrap. ActionExecutor routes IsAlwaysBlocking to ReduceFlow with exceptions for WaitForAll/PromptChoice.
 
+Game.Content.csproj and Game.Core.csproj compile the same physical Assets/Scripts/Portable sources that Unity already compiles; Game.Content.Sqlite.csproj references those DotNet projects. Importing their compiled Game.Content.dll/Game.Core.dll alongside those Unity sources would create competing CLR type identities.
+
 **Dependencies:** execution authorization; dependency approval if a provider must be added.
 
 **Source starting points:** DotNet/Game.Content.Sqlite/GameContentSnapshotLoader.cs and its project; Assets/Scripts/Game/GameManager.cs; ActionExecutor.cs, ActionTypeRegistry.cs and GameSessionEngine.cs under Assets/Scripts/Portable/Game.Core; Packages/manifest.json; current action/control tests.
@@ -23,7 +25,8 @@ Run meaningful targeted tests and launch/leave the affected main app running aft
 **Work:**
 
 - Record actual schema, relevant build/test commands and existing failures; do not repeat historical counts as fresh results.
-- Prove a supported SQLite DbConnection provider loads a disposable database using the existing mapping under the pinned Unity editor. Integrate the mapping without duplicate portable assemblies, hand-copied SQL or a second loader.
+- Prove a supported SQLite DbConnection provider loads a disposable database using the existing mapping under pinned Unity 6000.5.9f1. Reuse/link the existing Game.Content.Sqlite mapping source or establish a clean build arrangement that retains exactly one CLR identity for each TruthCardGame.Content/Core type. Reuse the schema/mapping implementation without copied SQL, duplicate portable source or a second loader; preserve the existing DotNet test projects.
+- Do not import duplicate compiled Game.Content.dll/Game.Core.dll alongside Unity's existing portable sources. Record the selected assembly/source arrangement and verify the SQLite loader and Unity/Core consumers resolve the same types.
 - Verify Load(connection, ensureSchema: false), schema checks, consistent read transaction and connection release. Demonstrate WPF committing while Unity reloads at the next run boundary.
 - If a new dependency is required, present the concrete choice and why for approval. If integration fails, record exact reproduction and stop that path for review. Continue independent work only; do not substitute JSON.
 - Add explicit action execution classification distinguishing Activity from ControlOrYield. Mark WaitForContinue, GOTO, RETURN and EndSession accordingly; blocking PromptChoice/WaitForAll remain activities. Route ReduceFlow by classification, not exceptions.
@@ -33,6 +36,8 @@ Run meaningful targeted tests and launch/leave the affected main app running aft
 **Guardrails:** No performance engine yet, no framework upgrade, no content exporter, no fake claim that netstandard compatibility proves the native provider works.
 
 **Acceptance:** Classification tests preserve every existing control/yield behavior and blocking activities execute normally. Actual Unity SQLite smoke evidence exists, or a precise unresolved provider blocker is recorded. Canonical DB remains protected. Baseline records list available assets and missing requirements.
+
+Type-identity acceptance requires a clean pinned-Unity compile plus an editor integration test that loads through GameContentSnapshotLoader and passes its returned GameContentDefinition directly into the Unity-consumed GameSessionEngine. Assert exact Type equality between the loader's declared return type, the relevant engine constructor parameter and Unity's typeof(GameContentDefinition). Inspect loaded assembly type definitions for duplicate full names in TruthCardGame.Content and TruthCardGame.Core and fail on any duplicate or reflection-load failure. This must expose competing definitions even if a compiler warning or a successful isolated loader test would otherwise hide them. Run the existing DotNet test projects to prove the integration arrangement has not broken their source/project references. An unresolved provider or type-identity failure leaves ticket 00's integration acceptance incomplete.
 
 **Handoff:** Proven or explicitly blocked content path; source map; concrete rig requirement. The first visual milestone cannot pass while SQLite loading is blocked.
 
@@ -74,14 +79,15 @@ Run meaningful targeted tests and launch/leave the affected main app running aft
 - Implement factored (anchor, posture) state and reusable operation search. Filter viable destination/foundation/face/body combinations before dispatch. Use the contract's explicit body-rest default and mandatory face coverage.
 - Add IPerformanceHost and a session-scoped planner. Await readiness, correlate responses and retain desired versus committed state. Keep presentation state across Cards and graph transfers.
 - Select semantic ingredients at Perform and policy-enabled dialogue starts. Use a dedicated deterministic RNG, stable ordering and immediate expressive anti-repeat where alternatives exist.
-- Add one shared semantic dialogue-start hook used by both dialogue actions/hosts. Keep tagged dialogue selection before awaits. Handle delayed/nonblocking host callbacks without duplicate refresh or stale-event revival.
+- On blocking Direct Dialog and Dialog From Tags, ask the active director to select and await acceptance of expressive acting immediately before IDialogService.ShowAsync when RefreshAtDialogueStart is enabled. Tagged snippet selection remains synchronous before host awaits. Prove this sequence with the fake performance/dialogue hosts and representative Card.
+- Preserve current nonblocking dialogue behavior and RNG ordering; defer exact refresh synchronization to later queued visual presentation. Do not add presentation-start callbacks, stale dialogue callback generations or queue coordination. If preserving existing behavior requires a tiny callback seam, stop and document the concrete case for review before expanding the contract.
 - Keep continuous blends, gaze/IK and ambience entirely in Unity. Core has no delta-time API, per-frame timers, cadence loop or speech queue.
 - Integrate stop/failure handling with existing lifecycle. Persistent presentation is outside WaitForAll; one failing cleanup service cannot skip the others.
 - Implement a fake host and readable decision diagnostics.
 
 **Guardrails:** No per-action overrides, persistent mood, public reroll, player action, future-driver abstractions or saved chosen combinations. Missing required performance service is an error when Perform executes; unrelated existing non-performance behavior remains compatible.
 
-**Acceptance:** Tests cover stay/different/named destination, composed stand–move–sit, missing operations, compatible combinations/rest, no valid face, seed independence and automatic refresh. Failed/canceled/stale acknowledgements never falsely commit arrival. Existing graph/dialogue tests pass. Nonblocking dialogue tests preserve selection order and refresh once at presentation start. WaitForAll completes while presentation remains active.
+**Acceptance:** Tests cover stay/different/named destination, composed stand–move–sit, missing operations, compatible combinations/rest, no valid face, seed independence and automatic blocking-dialogue refresh. For both dialogue actions, assert refresh acceptance precedes ShowAsync; for tagged dialogue, assert snippet selection precedes host awaits and consumes the existing dialogue RNG unchanged. Disabled refresh/no active event does not request acting. Failed/canceled/stale performance acknowledgements never falsely commit arrival. Existing graph/dialogue tests pass, including nonblocking behavior and selection ordering; exact queued visual-start refresh is not a V1 acceptance requirement. WaitForAll completes while presentation remains active.
 
 **Handoff:** Minimal tested semantic planner and host contract, with no simulation mistaken for visual correctness.
 
@@ -121,7 +127,7 @@ Run meaningful targeted tests and launch/leave the affected main app running aft
 
 - Implement the selected rig strategy behind IPerformanceHost: execute factored operations, stage foundation, body overlay, face preset and player gaze. Report readiness only after requested staging is coherent.
 - Wire the SQLite snapshot into a real Session run, passing normal profile/eligibility inputs. Do not use a demonstration coroutine to choose Cards or ingredients.
-- Implement text dialogue via IDialogService and the semantic presentation-start hook. Make both lines visibly testable with host acknowledgement; preserve the separate graph Continue.
+- Implement text dialogue via IDialogService and the Core blocking-dialogue refresh sequence from ticket 02. Use ordinary blocking dialogue for both representative lines, visibly testable with host acknowledgement; preserve the separate graph Continue.
 - Add a small Play/Stop/Repeat Session panel with existing seed/profile selection and known starting anchor/posture/player target. A one-eligible-Card Session supports convenient repetition.
 - Repeat disposes the old run, reads committed SQLite content and current catalog, resets the start and reruns in the loaded scene. Close DB reads before animation begins.
 - Test cancellation during travel, late acknowledgements, faults after readiness and end/unload. Persistent acting survives Continue-wait and ends with the run.
@@ -151,6 +157,7 @@ Run meaningful targeted tests and launch/leave the affected main app running aft
 
 - Run the writer loop: reuse the event, add Card/dialogue content, save, play in Unity. Record repeated setup/transport steps and remove avoidable friction.
 - Run gesture intake from New Gesture through enabled playback. Measure edited fields and interactions; target at most clip/tags/posture/Enabled for ordinary assets. Fix defaults where that target fails.
+- Ask of real V1 content: does the shared expressive ALL/ANY query force unnatural metadata duplication, such as tagging a facial Smirk with every body behavior verb (for example, tease)? Keep the shared query through the first vertical slice. Record concrete examples; if they demonstrate friction, report it and make the smallest evidence-based correction before V1 acceptance. Different semantic dimensions or separate face/body filtering are possible later responses, not fields to add speculatively now.
 - Add another equivalent anchor and verify shared operations suffice without copying state/transition graphs. A generated diagnostic graph may help explain the plan; no authored choreography graph.
 - Verify new compatible ingredient selection using candidate diagnostics and bounded seeded runs; adding it must not require editing the event/Card.
 - Inspect actual visual quality, mask conflicts, pose contacts, state persistence, error clarity and dirty-edit preservation. Fix demonstrated failures.
@@ -158,7 +165,7 @@ Run meaningful targeted tests and launch/leave the affected main app running aft
 
 **Guardrails:** No scope expansion to solve hypothetical cases. Do not introduce takes, saved results, mood systems, comprehensive matrices, drivers or per-line choices. Report existing full-snapshot validation friction honestly instead of promising draft isolation.
 
-**Acceptance:** A playable editor-based Session demonstrates the complete V1 proof repeatedly; ordinary content additions are cheap; sparse gesture intake is measured; test/visual evidence is recorded; the relevant app remains running. User review of this milestone is required before commissioning Phase 2.
+**Acceptance:** A playable editor-based Session demonstrates the complete V1 proof repeatedly; ordinary content additions are cheap; sparse gesture intake is measured; the shared-query metadata-friction question has an evidence-backed finding and any demonstrated issue receives the smallest correction; test/visual evidence is recorded; the relevant app remains running. User review of this milestone is required before commissioning Phase 2.
 
 ## Performance Phase 2 / Driven Motion — no execution tickets yet
 

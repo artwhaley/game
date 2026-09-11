@@ -42,7 +42,7 @@ Keep root README current after features. Checkpoint canonical DB according to re
 
 Use the normal Session selector/VM for visual testing. A one-eligible-Card Session allows Play/Repeat without a second interpreter. Load committed SQLite content on each repeat while retaining the scene. Fail current reloads visibly. Do not skip unsupported actions or silently replay stale state.
 
-Keep automatic dialogue refresh attached to actual presentation boundaries without changing dialogue selection order. Test delayed/nonblocking requests and stale callbacks narrowly; do not build a general scheduler. Persistent acting stays outside WaitForAll. Integrate cleanup and faults into the existing host/engine lifecycle.
+Prove automatic refresh on ordinary blocking dialogue: tagged snippet selection stays synchronous before host awaits; when RefreshAtDialogueStart is enabled, Core selects and awaits acceptance of compatible acting immediately before the existing IDialogService.ShowAsync call. Preserve current nonblocking dialogue behavior and RNG ordering; exact refresh synchronization to later queued visual starts is deferred. Do not add presentation-start callback protocols, stale dialogue callback generations, speech scheduling or queue coordination. If preserving existing behavior requires even a tiny callback seam, stop and document the concrete case for review before expanding the contract. Persistent acting stays outside WaitForAll. Integrate cleanup and faults into the existing host/engine lifecycle.
 
 Run targeted Core/persistence/editor tests and verify Unity visually. Launch and leave the affected app running after application edits. Report absent assets/provider limitations honestly; simulated host tests do not prove visuals.
 
