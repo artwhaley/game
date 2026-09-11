@@ -1,48 +1,44 @@
-# Procedural performance execution packet
+# Conversation Performance V1 packet
 
-This September 11, 2026 revision replaces the earlier workflow. The unit of authoring is a reusable procedural event and ordinary cards/dialogue. The runtime chooses compatible animation layers. There are no authored takes or saved combinations.
+Source-audited September 11, 2026 revision. This replaces the preceding eleven-ticket design with six tickets proving an ordinary Card through WPF → SQLite → GameContentDefinition → Core → Unity.
 
-[Build plan](../../Docs/UnityPerformance/BUILD-PLAN.md) explains the product intent. [Architecture contract](ARCHITECTURE-CONTRACT.md) defines ownership and runtime behavior. [Ticket stack](TICKET-STACK.md) gives implementation tasks, context, guardrails and acceptance. Give the [orchestrator prompt](ORCHESTRATION-PROMPT.md) to the executing agent after review.
+Read the [build plan and source audit](../../Docs/UnityPerformance/BUILD-PLAN.md), [architecture contract](ARCHITECTURE-CONTRACT.md), [tickets](TICKET-STACK.md) and [orchestrator prompt](ORCHESTRATION-PROMPT.md). This is a review packet, not implemented functionality.
 
-## The workflow to protect
+## What gets built
 
-Unity authors animation ingredients and compatibility metadata once. Its generated catalog is read-only in WPF. WPF authors reusable selection rules, cards and dialogue. Core assembles events at runtime.
+    Perform: Playful Tease
+    Dialogue From Tags: tease
+    Dialogue From Tags: instruction
+    Wait For Continue
 
-    Perform: Conversation variety / Mad / Different location
-    Dialogue from tags: challenge
-    Refresh expressions
-    Dialogue from tags: instruction
+Perform references a small reusable Conversation Event. Core plans legal staging and chooses compatible ingredients. Dialogue starts automatically refresh acting. Unity renders and owns animation timing. WPF owns semantic Performance Tags and events; Unity ingredients reference those tags and supply factual compatibility.
 
-Most cards can use automatic expression refresh on dialogue start. Adding compatible animations expands these cards without rewriting them.
+## Ticket order
 
-Save in WPF; Play/Repeat the card in the already-loaded Unity scene. Automatic committed-content snapshots connect the tools. WPF is not a remote animation sequencer. Unity does not duplicate card logic.
-
-## Execution order
-
-| Ticket | Result |
+| Ticket | Deliverable |
 |---|---|
-| 00 | Source baseline, dependency inventory and acceptance fixtures |
-| 01 | Real rig ingredient proof and generated Unity catalog |
-| 02 | Portable procedural director and action contracts |
-| 03 | SQLite event/curve persistence and scoped content transport |
-| 04 | WPF event rules, coverage matrix and simulated card execution |
-| 05 | Unity loads real content and supports Play/Stop/Repeat Card |
-| 06 | Actual travel, poses and compatible layered composition |
-| 07 | Dialogue, face, gaze, player state and lifecycle completion |
-| 08 | Oscillator and imported scalar-curve motion |
-| 09 | Complete and simplify the recurring content workflow |
-| 10 | Playable session, standalone build and final acceptance |
+| 00 | Canonical SQLite integration prerequisite and explicit activity/control classification |
+| 01 | Real/representative rig spike, sparse ingredients and generated PresentationCatalog |
+| 02 | Minimal Core planner, Perform and async performance host |
+| 03 | Typed SQLite persistence, WPF tags/events and simulated planning |
+| 04 | First real authored Card playing in Unity |
+| 05 | Measured workflow/visual correction and V1 acceptance |
 
-Tickets are dependency ordered, not invitations to invent subsystems. Each has its own context and guardrails. Ticket 01 requires actual rig feasibility evidence; ticket 10 requires real visual and authoring evidence. Missing assets may block those results while independent code work proceeds.
+Provider compatibility and rig assets are explicit early dependencies. The inspected project has neither a configured Unity SQLite provider nor character/animation assets. These are feasibility tasks, not permission to replace canonical content or claim a simulated proof.
 
-## Review checklist
+## Change log
 
-- Can a writer add dialogue/cards with existing events without opening an animation editor?
-- Does a new Unity ingredient enter matching events without registration in WPF or card edits?
-- Does repeated card playback generate valid variety without saving results?
-- Are filters and asset metadata edited by one owner each?
-- Does normal Save reach the next Unity Play/Repeat without manual export/import?
-- Does the final build use real selection/graph execution and ship its content?
-- Have tests avoided reintroducing per-line choreography, takes or an unsaved cross-app protocol?
+- **Removed:** game-content JSON/duplicate DTOs, dependency-closure exporter and stale publication protocol. The repository already has a canonical SQLite direction and shared snapshot loader.
+- **Removed:** Core frame ticking, blend/cadence ownership and speech scheduler. Core plans through async host requests; Unity owns rendering.
+- **Reduced:** one public Perform(eventId), a small event form and automatic dialogue refresh. No Refresh Expressions, Set Player State, action overrides or rigid Mood enum.
+- **Moved:** Performance Tag definitions to WPF/SQLite; Unity retains ingredient tag membership and factual applicability.
+- **Simplified:** sparse gesture metadata with a measured four-field intake target; factored anchor/posture state and reusable operations instead of manually authoring every state/edge combination.
+- **Opened to evidence:** Animator/Playables/rigging choice follows the rig spike. Read-only Nodify diagnostics are allowed; future semantic behavior graphs remain possible.
+- **Deferred:** driven motion/funscript, voice/lipsync, player posing, broader state, extensive dashboards/arbitration and standalone packaging. No speculative Phase 2 API/schema.
+- **Retained:** procedural variety, portable semantic planning, Unity asset authority, WPF authoring, automatic catalog exchange, action classification correction and no takes/per-line clips/persisted combinations.
 
-The packet is a plan, not implementation evidence. Earlier commits on this branch contain superseded designs; execute these current documents.
+## Reviewer focus
+
+Can an ordinary card run from the canonical DB in Unity by ticket 04? Can its second line refresh acting without another authored action? Can adding a gesture expand existing content after touching only the necessary fields? Can a new sit-capable anchor reuse existing operations? Does Core remain free of rendering clocks?
+
+V1 ends with an editor-playable Session and demonstrated authoring loop. A separate Phase 2 packet follows acceptance.

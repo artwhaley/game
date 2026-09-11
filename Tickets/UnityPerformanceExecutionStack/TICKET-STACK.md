@@ -1,262 +1,167 @@
-# Procedural performance ticket stack
+# Conversation Performance V1 — execution tickets
 
-This revision replaces all prior tickets in this file. Read ARCHITECTURE-CONTRACT.md before implementation. Tickets describe required behavior, not completed work. Execute in order; independent work may proceed around an explicitly recorded asset dependency.
+Current source-audited packet, September 11, 2026. Six tickets, numbered 00–05. Read ARCHITECTURE-CONTRACT.md for decisions. These are future implementation tasks; this packet revision changes documentation only.
 
-## Shared instructions for every ticket
+## Instructions applying to every ticket
 
-Use existing graph/action/content architecture. Physical portable sources live under Assets/Scripts/Portable; DotNet projects link them. Inspect current code and list actual files before editing. Preserve Card eligibility, consent/capability checks, tagged-dialogue selection, Continue, choices and graph transfers.
+Read agents.md, root README, current source and the relevant GraphWorkbench/content database documentation. Inspect exact files before edits and announce the concrete file batch. Portable model/Core source lives under Assets/Scripts/Portable and is linked into DotNet. Reuse Game.Content.Sqlite rather than copying its schema or mapping.
 
-Unity owns ingredients and compatibility metadata. WPF owns event rules/cards/dialogue/curves. Core performs selection. No new authoring store for sampled combinations or duplicated ingredient metadata.
+Preserve selection, consent/profile/capability checks, Happiness/temperatures, dialogue RNG, action scopes, GOTO/RETURN/EndSession and explicit Continue. Follow database checkpoints, dependency approvals and .meta/LFS requirements. Do not overwrite canonical content with a test initializer.
 
-Every new action must reach models, clone/equality, Card buffers, action catalogs, scope validation, executor, persistence, export and both hosts. Do not assume adding an enum makes an action supported. Preserve Action Block insertion.
+Only Perform(eventId) is new public performance vocabulary. No public refresh/player action, mood enum, driver/curve schema, game-content JSON, content publication protocol, performance timeline or saved random result.
 
-Tests must verify behavior and failure boundaries. Use real Unity evidence for animation acceptance. Do not invent assets, claim simulations as visual verification, add dependencies or change the pinned Unity version without authorization. Follow database checkpoints, .meta/LFS rules and app-launch requirements in agents.md.
+Run meaningful targeted tests and launch/leave the affected main app running after app changes. Record automated evidence separately from visual checks and unmet dependencies. Current packet approval can authorize coherent batches larger than five files and remove repeated routine “go” requests under agents.md rules 2/5; it does not waive other safeguards.
 
-Commit coherent completed milestones; keep README accurate. The packet's execution authorization can cover larger coherent file batches and removes repeated routine “go” gates, as described in the orchestrator prompt.
+## 00 — Verify canonical SQLite integration and correct action classification
 
-## 00 — Establish source baseline and concrete proof fixtures
+**Context:** README and UnityContentGraphBuilder explicitly point to the same SQLite schema. Game.Content.Sqlite is netstandard2.1/provider-neutral. Unity currently has no provider/bootstrap. ActionExecutor routes IsAlwaysBlocking to ReduceFlow with exceptions for WaitForAll/PromptChoice.
 
-**Depends on:** none.
+**Dependencies:** execution authorization; dependency approval if a provider must be added.
 
-**Context:** The existing project already supplies Card selection, graph execution, WPF editing and SQLite content. This is an extension. Source-only archives and older plans may describe obsolete paths.
-
-**Work:**
-
-- Inspect current README, GraphWorkbench docs, portable ActionExecutor, host interfaces, BackgroundActionTracker, GameSessionEngine, snapshot loader/validators, SQLite mappings, WPF Card buffers and Unity GameManager/bootstrap.
-- Record exact current test/build commands, schema version and action discriminators. Establish passing baseline or name existing failures.
-- Inventory actual rig, clips, facial channels, props, audio and Unity tools. Distinguish installed packages from usable assets.
-- Define a small test Session, representative Cards, dialogue tag pools and initial presentation context. Use existing graph semantics; do not generate a graph per Card.
-- Identify source extension points and propose only needed files. Record asset gaps and acceptance evidence locations.
-
-**Guardrails:** No broad refactor, dependency update, asset purchase or automatic sample-content overwrite. Do not alter canonical DB just to get a clean baseline. Checkpoint before later migrations.
-
-**Acceptance:** Reproducible baseline and inventory; missing assets assigned concrete requirements; fixtures cover ordinary card execution, expression refresh, later relocation and a finite driven event. Planning evidence distinguishes authored fixtures from assets still required.
-
-**Handoff:** Source map and baseline results for 01–03.
-
-## 01 — Prove the rig and author ingredients in Unity
-
-**Depends on:** 00.
-
-**Context:** Compatibility belongs beside animation assets. A WPF animation registration editor would create duplicate work and unreliable facts.
+**Source starting points:** DotNet/Game.Content.Sqlite/GameContentSnapshotLoader.cs and its project; Assets/Scripts/Game/GameManager.cs; ActionExecutor.cs, ActionTypeRegistry.cs and GameSessionEngine.cs under Assets/Scripts/Portable/Game.Core; Packages/manifest.json; current action/control tests.
 
 **Work:**
 
-- On the actual rig, prove a foundation plus masked body expression, face, gaze, blink/breath and a reversible path involving pelvis/body or a prop. Check both sampling directions and local/world-root separation.
-- Add focused Unity ingredient assets/registry with stable semantic IDs, display names, enabled state, tags/moods, legal states, requirements, occupied regions, timings and Unity bindings.
-- Add stage descriptors for six named locations and nine legal states. Build enough real bindings for the initial rig proof; finish routes in 06.
-- Define the small portable PresentationCatalog DTO boundary and atomic generation outside Assets. Include required-binding signatures and schema version, no Unity objects/coordinates in Core.
-- Provide simple Unity inspection/play controls for asset verification. Auto-regenerate descriptors after valid asset changes.
-- Validate duplicate IDs, broken enabled bindings, bad windows and inconsistent metadata. Duplication gets a fresh semantic ID; reimport retains identity.
+- Record actual schema, relevant build/test commands and existing failures; do not repeat historical counts as fresh results.
+- Prove a supported SQLite DbConnection provider loads a disposable database using the existing mapping under the pinned Unity editor. Integrate the mapping without duplicate portable assemblies, hand-copied SQL or a second loader.
+- Verify Load(connection, ensureSchema: false), schema checks, consistent read transaction and connection release. Demonstrate WPF committing while Unity reloads at the next run boundary.
+- If a new dependency is required, present the concrete choice and why for approval. If integration fails, record exact reproduction and stop that path for review. Continue independent work only; do not substitute JSON.
+- Add explicit action execution classification distinguishing Activity from ControlOrYield. Mark WaitForContinue, GOTO, RETURN and EndSession accordingly; blocking PromptChoice/WaitForAll remain activities. Route ReduceFlow by classification, not exceptions.
+- Preserve the existing persistent toy action semantics; do not redesign all background work.
+- Inventory usable rigs/animations and define a minimal real test Session/Card using the normal selector. Two anchors and standing/sitting suffice.
 
-**Guardrails:** No SQLite ingredient tables, second registration form, free-text ID copying, generic clip import framework or card choreography UI. Mark unfinished ingredients disabled. No blanket assertion that retargeting makes every pose compatible.
+**Guardrails:** No performance engine yet, no framework upgrade, no content exporter, no fake claim that netstandard compatibility proves the native provider works.
 
-**Acceptance:** Real-rig visual proof, generated portable catalog, identity/validation checks and a documented asset shortfall if proof cannot pass. An invalid enabled ingredient reports its name and reason. A disabled draft does not join selection.
+**Acceptance:** Classification tests preserve every existing control/yield behavior and blocking activities execute normally. Actual Unity SQLite smoke evidence exists, or a precise unresolved provider blocker is recorded. Canonical DB remains protected. Baseline records list available assets and missing requirements.
 
-**Handoff:** Verified graph/rig constraints, catalog fixtures and remaining content requirements. Independent Core work may proceed if assets block visual proof; 10 cannot pass without it.
+**Handoff:** Proven or explicitly blocked content path; source map; concrete rig requirement. The first visual milestone cannot pass while SQLite loading is blocked.
 
-## 02 — Implement the portable procedural director and actions
+## 01 — Genuine rig spike and minimal presentation catalog
 
-**Depends on:** 00 and catalog contract from 01.
+**Context:** No rig assets were found in the inspected Assets tree. Technology and asset feasibility must precede a fixed mixer architecture.
 
-**Context:** ActionExecutor currently risks treating always-blocking activity as graph transfer. Persistent ambience must not become an endless background action.
+**Dependencies:** 00 inventory; actual or representative rig. Final SQLite-backed tag picker follows 03; spike fixtures must not become an editable Unity tag vocabulary.
 
-**Work:**
-
-- Add PerformanceEventDefinition for Conversation/Driven motion, typed queries/policies, semantic state, presentation request IDs and the host contract.
-- Add Perform, Refresh expressions and Set Player State. Separate control-transfer classification from action blocking. Define readiness separately from finite completion.
-- Implement session-scoped director using host ticks/events: candidate filtering, joint compatibility/region constraints, directed least-cost routes, stable tie ordering and independent RNG domains.
-- Support Keep/Set mood; Stay/Choose compatible/Different location/Named destination; allowed pose/location filters; event overrides; explicit optional body rest.
-- Implement entry/dialogue/idle refresh policy, dwell and immediate anti-repeat when alternatives exist. Sample only valid dependent choices. No per-frame RNG.
-- Track desired versus committed state, claims and stale acknowledgements. Preserve state across Cards/GOTO/RETURN.
-- Specify and implement finite motion/speech ordering, pause, cancellation, teardown and fatal fault reporting. Persistent ambience stays outside WaitForAll.
-- Supply a deterministic fake presentation host for meaningful Core tests.
-
-**Guardrails:** Core contains no Unity/WPF/SQL dependency. No stored sampled performance, separate narrative VM, new selector policy or silent fallback. Context changes wait for accepted speech and finite motion. A second overlapping driven event fails explicitly.
-
-**Acceptance:** Tests prove reachability, Different location, mood/region/prop constraints, empty coverage errors, legitimate rest, refresh and seed independence. Delayed/failed/stale host acknowledgements never commit false arrival. WaitForAll terminates with ambience active; cancellation/error cannot strand a run. Existing control-flow tests still pass.
-
-**Handoff:** Working simulated director/action path and stable DTO/domain shapes for 03–07.
-
-## 03 — Persist event rules and export scoped game content
-
-**Depends on:** 02.
-
-**Context:** SQLite remains canonical game content, while Unity's catalog is generated read-only input. Existing global snapshot validation must not prevent testing a valid Card because an unrelated draft is incomplete.
+**Source starting points:** Assets/Scripts/Game, existing Unity host/binding conventions, Packages/manifest.json, Assets/Scripts/Portable/Game.Content.
 
 **Work:**
 
-- Migrate typed event/query/curve storage and new action fields using existing provider conventions. Inspect actual schema and checkpoint canonical content before/after migration.
-- Persist event references/overrides, session initial presentation context and optional dialogue voice/timing. Round-trip nested choices and Action Block inserted actions.
-- Validate cross-store catalog references explicitly; do not duplicate Unity ingredients to manufacture database foreign keys.
-- Implement conservative scoped reconstruction/export for a selected Card/Session or published Session set. Include reachable graph branches, possible tag candidates and enabled presentation candidates regardless of chosen seed.
-- Reuse typed reconstruction and Core validation; separate authoring diagnostics from execution errors before the global fail-fast loader.
-- Add explicit versioned field DTOs/arrays for all current actions and content. Reconstruct and validate on import. Use existing framework/built-in serializers without adding a Core serializer dependency.
-- Publish atomic committed development snapshots outside Assets. Track snapshot freshness/export errors separately so a consumer cannot mistake an older valid snapshot for current content.
-- Add automatic regeneration after committed changes with batching. Ordinary export uses a read transaction while WPF stays open; backups/Git checkpoints follow closed-writer rules.
-- A valid Unity catalog refresh also regenerates the selected snapshot from committed content, incorporating new candidates without requiring a dummy Card Save or exporting dirty buffers.
+- On the representative rig, demonstrate standing/sitting foundation, travel/pose change, one masked body gesture, simple facial preset and player gaze together.
+- Start with Animator/layers. Test targeted Playables or Animation Rigging only when needed, respecting dependency approval. Record why the selected approach works.
+- Measure contact/arrival tolerances on that rig; verify an ordinary gesture returns cleanly to foundation and whether head ownership needs an exception.
+- Build a small ingredient registry with sparse defaults as defined in the contract. Auto-create IDs/names, infer technical clip data and supply a standard verified gesture mask.
+- Define factored anchor capabilities and reusable transition bindings. Share Stand/Sit operations across compatible anchors; no authored Cartesian state graph.
+- Generate a versioned read-only PresentationCatalog atomically. Include semantic ingredient IDs, compatibility and capabilities; keep Unity coordinates/bindings local.
+- Allow disabled unfinished ingredients. Reject duplicate IDs/broken enabled bindings. Stub vocabulary fixtures are temporary test inputs; the real tag editor remains in WPF.
 
-**Guardrails:** No runtime SQLite dependency in Unity merely to load this slice; no silent action omission or empty replacement content. No export limited to candidates observed in one run. No manual copy/export procedure per edit.
+**Guardrails:** No mandatory PlayableGraph topology, driver channels, general region machine, full metadata questionnaire or Unity-owned semantic tags. No large custom asset browser.
 
-**Acceptance:** Persistence/transport round-trips new and existing actions, choices and IDs. Included broken references fail; unrelated incomplete drafts do not block scoped tests. Corrupt storage fails visibly. Interrupted export never exposes partial JSON; failed current export marks the previous snapshot stale. DB integrity/FK checks pass.
+**Acceptance:** Actual rig evidence proves the selected approach. Registry defaults are documented. Adding a second equivalent anchor reuses transition operations. The catalog can be consumed by portable tests. Missing assets remain explicit blockers to visual acceptance.
 
-**Handoff:** Valid fixtures and generated game snapshot usable by WPF simulation and Unity. Curve point import is completed in 08.
+**Handoff:** Chosen rendering approach, rig constraints, catalog fixture and calibrated reusable operations. Remove spike-only paths when integrated.
 
-## 04 — Author event rules and inspect coverage in WPF
+## 02 — Minimal Core planner, Perform and async host boundary
 
-**Depends on:** 01–03.
+**Context:** Core already issues async service calls. Dialogue uses IDialogService, and tagged selection occurs before awaits. V1 needs semantic planning and event boundaries, not continual Core updates.
 
-**Context:** The writer chooses reusable rules and writes cards. The matrix is derived coverage, not a list of authored animation combinations.
+**Dependencies:** 00 classification and 01 catalog shape.
 
-**Work:**
-
-- Add an Events library and Perform event picker within existing authoring surfaces. Provide simple Conversation/Driven forms with searchable mood/location/pose/tag choices and effective override display.
-- Add new action rows and integrate Card clone/equality, Save/Revert, semantic undo, Action Block insertion and scope rules.
-- Show computed legal-state × mood coverage: required base/face availability, optional body candidates/rest and motion candidates. Provide candidate names and exclusion reasons, including reachability and region requirements.
-- Reuse the production resolver for coverage queries so UI and runtime cannot disagree. Show a single eligible choice as limited variety, not a failure.
-- Reload the read-only Unity catalog automatically while retaining dirty Card buffers, selection and focus. Missing catalog produces a local diagnostic without breaking unrelated editing.
-- Support ordinary transactional event editing, where-used and duplication for an intentional independent variant. Keep text/number changes grouped sensibly in undo.
-- Add new action simulation to the WPF Reference Player using the same director. Clearly identify simulated presentation.
-- Keep routine dialogue insertion quick; only add Ctrl+Enter or paragraph paste if it fits existing editor commands simply.
-
-**Guardrails:** No WPF clip/mask/window editor, per-line face selector, saved results, shared experimental buffers or generated conversation graphs. Matrix cells alter event filters only. Do not require a writer to edit all moods/locations individually when a shared query suffices.
-
-**Acceptance:** Create a reusable event, use it in multiple Cards, change one policy and see all users' effective behavior. Save/Revert/undo and block insertion retain all fields correctly. Catalog refresh preserves unsaved text. Simulated execution explains valid choices and genuine failures without inventing presentation.
-
-**Handoff:** Authorable Cards/events and automatic saved snapshots for early Unity playback.
-
-## 05 — Play real authored Cards in a loaded Unity scene
-
-**Depends on:** 01–04.
-
-**Context:** Unity must consume actual exported content and the production Core pipeline. A legacy ScriptableObject sample deck or custom demonstration coroutine is insufficient.
+**Source starting points:** GameContentDefinition, ActionInstances/ActionTypeKeys; ContentCatalog, ContentReferenceValidator, CoreServices, ActionExecutionContext, ActionExecutor, GameSessionEngine; corresponding Core tests.
 
 **Work:**
 
-- Add validated snapshot reconstruction/bootstrap and Unity binding checks. Load current game content and the required catalog descriptors, with useful mismatch diagnostics.
-- Add a small development panel to select Card/Session and starting test context/profile, then Play, Stop or Repeat.
-- Test Card uses disposable game state, normal eligibility/consent/capability checks and production action/director execution. Unsupported enclosing graph transfers report “Test in session.” Session tests use the graph VM.
-- Repeat resets run state, reloads the latest committed snapshot and starts with fresh presentation randomness. Optional fixed seed is diagnostic only.
-- Keep scene/rig loaded between runs. Distinguish a current snapshot, a failed export and stale data in the panel. No silent use of outdated rules.
-- Connect actual verified foundation/expression bindings from 01 and basic dialogue display. Explicitly mark movement/voice/driver work still awaiting 06–08.
+- Add Conversation Performance Event and Performance Tag model definitions, plus the sole Perform(eventId) action with always-blocking activity classification.
+- Implement factored (anchor, posture) state and reusable operation search. Filter viable destination/foundation/face/body combinations before dispatch. Use the contract's explicit body-rest default and mandatory face coverage.
+- Add IPerformanceHost and a session-scoped planner. Await readiness, correlate responses and retain desired versus committed state. Keep presentation state across Cards and graph transfers.
+- Select semantic ingredients at Perform and policy-enabled dialogue starts. Use a dedicated deterministic RNG, stable ordering and immediate expressive anti-repeat where alternatives exist.
+- Add one shared semantic dialogue-start hook used by both dialogue actions/hosts. Keep tagged dialogue selection before awaits. Handle delayed/nonblocking host callbacks without duplicate refresh or stale-event revival.
+- Keep continuous blends, gaze/IK and ambience entirely in Unity. Core has no delta-time API, per-frame timers, cadence loop or speech queue.
+- Integrate stop/failure handling with existing lifecycle. Persistent presentation is outside WaitForAll; one failing cleanup service cannot skip the others.
+- Implement a fake host and readable decision diagnostics.
 
-**Guardrails:** No WPF-to-Unity cue queue, remote actor API, selected-line seek, unsaved overlay snapshot or take storage. Development transport stays outside Assets. Do not bypass unsupported actions to make a test appear successful.
+**Guardrails:** No per-action overrides, persistent mood, public reroll, player action, future-driver abstractions or saved chosen combinations. Missing required performance service is an error when Perform executes; unrelated existing non-performance behavior remains compatible.
 
-**Acceptance:** A WPF-authored Card runs through real Core in Unity. Saving text then pressing Repeat displays the new text without manual import/reload. Stop/repeat leaves no prior work active. A context-dependent Card directs the author to a Session test. This milestone does not claim full visual completion.
+**Acceptance:** Tests cover stay/different/named destination, composed stand–move–sit, missing operations, compatible combinations/rest, no valid face, seed independence and automatic refresh. Failed/canceled/stale acknowledgements never falsely commit arrival. Existing graph/dialogue tests pass. Nonblocking dialogue tests preserve selection order and refresh once at presentation start. WaitForAll completes while presentation remains active.
 
-**Handoff:** Working early integration loop; subsequent tickets improve the same runtime, not a parallel demo.
+**Handoff:** Minimal tested semantic planner and host contract, with no simulation mistaken for visual correctness.
 
-## 06 — Complete movement and skeletal layer composition
+## 03 — Persist and author tags/events through existing WPF/SQLite
 
-**Depends on:** 05.
+**Context:** Existing repositories, relation chips, undo and Card buffers already solve content editing. Performance vocabulary belongs here, while ingredient membership remains in Unity.
 
-**Context:** Core names legal states/routes. Unity owns anchors, calibration and evaluation. Pose alternatives share a foundation channel.
+**Dependencies:** 02; 00 content path for Unity tag consumption.
 
-**Work:**
-
-- Bind all six locations and nine legal states. Implement sixteen directed edges using shared assets where appropriate, with authored costs.
-- Add one world-root mover using in-place travel and calibrated pose transitions. Core requests routes; Unity reports arrival only after tolerance and settling.
-- Implement one fixed-topology actor PlayableGraph: foundation, expressive overlay, driven channel reservation and verified additive breath. Map logical claims to actual masks.
-- Apply transition > driven > expressive > ambient priority. Suppress/yield conflicting gaze/breath and permit disjoint channels.
-- Support body/face queries after arrival and legal refresh; no separate Animator/Timeline per combination.
-- Add watchdogs, cancellation and correlated completion for travel/pose changes.
-
-**Guardrails:** No teleport fallback, automatic reverse routes, generalized NavMesh or all-upper-body restriction. Pelvis/local pose motion must not move the world root independently. Numeric arrival does not prove furniture contacts.
-
-**Acceptance:** Actual character walks between locations, sits/lies/stands and settles within 2 cm/3 degrees. Inspect foot/furniture contacts. Repeated event runs generate only legal combinations; movement faults fail visibly without false committed state. Graph resources do not accumulate across repeats.
-
-**Handoff:** Real movement and layer evidence plus any asset-specific limits requiring correction before 10.
-
-## 07 — Finish dialogue, face, gaze and player presentation
-
-**Depends on:** 06.
-
-**Context:** Lines select content through existing actions. Acting comes from active procedural rules; no line-directed animation fields.
+**Source starting points:** DotNet/Game.Content.Sqlite migrations, CatalogRepositories/DialogCatalogRepository, GameContentSnapshotLoader, ActionSequenceWriter and clone/reuse helpers; WPF ActionEditorRegistry, GraphViewModels, CardEditBuffer, ActionInstanceCloneUtility, RelationPickerControl and Reference Player.
 
 **Work:**
 
-- Deliver structured line requests with text, identity, optional voice and explicit timing. Provide subtitles and deterministic text-only duration/Continue behavior consistent with action settings.
-- Use one facial composer for expression, speech mouth and blink with explicit channel ownership. Basic amplitude mouth movement is enough; no phoneme/TTS project.
-- Evaluate head/eye gaze after body animation; respect head-owning gestures and named Unity targets.
-- Ensure dialogue start triggers the active event's expression policy with minimum automatic dwell and explicit-refresh behavior.
-- Implement four player postures and independent body visibility without attaching gameplay mutations.
-- Finish FIFO speech behavior for nonblocking lines and context changes. Pause freezes clocks/audio; Continue/choice waits retain ambience.
-- Audit end/cancel/fatal error/unload cleanup across all services, including background faults while waiting for user input.
+- Add typed Performance Tag/Event tables/relations and Perform subtype mapping. Extend the existing snapshot, validators and catalog indexing; no parallel transport model.
+- Complete the action's full vertical path: scopes, defaults, recursive copy/clone/equality, Save/Revert, undo, Action Block insertion and persistence.
+- Add a simple reusable event form: name, ALL/ANY tags, staging policy, optional posture/location constraints, automatic dialogue refresh default on.
+- Add separate Performance Tag catalog editing with stable IDs, rename and retirement. Do not merge Card/Dialog namespaces. Protect referenced identities and show known Unity usage.
+- Connect Unity tag pickers to the same DB using automatic refresh. Connect WPF to generated presentation descriptors without replacing dirty Card buffers.
+- Add simulated performance service to the existing WPF Reference Player and decision logs showing state, destinations, operations, choices/exclusions. Read-only Nodify visualization is optional if cheap.
+- Author the representative event, ordinary Card and minimal Session through WPF, following canonical DB checkpoint rules. Use normal dialogue snippets and existing profile rules.
 
-**Guardrails:** No exact acting metadata on dialogue, lip-sync service dependency or accidental wait on endless ambience. Hidden player body is visibility state, not a duplicated posture catalog.
+**Guardrails:** No coverage dashboard prerequisite, custom draft framework, animation editor in WPF, tag definition editing in Unity, global-validation suppression or publication system.
 
-**Acceptance:** Two selected lines run with procedural expression change, gaze/blink/breath and optional voice. Mouth/face channels do not fight. Nonblocking speech order is stable. All player posture/visibility combinations work. Pause/resume/cancel/Continue and fatal failure leave no hung action or orphan audio.
+**Acceptance:** Typed round-trip and action/editor tests cover all new fields and nested insertion. A WPF-authored event runs through real Core simulation. Tag creation/rename appears in Unity without copied IDs. Catalog refresh preserves dirty edits. Ordinary Card Save updates SQLite; no generated game-content file is required.
 
-**Handoff:** Complete conversational playback and lifecycle tests, ready to coexist with finite motion.
+**Handoff:** The actual authored DB content and same planner ready for Unity integration.
 
-## 08 — Implement oscillator and imported scalar motion
+## 04 — First vertical proof: play a real Card in Unity
 
-**Depends on:** 07; persisted curve shape from 03.
+**Context:** GameManager still builds a snapshot from legacy ScriptableObjects and does not supply IDialogService. Replace the test entry path with actual SQLite loading and production Core execution.
 
-**Context:** The reusable Unity ingredient is a reversible path. WPF specifies how to drive it, not the skeletal animation.
+**Dependencies:** 00–03, including resolved SQLite and rig prerequisites.
 
-**Work:**
-
-- Add Unity usable-window inspection and manual sampling, with body/prop binding as one ingredient where needed.
-- Finish WPF Driven event controls: semantic motion query, scalar min/max, finite duration, entry/exit blend, oscillator half-cycle duration range or recorded curve.
-- Implement the contract's scalar-to-window mapping and endpoint-seeded smooth oscillator. Use absolute clock progress and catch-up guards.
-- Import the defined single-axis funscript subset with strict timestamp/position validation and useful source errors. Persist immutable points/hash; replacement preserves ID and validates users.
-- Use linear curve interpolation and defined endpoint holds; apply inverted once. Do not silently sort, clamp or smooth malformed source.
-- Keep conversation rules by default; driver claims take priority and compatible expression/gaze/dialogue continue.
-- Start driver time after readiness/entry blend; finish after exit/release. Nonblocking registers only finite completion.
-
-**Guardrails:** Primary rate is seconds per one-way traversal. Equivalent source frames/second is explanatory, not another setting. No animation-event gameplay, world-root extraction, device control, multi-axis expansion or infinite driver task.
-
-**Acceptance:** Test timing at unequal frame intervals, scalar bounds, invalid imports and replacement. Visually demonstrate both prop movement and pelvis/body involvement, oscillator and curve. Dialogue and legal disjoint layers coexist. WaitForAll completes; overlap conflict, cancellation and exit restore valid ambient ownership.
-
-**Handoff:** Both procedural event flavors work through authored Card actions.
-
-## 09 — Prove and simplify the recurring content workflow
-
-**Depends on:** 08.
-
-**Context:** This is a workflow acceptance/fix ticket, not permission to add a second preview product. Monthly content must reuse rules and ingredients without repetitive registration or choreography.
+**Source starting points:** GameManager, GamePanel and Unity host services; shared snapshot loader; IPerformanceHost; existing GameSessionEngine/SessionGraphVm.
 
 **Work:**
 
-- Perform the writer loop: use an existing event in a new Card, add/select dialogue, Save, then Play/Repeat in the loaded Unity scene. Fix any manual transport, repeated setup or lost-edit friction.
-- Change a shared event once and verify its Cards inherit it. Duplicate only when a distinct reusable rule is intended; confirm where-used and undo remain clear.
-- Perform the artist loop: add a compatible ingredient in Unity, tag/validate/enable it, regenerate automatically, then repeat an existing Card. Make zero edits to its event/Card.
-- Verify incomplete unrelated drafts remain editable without blocking scoped testing. Verify broken included bindings/export failures give actionable names and cannot silently play old content.
-- Run repeated seeded Cards to measure valid candidate coverage and immediate anti-repeat. Inspect visual coherence across states/moods. Do not assert “infinite” mathematical variety.
-- Simplify redundant controls and setup revealed by these tests. Write short writer and artist instructions based on the actual UI.
+- Implement the selected rig strategy behind IPerformanceHost: execute factored operations, stage foundation, body overlay, face preset and player gaze. Report readiness only after requested staging is coherent.
+- Wire the SQLite snapshot into a real Session run, passing normal profile/eligibility inputs. Do not use a demonstration coroutine to choose Cards or ingredients.
+- Implement text dialogue via IDialogService and the semantic presentation-start hook. Make both lines visibly testable with host acknowledgement; preserve the separate graph Continue.
+- Add a small Play/Stop/Repeat Session panel with existing seed/profile selection and known starting anchor/posture/player target. A one-eligible-Card Session supports convenient repetition.
+- Repeat disposes the old run, reads committed SQLite content and current catalog, resets the start and reruns in the loaded scene. Close DB reads before animation begins.
+- Test cancellation during travel, late acknowledgements, faults after readiness and end/unload. Persistent acting survives Continue-wait and ends with the run.
 
-**Guardrails:** No audition/take/pin controls, saved random results, exact per-line overrides, shared-draft overlays or remote cue protocol as a remedy for workflow friction. Fix ownership, defaults and automatic committed transport.
+**Guardrails:** No new Card interpreter, remote WPF cue controls, JSON export/import, voice/lipsync, player-state variants, elaborate idle cadence or standalone build work.
 
-**Acceptance:** Demonstrate both loops with evidence. Existing Cards gain a new ingredient with zero edits. Typical additional dialogue requires no Unity asset work. Unity Repeat needs no scene reload or export/import dialog. WPF catalog refresh preserves dirty Cards. The workflow instructions match implemented behavior.
+**Acceptance — first architectural milestone:**
 
-**Handoff:** Proven authoring loop and remaining actionable defects for final acceptance.
+1. WPF-authored Card executes Perform("Playful Tease") through the normal Session selector/Core.
+2. Core selects a reachable state and compatible foundation/body/face IDs.
+3. Unity moves/poses/layers acting and gazes at the player.
+4. Two ordinary tagged dialogue lines trigger automatic compatible refresh.
+5. The character remains coherent at Continue; repeating the Card shows legal alternatives.
+6. Save a text edit in WPF; next Unity Repeat reads it without export/import or closing WPF.
+7. Add a compatible Unity gesture; the same event/Card can select it without edits.
+8. WPF simulation explains the semantic choices, while Unity supplies visual evidence.
 
-## 10 — Deliver and play the full Unity slice
+**Handoff:** Working first slice and concrete visual/workflow defects. This is the milestone to inspect before broadening scope.
 
-**Depends on:** all previous acceptance requirements.
+## 05 — Correct workflow friction and accept V1
 
-**Context:** Completion means a playable card game and repeatable content workflow, not just a hand-triggered animation showcase.
+**Context:** The architecture must earn its complexity through actual content iteration. This ticket fixes the narrow slice, not adds a general authoring product.
+
+**Dependencies:** 04 visual proof.
 
 **Work:**
 
-- Assemble a small real Session using existing Card selection and graph flow, with multiple eligible Cards/dialogue alternatives and reusable events.
-- Demonstrate movement, settle, mood-compatible expression, two dialogue deliveries, refreshed expression and later relocation. Include Continue/choice, inherited state and player presentation.
-- Include oscillator and imported-curve examples with compatible dialogue and a pelvis-owning path.
-- Package a fresh validated game snapshot and Unity registry into a standalone Windows build. Validate required bindings at build/startup; no external development paths or file receiver in production.
-- Run meaningful Core/persistence/host tests and actual editor/build checks. Verify fresh startup, replay, shutdown, cancellation and errors.
-- Complete missing real assets and visual proof; retain truthful limitations in delivery notes.
-- Provide scene/build paths, short controls/authoring guide, content location, commands/results and visual evidence. Leave the relevant app running.
+- Run the writer loop: reuse the event, add Card/dialogue content, save, play in Unity. Record repeated setup/transport steps and remove avoidable friction.
+- Run gesture intake from New Gesture through enabled playback. Measure edited fields and interactions; target at most clip/tags/posture/Enabled for ordinary assets. Fix defaults where that target fails.
+- Add another equivalent anchor and verify shared operations suffice without copying state/transition graphs. A generated diagnostic graph may help explain the plan; no authored choreography graph.
+- Verify new compatible ingredient selection using candidate diagnostics and bounded seeded runs; adding it must not require editing the event/Card.
+- Inspect actual visual quality, mask conflicts, pose contacts, state persistence, error clarity and dirty-edit preservation. Fix demonstrated failures.
+- Document the real writer/artist loop, chosen rig technique, SQLite provider setup, tests and remaining limitations.
 
-**Guardrails:** Do not replace the selector with a fixed demonstration script. No “done” while real-rig, standalone or workflow acceptance is unverified. Do not expand into distribution, arbitrary rigs or generalized narrative tooling.
+**Guardrails:** No scope expansion to solve hypothetical cases. Do not introduce takes, saved results, mood systems, comprehensive matrices, drivers or per-line choices. Report existing full-snapshot validation friction honestly instead of promising draft isolation.
 
-**Acceptance checklist:**
+**Acceptance:** A playable editor-based Session demonstrates the complete V1 proof repeatedly; ordinary content additions are cheap; sparse gesture intake is measured; test/visual evidence is recorded; the relevant app remains running. User review of this milestone is required before commissioning Phase 2.
 
-- A player can start, draw/play cards, Continue/choose and finish/replay.
-- Actual character moves to valid locations, adopts poses, combines expression layers and speaks selected dialogue.
-- Repeated execution of the same Card produces observed valid alternatives.
-- Both scalar drivers work, including pelvis/body ownership.
-- A normal WPF Save reaches the next Unity run automatically.
-- A compatible Unity ingredient expands existing events with no Card/event edits.
-- Standalone build runs with packaged content.
-- Tests, visual evidence and authoring instructions describe the shipped result accurately.
+## Performance Phase 2 / Driven Motion — no execution tickets yet
+
+Oscillator, scalar-window playback, funscript, pelvis/body/prop drivers, their storage and editor controls are deferred. Design them in a separate packet after V1 is accepted. Do not create placeholder tables, host methods or mixer channels.
+
+Player posing/visibility, voice/lipsync, broader state repertoire, richer idle/arbitration, comprehensive dashboards and standalone packaging also wait. Semantic behavior graphs remain a possible future response to real authoring needs, not a V1 framework.
