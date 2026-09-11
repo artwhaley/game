@@ -1,143 +1,55 @@
-# Orchestration Prompt — Unity Performance Playable Slice
+# Orchestrator prompt
 
-Repository: `https://github.com/artwhaley/game`
+Implement this repository's procedural performance ticket stack after the user authorizes execution. The requested deliverable is a playable Unity card game slice and an easy recurring content-authoring workflow.
 
-You are the implementation orchestrator for the reviewed Unity Performance Playable Slice packet. Your job is to execute the complete stack without losing the authoring-first intent, while stopping at genuine human/authority gates.
+## Read first
 
-## Authorization precondition
+Read agents.md and README.md, then current Docs/GraphWorkbench documentation and relevant database versioning instructions. Read this packet's README, ARCHITECTURE-CONTRACT and TICKET-STACK, plus Docs/UnityPerformance/BUILD-PLAN.md. Current packet text supersedes earlier packet commits and older timeline-oriented proposals.
 
-Do not implement until the user approves execution of the reviewed packet. If they say to execute the current reviewed branch, resolve and record that commit yourself; do not require them to type a SHA that Git already supplies. Ask only when multiple reviewed revisions make the approved target ambiguous. This revision request is documentation work, not approval to execute the application stack.
+Inspect actual source before proposing exact file changes. Portable code physically lives under Assets/Scripts/Portable and is linked into DotNet projects. Do not create a second implementation under DotNet.
 
-After approval, this packet authorizes the coherent multi-file work described in Tickets 00–10 and overrides the repository's normal five-file planning threshold and request-for-`go` between those tickets. It does not authorize:
+## Product intent you must preserve
 
-- paid asset acquisition;
-- a new package, framework, service, model, cloud API, or Unity version;
-- pushing an implementation branch unless the user says to push;
-- destructive cleanup of user work or backup files;
-- weakening a HARD or HUMAN gate.
+The game draws a Card. A Perform action establishes procedural rules and may move the character. Dialogue selects/delivers lines. Core chooses compatible body, face and gaze combinations at runtime. Expression refresh may occur automatically at dialogue boundaries. No author saves a chosen combination.
 
-If one of those is necessary, finish all safe preparatory work, present the exact item/cost or dependency/reason, and wait.
+Unity owns animation ingredients, spatial/rig bindings and their factual compatibility metadata. WPF reads the generated Unity catalog and owns reusable event queries/policies, cards, dialogue and scalar curves. Core owns selection, compatibility and event lifetime. A new compatible enabled ingredient must improve existing cards with no edits to those cards.
 
-## Base and branch
+Two event flavors: ongoing conversational variety and finite scalar-driven motion. Support pelvis/body ownership as well as prop/arm movement. Keep actual movement and clip/mask execution in Unity.
 
-At packet creation the planning branch is `unity-performance-ticket-stack`, based on `e3995cc0daeaf26c7fe387f69df5b10110484e2e`. This SHA is context, not permission to ignore later review edits.
+## Execute
 
-1. Fetch and resolve the exact user-approved packet commit.
-2. Require a clean tracked working tree at that commit. Preserve untracked user backups and unrelated work; never run `git clean`, reset, restore, or checkout over them.
-3. Create implementation branch `unity-performance-playable-slice` from the approved commit unless the user names another branch.
-4. Record base SHA, branch, remote status, Unity version, SDK versions, and canonical DB status.
-5. Never absorb later unrelated commits silently. If the base moved, report the difference and establish an explicit reviewed base.
+Work through tickets 00–10, reading the context, guardrails and acceptance for each before editing. Announce the concrete files and result for the next coherent batch. When the user explicitly authorizes this packet as an execution run, that authorization replaces repeated “go” requests under agents.md rules 2 and 5 and permits coherent batches over five files. It does not override dependency approval, database safety, fail-noisy behavior or honest verification.
 
-## Required reading
+Use source control checkpoints for completed coherent milestones. Preserve unrelated local backup files. Keep root README current as features land. Push only when authorized. No editor/package upgrades or added dependencies without approval.
 
-Read completely before editing:
+Prove the actual rig in ticket 01 and get a real Card running in Unity by ticket 05. Do not spend the whole stack building editors before exposing visual integration. Missing assets/tools must be named precisely; continue independent work without fabricating passing visual evidence.
 
-1. repository `agents.md` and `README.md` status;
-2. this prompt;
-3. `ARCHITECTURE-CONTRACT.md`;
-4. `Docs/UnityPerformance/BUILD-PLAN.md`;
-5. all of `TICKET-STACK.md`;
-6. `Docs/GraphWorkbench/01-architecture-decisions.md` and `02-execution-semantics.md`;
-7. `Docs/CONTENT-DATABASE-VERSIONING.md`;
-8. files named in the current ticket's starting map and the tests for that area.
+Make the existing action pipeline work: separate blocking activity from control transfer; integrate all new actions with Card buffers, clone/equality, undo, persistence, export and both hosts. Preserve graph VM, card/dialogue selection and gameplay constraints.
 
-Historical ticket stacks are precedent, not architecture truth. When documentation conflicts, use this order: user correction > reviewed packet architecture contract > reviewed build plan > current authoritative repository docs > current code behavior > historical docs.
+Implement scoped validation at data loading/export, not by catching global validation exceptions. Include conservative dependencies for all random candidates and branches. Enabled broken included ingredients fail visibly. Optional body rest is explicit policy.
 
-## How to orchestrate
+Each runtime milestone must cover readiness, finite versus persistent work, cancellation and error propagation. Tests use the same production director/actions, never a second scripted demonstration runner. Use bounded deterministic seeds for verification; a seed is diagnostic data, not authored performance content.
 
-- Execute tickets in numeric order. Do not start a dependent ticket before its gate passes.
-- Keep one shared implementation report under `Docs/UnityPerformance/Execution/`, with Ticket 00 baseline and one concise record per ticket. Update it before each commit.
-- Before each ticket, list its planned file edits. The approved packet authorizes a larger coherent set, but it does not excuse scope drift.
-- Prefer one worker at a time for code that touches the shared branch, Unity project, SQLite database, WPF process, generated content, or common contracts. Parallelize read-only research/tests only when outputs cannot race.
-- If delegating, give the worker the full per-ticket `Context`, `Contract`, `Guardrails`, `Acceptance`, and `Handoff` sections. Never ask a worker to infer requirements from the ticket title.
-- The orchestrator owns integration, architecture consistency, canonical DB safety, commits, final application launches, and the truthfulness of reports. A worker saying “done” is not a gate.
-- Inspect the diff and run focused tests for changed behavior. At each HARD gate, run its named checks; repeat a broader suite only after relevant changes/failures, rather than repeatedly running identical checks for paperwork.
-- Tickets are dependency milestones, not single-commit size targets. Split large tickets into coherent commits with a recorded file map; do not bundle the whole Core or WPF feature into one opaque change. Save all intended project state, including `.meta` files. Exclude local backups, logs, temp preview messages, builds, `Library`, and machine-specific settings.
-- Update `README.md` after implemented features. Add focused docs where future maintainers need operational details; do not turn reports into the only specification.
-- If three consecutive attempts fail for the same cause, stop, preserve evidence, and follow repository rule 3.
+## Do not build
 
-## Visual verification and human gates
+No takes, audition/pin controls, per-line clip/facial selectors, saved sampled combinations, timeline/cue tracks, per-card Animator assets, New Conversation graph scaffolding, SQLite animation-registration tables, shared unsaved editor overlays, remote WPF actor commands or graph seek. Do not bring these back under new names.
 
-A HUMAN gate requires the real WPF app and/or pinned Unity Editor/player. Complete implementation, checks, content, launch and exact test steps before asking the user to judge the running result. Only Tickets 01, 06 and 10 require explicit human acceptance: actual rig feasibility, the first integrated write-and-watch loop, and final game/authoring acceptance. An existing explicit user acceptance of the same unchanged result satisfies the gate.
+Do not author every matrix combination. The matrix derives coverage from event rules and Unity ingredient descriptors. Keep forms/pickers within the existing WPF workflow; no generic authoring framework or inheritance architecture.
 
-Tickets 04, 05, 07, 08 and 09 require hands-on executor verification and evidence, with optional user feedback; they do not add another approval pause. Continue when their checks pass. If actual UI/visual verification is unavailable, report it as pending and do not claim it passed. Human acceptance cannot be inferred from tests or executor opinion. Fix user-reported material friction in the affected ticket unless explicitly deferred.
+Do not silently substitute assets, teleport on route failure, ignore unknown actions, skip contextual graph actions in Test Card, swallow background presentation failures or report desired state as arrived.
 
-Keep the applicable application running when handing a HUMAN gate to the user. Record process/editor state and exact scene/card/session to inspect.
+## Workflow acceptance is architecture acceptance
 
-## Canonical database protection
+After a valid WPF Save, the next Play/Repeat in the loaded Unity scene uses the latest committed snapshot automatically. Export failure/staleness is visible. No manual transport per edit and no per-keystroke reimport.
 
-`Content/GameContent.db` is authored binary content.
+Repeat a Card with fresh presentation randomness. Tune one event once and affect its users. Add one compatible ingredient in Unity and expand existing matching events with zero Card/event changes. Preserve dirty Card edits during catalog refresh.
 
-- Use disposable databases for destructive tests and migration experiments. After Ticket 03's tested migration-code commit, checkpoint/migrate canonical content separately, so real authored examples from Ticket 04 can be preserved and extended through the stack.
-- Before canonical migration, filesystem backup or Git database checkpoint: close writers normally, verify no WAL/SHM companions, run integrity/FK checks, hash the backup and record ledger/semantic counts. These are checkpoint requirements, not requirements before every authoring command.
-- During ordinary authoring, keep WPF open and use its transactional commands and Save/Apply buffers. Scoped read snapshots/exports use SQLite transactions while WPF is open; never copy a live DB file. Checkpoint meaningful authoring batches, not individual lines. Preview requests write generated files only.
-- Migration code/tests are committed before migrating the canonical DB. Canonical migration is a separate checkpoint commit if it changes the tracked DB.
-- Do not hand-edit migration rows, line-merge DB files or silently renumber a migration collision. Install starter semantic content once via explicit commands, preserve its IDs, and evolve one canonical acceptance conversation from Ticket 04 onward. Never require the user to retype a successful disposable demo into canonical content at the end.
-- Generated Unity JSON and manifests are build transports. SQLite remains the only editable content authority.
+Test Card uses disposable run state with normal constraints and production execution. A Card requiring enclosing graph context is tested in its Session with a clear message, not partially executed. Final acceptance uses the normal Session selection/VM and standalone packaged content.
 
-## Unity and asset protocol
+## Verification and handoff
 
-- Keep Unity at 6000.5.9f1 and preserve every `.meta` file.
-- Ticket 01 must use the actual intended humanoid test rig, face controls, animation clips and voice audio. If they are missing, produce the exact asset manifest and block the visual gate. Do not substitute a capsule and proceed as if the rig risk is closed.
-- Do not buy assets or install a package without authorization. Built-in Playables, animation, audio, UI and existing Timeline/Cinemachine are sufficient for the planned slice.
-- Do not manually sprawl scene YAML. Use the Editor and focused builders/binding assets where appropriate.
-- After Unity app changes, compile and run in the pinned Editor. At the build gates, test a Windows development player with WPF closed.
+Run appropriate portable, persistence and editor tests; verify Unity behavior in the pinned editor. Launch and leave the relevant main app running after application changes as required by agents.md. A build success does not establish visual correctness.
 
-## Architectural invariants
+At each milestone report what works, evidence, outstanding dependencies and the next ticket. Record reproducible failures and fix root causes. Honor the repository three-strikes rule. Do not repeatedly request permission for already authorized routine work.
 
-Enforce `ARCHITECTURE-CONTRACT.md`. In particular:
-
-- Core chooses semantic performance, compatibility, routes and deterministic variation.
-- Unity owns transforms, clips, masks, bones, blendshapes, audio, props and cameras.
-- WPF is the pleasant authoring surface; SQLite is canonical.
-- Persistent ambience is director state, not an endless background action.
-- Blocking activity is not graph flow control.
-- Tags do not replace typed physical constraints.
-- No per-conversation Timeline or Cartesian combination table.
-- No silent fallback for missing routes, required coverage, bindings or capabilities.
-- Existing gameplay/consent/card/dialog selection semantics remain intact.
-
-## Protect the authoring loop
-
-Use the architecture contract's WPF workflow as a deliverable, not end-stage polish. Ticket 04 establishes inherited defaults, dialogue entry, buffers and scoped simulated audition. Ticket 05 must connect one-command WPF audition to the real proof renderer. Ticket 06 is the integrated user gate. Ticket 09 completes bulk coverage/intake tools; it must not introduce the first usable preview.
-
-Treat repeated Save/export/Unity Run, repeated profile selection, copying asset IDs, retyping acceptance content, global validation of unrelated unfinished work, and replaying a whole scene for a single line as defects. Audit every authoring step for them. Add no service/framework to remove a few clicks: use existing commands, a focused local preview host and explicit ownership.
-
-For each ticket, record one brief user task from entry to observed result, including clicks/commands, lost context/focus and warm audition latency where applicable. Fix avoidable friction at its source. Keep hashes, resource IDs, regions and traces in details/technical editors unless needed to explain an actionable error.
-
-## Test and failure protocol
-
-- Use manual clocks and fake hosts for deterministic Core tests.
-- Separate card, dialogue and every performance RNG domain; sort candidates by stable ID.
-- Test cancellation, stale acknowledgements, teardown, replay and app pause, not just happy paths.
-- Latch fatal presentation failures into visible session failure, including failures while waiting on Continue.
-- Normalize semantic traces only when comparing WPF and Unity. Never claim pixel or timing identity across hosts.
-- Report exact test commands, totals, skips, failures and unverified areas. A build is not a run.
-
-## Per-ticket worker prompt template
-
-When assigning one ticket, send:
-
-```text
-Implement Ticket NN from Tickets/UnityPerformanceExecutionStack/TICKET-STACK.md on the current approved implementation branch.
-
-Read repository agents.md, ARCHITECTURE-CONTRACT.md, the entire Ticket NN section, and the build-plan sections it cites. Treat the ticket's Context, Contract, Guardrails, Acceptance, and Handoff as binding. Inspect current code before proposing files. Preserve unrelated work and canonical DB safety. Make no dependency/package/version/purchase changes. Do not commit or push unless the orchestrator explicitly delegates that operation.
-
-Return: files changed, behavioral result, test commands and exact outcomes, manual verification performed, known limitations, DB/assets touched, and any contract question. Do not claim a HUMAN gate passed.
-```
-
-## Final gate and report
-
-Ticket 10 must leave the standalone Windows development player runnable and the WPF Workbench/Unity Editor open as appropriate for user testing. The report must include:
-
-- approved packet/base SHA, branch, and every ticket commit;
-- files and schema changes grouped by architecture area;
-- canonical DB backup hashes, migration ledger, integrity/FK results and content checkpoints;
-- asset provenance/license notes and binding manifest revision;
-- automated commands/totals and manual canary results item by item;
-- exact WPF authoring task timing/friction observations;
-- Editor and built-player results;
-- confirmation of each architecture invariant and exclusion;
-- known visual/content gaps and deliberately deferred features;
-- running process/editor/build paths;
-- a clear statement that final user acceptance is pending until the user says otherwise.
+Finish with the playable scene/build location, concise authoring instructions, test results, visual evidence and any unmet acceptance. Do not call the stack complete until ticket 10 passes. If a required dependency prevents that, state the exact remaining work without substituting a simulated demo.
