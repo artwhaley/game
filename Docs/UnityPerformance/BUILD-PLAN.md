@@ -2,6 +2,8 @@
 
 Planning baseline: September 10, 2026. This is a design proposal and implementation handoff, not a report of implemented or verified features. Read the repository's `agents.md` when turning this into execution tickets.
 
+Workflow revision: September 11, 2026. The [execution architecture contract](../../Tickets/UnityPerformanceExecutionStack/ARCHITECTURE-CONTRACT.md) specifies the writer loop in detail: buffered one-command audition, partial performance updates, shared-edit Apply/Revert, asset intake and scoped validation. The numbered [ticket stack](../../Tickets/UnityPerformanceExecutionStack/TICKET-STACK.md) is the execution order; section 14 below groups responsibilities rather than imposing additional tickets or approval gates.
+
 ## 1. The outcome
 
 Build a short, replayable game session, authored in WPF and played in Unity, featuring one character in one room. The character walks to a named place, settles into a pose, delivers dialogue with expressions, gaze, blinking and breathing, changes position at a story beat, and demonstrates a bounded procedural motion. The player can make a choice, continue the session, change between four presentation postures, and finish and replay the game.
@@ -37,7 +39,7 @@ The documentation reports 384 passing .NET tests at the previous gate; they were
 
 1. **One pose foundation, not one layer per posture.** Standing, sitting and lying are alternatives within the foundation. Overlay gestures, procedural motion, gaze and facial channels above it.
 2. **A persistent performance is the normal mode.** It continues across dialogue, cards, choices and graph transfers until explicitly changed or the session ends.
-3. **Mood is authored presentation intent.** Start with Happy, Neutral and Mad. Do not silently derive it from Happiness, sentiment analysis or an LLM. Game actions can explicitly request a mood when game state warrants it.
+3. **Mood is authored presentation intent.** Start with Happy, Neutral and Mad. Individual actions default to keeping the current profile/mood; session setup supplies the initial values. Do not silently derive mood from Happiness, sentiment analysis or an LLM. Game actions can explicitly request a mood when game state warrants it.
 4. **Tags express suitability; typed constraints express physical validity.** Location, pose, occupied body regions, required prop and required player state are not loose strings.
 5. **Profiles select vocabulary; writers do not enumerate combinations.** The WPF matrix is a computed view of eligibility and coverage, with explanations and preview.
 6. **Core chooses the semantic performance and route; Unity owns spatial execution.** No transforms, bone names, clip objects, Unity enums or scene paths in Core.
@@ -89,7 +91,7 @@ Use stable IDs for persisted references, editable names for people, and typed de
 | Pose | Standing, Sitting, LyingDown for the character in this slice. A pose is a compatibility family, not a universal animation. |
 | StageState | A legal `(LocationId, PoseId)` with its base-loop resource and optional semantic tags. Sitting on the bed and sitting on the chair may use different base loops. |
 | Transition | Directed source/destination StageState IDs, transition resource ID, authored nominal duration/cost and watchdog bound. |
-| PerformanceCue | Resource ID, role (body gesture or face), allowed stage states/poses/locations, allowed moods, semantic tags, occupied regions, prop/player requirements, duration, blend timing and gaze/breath suppression declarations. |
+| PerformanceCue | Resource ID, role (body gesture or face), Enabled flag, allowed stage states/poses/locations, allowed moods, semantic tags, occupied regions, prop/player requirements, duration, blend timing and gaze/breath suppression declarations. New cues are Not in rotation until explicitly enabled. |
 | PerformanceProfile | A named reusable palette: allowed stage states, mood-specific cue queries, gaze targets, gesture/rest cadence, face dwell and optional-channel policy. |
 | MotionRecipe | Compatible stage states/moods/player states, motion resource, occupied regions, normalized interval, driver (oscillator or script), finite duration, entry/exit blend and optional prop requirement. |
 | MotionCurve | Immutable imported timed positions in portable units, source filename/hash and importer version; no device behavior. |
@@ -100,7 +102,7 @@ Resource remains the identity of a bindable asset. Add explicit kinds for the ne
 
 **Region vocabulary:** world root, pelvis/legs, torso, left arm/hand, right arm/hand, neck/head, eyes, facial upper region, mouth/jaw, eyelids, and a named prop channel. It is deliberately small and closed in code for this milestone. Unity maps it to actual masks/bones/curves. Combining regions is allowed; creating arbitrary user scripts or a general constraint language is not.
 
-**Compatibility predicate:** a candidate must meet its typed stage/mood/player/prop restrictions AND every required tag AND at least one any-tag when that set is nonempty. Empty explicit allowed-state/mood sets are invalid; an explicit `Any` mode means unrestricted. Profile queries and cue restrictions intersect. There is no specificity ranking or hidden rule precedence.
+**Compatibility predicate:** an Auto candidate must be enabled and meet its typed stage/mood/player/prop restrictions AND every required tag AND at least one any-tag when that set is nonempty. Explicit gameplay references to disabled cues error; a labelled local audition may test one before enabling it. Empty explicit allowed-state/mood sets are invalid; an explicit `Any` mode means unrestricted. Profile queries and cue restrictions intersect. There is no specificity ranking or hidden rule precedence.
 
 A scene binding manifest reports which resources, targets and props exist and their technical signatures. WPF imports this as read-only technical metadata. It never edits transforms or masks. Unity validates that declared region ownership agrees with actual mask/curve behavior. The manifest belongs to Unity; semantic rules belong to SQLite. No property has two editable masters.
 
@@ -110,14 +112,14 @@ Add three action kinds and extend the existing two dialogue kinds. Avoid a dupli
 
 | Action | Parameters and completion |
 |---|---|
-| **Set Performance** | Required profile; mood defaults to that profile's default; destination policy `Stay`, `Specific`, or `DifferentLocation`. Optional pose restriction. Always await arrival and initial expression settling, then finish. The resulting ambience persists. |
-| **Play Motion** | Required reusable recipe and finite duration (script duration can be the default). Blocking by default; optional nonblocking to allow dialogue concurrently. Completion includes exit blend and release of claimed regions. |
+| **Set Performance** | Profile and mood independently default to `Keep current`; destination policy defaults to `Stay`, with `Specific` and `DifferentLocation` alternatives. Optional pose restriction. Await requested changes/arrival and settling, then finish. The resulting ambience persists. |
+| **Play Motion** | Required reusable recipe; duration defaults to `Use recipe` with an optional finite override (script duration can be the recipe default). Blocking by default; optional nonblocking to allow dialogue concurrently. Completion includes exit blend and release of claimed regions. |
 | **Set Player State** | Posture: Standing/Sitting/Kneeling/LyingDown; Body visible: yes/no. Always await the presentation change. |
 | **Dialog / Dialog From Tags** | Keep text or tag selection. Default performance handling is `Auto`; optional line-local mood and `Auto`, `None`, or specific gesture/face cue. Existing blocking flag remains. Optional voice/duration data travels with the resolved line. |
 
 `Stay` preserves the committed stage state and errors if the selected profile cannot run there. `Specific` names a legal target state or a location with an eligible pose selected by Core. `DifferentLocation` excludes the current location, then chooses among reachable eligible target states. It guarantees a location change, not merely another idle animation. If none exists, show the precise constraint failure; do not stay in place silently.
 
-New sessions start in their explicitly configured stage/profile. A dialogue line never needs to guess the initial pose. A Set Performance action replaces the profile/mood policy, but does not move unless asked. Repeat calls to the same profile with `Stay` do not restart the base loop gratuitously.
+New sessions start in their explicitly configured stage/profile/mood. A dialogue line never needs to guess the initial pose. A Set Performance action changes only explicitly selected fields: changing mood does not require reselecting a profile, and moving does not reset mood. Selecting a new profile retains the current mood unless explicitly changed; validate the resulting state atomically before committing it. A completely unchanged action is a visible harmless no-op. Dialogue mood defaults to `Inherit`; acting defaults to `Auto`; `None` deliberately suppresses a cue. Show inherited values and their source, or `From caller` when a reusable Card has no single static context. Repeated settings do not restart a base loop gratuitously.
 
 The three new actions are legal in the existing ordinary activity scopes, including nested choice sequences; they create no graph ports. Add their scope/clone/template behavior explicitly to the registry and tests.
 
@@ -128,10 +130,10 @@ Set Performance  Conversation / Happy / Side of bed / Sitting
 Dialog           "Come sit with me."
 Dialog           "How was your day?"
 Wait for Continue
-Set Performance  Conversation / Mad / Different location
+Set Performance  Keep profile / Mad / Different location
 Dialog           "I wanted you to listen."       [gesture: Auto]
 Prompt Choice    [two authored options, one changes the mood]
-Set Performance  Conversation / Neutral / Chair / Sitting
+Set Performance  Keep profile / Neutral / Chair / Sitting
 Play Motion      Prop demonstration / 8 seconds / nonblocking
 Dialog           "Watch the rhythm."
 Wait for All
@@ -281,6 +283,8 @@ One recipe may drive both an arm and its attached prop from the same scalar. A s
 
 Replace the text-only host call with a structured request carrying request/line identity, resolved text, optional voice resource, text-only delivery duration and selected performance cues. Preserve the existing tagged-dialogue RNG and selection rules. Add presentation fields to both direct dialogue and catalog snippets; do not force writers to make every direct line a snippet.
 
+Store the text fingerprint associated with attached voice. Editing the text marks Voice needs update. A persistent explicit Text only audition mode lets the writer keep drafting before recording; publishing voiced content requires a current association or explicitly removing the voice. Never silently present old audio as the new line. No broader recording/localization workflow is required in this slice.
+
 Text-only dialogue uses an explicit duration when set, otherwise a documented estimate `max(1.5 seconds, wordCount / 2.5)` in Core. This duration controls delivery/gesture lifetime, not a player acknowledgement. Keep subtitles visible until replaced or session end. `WaitForContinue` remains the explicit player-paced action.
 
 For voiced lines, completion follows actual audio completion. Use a precomputed amplitude envelope for basic jaw/mouth movement in the initial proof. Label it approximate audio-driven mouth animation, not phoneme-accurate lipsync. Include real short voice clips in the acceptance scene so this path is exercised. A future viseme track can replace that one input without changing authored performance actions. No cloud TTS or new lipsync package is needed.
@@ -299,11 +303,11 @@ Add a **Performances** library area with profiles, cues, motion recipes and the 
 
 ### Writer path
 
-1. Open a card and write several Dialogue rows using keyboard-friendly add-next-line behavior.
-2. Choose a performance profile at the beginning of a section; select mood and movement intent in that row.
-3. Leave per-line acting on Auto. Open the advanced line controls only for a particular emphasis.
-4. Preview with a seed; read the selected cues and reasons. Send the same selection to Unity for visual audition.
-5. Publish a fresh runtime snapshot and replay the scene. See content revision/binding revision in both apps.
+1. Start from the configured Conversation profile/stage or use **New conversation**, which creates ordinary Session/Phase/Card records and their wiring as one undoable command. A fresh normal CardTag/required Phase query limits its single CardExecutor to the new Card, followed by an ordinary EndSession action. It includes one Dialogue row followed by explicit WaitForContinue. This convenience uses existing graph/selection semantics, with the generated selector visible in advanced context, and cannot accidentally draw another library Card.
+2. Type Dialogue rows; Ctrl+Enter adds the next row, Shift+Enter makes a newline. **Paste dialogue** turns nonempty paragraphs into rows as one undo unit, preserving paragraph-internal line breaks and inserting no implicit pacing/actions. Keep ordinary text editing shortcuts intact and advanced acting controls collapsed.
+3. Change only what matters: a mood, a destination, or an occasional pinned cue. Profile/mood persist from the session until explicitly changed. Show what is inherited and where it comes from; distinguish Card body text from spoken lines.
+4. Press **Audition** in WPF to hear/see the selected line or presentation passage with current edits and displayed starting context. No Save, manual export, app switching, Unity Run button or whole-session replay is required. Reuse the seed for an edit comparison; **New take** changes only performance variation, while **Replay take** reuses the previous immutable take/context/choices.
+5. Use **Use on this line** to pin an approved body/face cue through the existing explicit action override; **Auto** removes the pin. Save the Card or Apply a shared definition when satisfied. Publish/build is a separate committed-content operation.
 
 Dialogue edits, row insertion and performance pickers must retain selection/focus and dirty buffers. Do not rebuild the entire open card on each catalog change. Reuse the current semantic undo and deep-clone rules, including nested PromptChoice sequences and Action Blocks.
 
@@ -311,7 +315,7 @@ Dialogue edits, row insertion and performance pickers must retain selection/focu
 
 Give authors a compact palette editor: allowed places/poses; three mood tabs; body/face queries; rest probability; gaze choices; timing ranges. Show eligible counts and example names immediately. Provide editable defaults in the profile, with explicit advanced overrides in actions. Do not build profile inheritance in v1.
 
-Profiles are shared by reference. Show where-used counts and a usage list before broad edits. Duplicate creates a new profile ID and copies its selection policy while continuing to reference the same cues. A contextual Make Unique rebinds only the selected action. New gestures matching a shared query become available to all its consumers; a profile that needs frozen membership can use explicit cue IDs instead.
+Profiles are shared by reference. Edit profiles/cues/recipes in focused buffers with Apply/Revert; slider experiments do not change every consumer immediately. Show `Shared · used by N`, usage links and a before/after candidate coverage diff beside **Apply to shared definition**, a single validated undoable transaction. Audition overlays the participating buffers without saving them. **Make unique here** copies the edited values and rebinds only the selected action, preserving its dirty-buffer/undo behavior; Duplicate creates an independent definition referencing the same cues. No repeated modal confirmation or hidden automatic cloning. Newly enabled matching cues enter querying profiles; explicit membership remains fixed. Existing Card Save/Revert and immutable running sessions remain intact.
 
 The matrix is calculated from the same Core eligibility code used at runtime:
 
@@ -322,42 +326,56 @@ The matrix is calculated from the same Core eligibility code used at runtime:
 - Travel view shows reachability from the selected state; it is not another general graph authoring canvas.
 - Edit rules on the relevant cue/profile; do not create a persisted table containing every Cartesian combination.
 
+Errors link directly to the responsible field/source and preserve the selected matrix cell/test context while it is fixed. Keep eligible counts and use sites in basic editors from Ticket 04; the full matrix is a later inspection tool, not a prerequisite to writing a line. **Try eligible cues** provides a simple one-at-a-time audition list with Stop.
+
+### Adding vocabulary without double entry
+
+Unity publishes an intake list of unregistered clip/preset descriptors with GUID/subasset identity, measured duration/sample rate and curve coverage. **Register selected** in WPF creates semantic Resource/Cue/Recipe identities once and sends the matching registration request to the Unity Editor helper. Unity owns registry writes; acknowledgements and idempotent request IDs prevent duplicated assets or falsely usable bindings. Authors do not copy IDs between apps or type the same clip name twice. Technical fields are read-only; pose/mood/prop suitability is author-reviewed in WPF with bulk assignment and copy-rules-from-sibling commands.
+
+New cues default to **Not in rotation** and cannot enter Auto until Enable validates the required binding and semantics. Local explicit audition can test a disabled cue. An already-enabled broken cue is an error, not silently skipped. Ship the approved starter state/route/profile records during initial authoring setup; writers must not hand-register nine states and sixteen edges just to write a conversation. Starter installation cannot overwrite existing authored values when rerun.
+
 ### Motion recipe editor
 
-Show clip name, scrub range in frames/seconds/normalized units, duration, occupied regions, compatible poses, rate units, and a small scalar-time plot. Import a script with validation and inspect points without opening raw JSON. Preview at a specific time or play the recipe. Bulk stage/mood/tag assignment to selected cues is one undoable command.
+Show clip name, scrub range in frames/seconds/normalized units, duration, occupied regions, compatible poses, rate units, and a small scalar-time plot. Import or **Replace source** on a script with validation and affected-recipe review while preserving its identity; inspect points without opening raw JSON. Preview at a specific time or play the recipe. Bulk stage/mood/tag assignment is one undoable command. Actions inherit recipe duration until explicitly overridden, with a clear Reset to recipe command; range and rate remain shared recipe settings.
 
 ### Preview that can actually assess authoring
 
 WPF offers a simulated live inspector showing requested/committed location, pose, mood, selected cues, claimed regions, motion scalar and compatibility explanations. Its Reference Player uses the same director and timing contracts, including finite simulated transition/speech durations. A named fast-test mode may use a manual clock; it must not masquerade as real visual preview.
 
-Add a small filesystem audition handoff, not embedded Unity or a network service. WPF writes a versioned preview request with monotonic request ID, snapshot hash, seed, source/target state, profile and optional line/motion. Unity in the audition scene loads it only on explicit Run/Replay. It returns validation status and selected trace to a response file. Clear stale success when issuing a new request; display results only when IDs/hashes match. File writes are atomic. Preview files are generated, outside the canonical content tables.
+Connect a small filesystem audition handoff in Ticket 05, using Ticket 01's real proof renderer and a basic text-only dialogue presenter. Once the development audition host is running, the WPF command is sufficient authorization to load and run that request automatically. No second button in Unity. Setup is once per project, with Ready/Busy/Unavailable status and repair instructions. Use versioned atomic requests/responses, monotonic IDs, content hash, required-binding signature and cancellation acknowledgements; stale results cannot show current success. Repeated commands replace earlier audition requests after cleanup rather than building a queue. Keep the scene/rig loaded and load preview JSON from a generated directory outside Assets, so typing a new sentence never causes a Unity asset reimport, domain reload or player rebuild.
 
-This lets the author keep both apps open, alter a profile and audition it without editing an Animator. Live hot replacement of assets/content during an active game session is deferred; Reload/Restart establishes a fresh immutable snapshot.
+Each audition overlays the owning Card and explicitly participating profile/cue/recipe buffers on a scoped snapshot; show **Unsaved changes** and the included buffers. Unrelated dirty buffers stay out. This does not save the DB or bypass the existing Reference Player dirty-Card gate. Preview state is disposable and never writes gameplay/profile stats. A small context strip shows the starting pose/profile/mood/player/test profile, initially from session setup or explicitly copied from a settled Continue boundary. Local line audition begins settled; **Test arrival** opts into travel. Do not pretend that sandbox initialization verifies a movement route.
+
+Use the production ActionExecutor/director. A selected passage containing choices, stats, progress or flow must use **Play session** through the actual graph VM; report that distinction rather than silently skipping actions. This is a focused presentation harness, not an arbitrary graph seek/save-state system. The user can Stop promptly and resume typing; focus remains in the edited field. Target at most two seconds to first preview frame for an already-loaded scene and cached assets, excluding intentional travel/blends; measure and report cold startup separately. Fix avoidable export/reimport delays.
+
+Edits alone do not autoplay. Each audition restarts disposable director state at a boundary. Existing game sessions keep their immutable snapshot until explicit restart; live in-flight content mutation remains deferred.
 
 ### Measurable authoring acceptance
 
 After the vocabulary is configured, the user must be able to:
 
-- Author six lines, two moods and a required location change in WPF without opening Unity asset configuration.
+- Create a conversation from the starter setup and type/paste six lines, two moods and a required location change without opening Unity asset configuration. No repeated profile selection or graph wiring is required.
 - Add one gesture's metadata/binding once, then see it eligible in two existing conversations without editing those cards.
 - Remove a sitting permission and immediately identify every affected required profile cell and referencing action.
-- Duplicate a profile, change it locally and undo/redo without altering the source or losing IDs.
+- Audition a dirty Card and shared-profile experiment without changing committed consumers, then Apply shared or Make unique and undo/redo without losing IDs. Revert restores the original; another dirty Card is unaffected.
 - Import a short script, adjust its range/rate, preview it, save, close/reopen, and reproduce the saved configuration.
-- Export and replay edited content in Unity without hand-copying IDs, editing JSON or making a Timeline.
+- Run ten edit/Audition comparisons from WPF with no Save/export/Unity-button step, replay the last take, try a new performance take and pin one cue. Stop a long audition and immediately try again; no late response can steal focus or play obsolete text.
+- Leave an unrelated disabled unbound cue and unfinished Card outside the selected scope; they appear in library diagnostics but cannot block a valid line. A broken required dependency still blocks, with a direct repair link.
+- Reuse the existing authored acceptance conversation across tickets and publish it without retyping it into another database. The standalone player uses only committed data.
 
 Do these with the user operating the GUI. A test that inserts the same rows directly into SQLite is valuable but does not satisfy authoring acceptance.
 
 ## 13. Current content into a real Unity player
 
-Keep the production SQLite loader and portable reference validator. Add an explicit runtime DTO mapping/export step after loading. Include all currently supported content/action subtypes in the transport; unsupported mappings fail export with the source ID. Never silently omit actions outside the demo.
+Keep shared production SQLite reconstruction/mappings and portable validators. Add a scoped snapshot builder instead of making global load-and-validate the prerequisite for every preview. Local audition roots are the selected presentation rows and displayed context, including all enabled candidates their queries could select, explicit references, foundations and assets, plus routes for Test arrival. Publishing selects Sessions and includes every reachable branch, all potentially tag-matching Cards/snippets, all eligible profile/cue choices and required states/routes/assets, regardless of the current seed or test-profile exclusions. Validate the entire closure, not just the chosen runtime path. A separate Check library lists unrelated unfinished work without blocking a valid scoped run. Storage corruption/FK failures remain errors. Include every supported action subtype in the transport; unknown mappings inside a selected closure fail by source ID.
 
 Use flat, serializable field-based DTO records with explicit discriminators and reference arrays, then reconstruct the existing definitions. WPF can serialize with framework `System.Text.Json`; Unity can deserialize with built-in `JsonUtility`. Do not serialize the polymorphic `GameContentDefinition` object graph directly. Unity's JSON serializer has field/type restrictions and does not support dictionaries as an ordinary serialization feature; the transport must be shaped accordingly. See [Unity JSON serialization](https://docs.unity3d.com/6000.0/Documentation/Manual/json-serialization.html).
 
-Export from one consistent DB read transaction. Envelope includes transport version, schema version, deterministic payload hash and required semantic resource IDs. Write to a temporary file, validate/read it back and atomically replace the previous artifact. Export failure keeps the old artifact but explicitly shows it as stale; Unity launch/preview must display the loaded revision.
+Export committed build content from one consistent DB read transaction. Audition uses that same mapping with explicitly labelled buffer overlays. Envelope includes transport version, schema version, deterministic payload hash and required semantic resource IDs/signatures. Write to a temporary file, validate/read it back and atomically replace the previous artifact. Export failure keeps the old artifact but explicitly shows it as stale; diagnostics show the loaded revision. Content and binding hashes are independent; a text edit never requires rebinding unchanged clips.
 
-Use a generated JSON TextAsset under `Assets/GeneratedContent` for Editor import and player inclusion. The build step requires a fresh validated artifact and includes it in the player. WPF settings choose the project's export target once; no developer paths are hardcoded into content. Unity bindings use serialized asset references keyed by semantic IDs, not runtime `AssetDatabase` lookups. AssetDatabase may assist Editor validation/export only.
+Use a generated JSON TextAsset under `Assets/GeneratedContent` for build import/player inclusion. Use a separate ignored preview directory outside Assets for frequent audition requests/snapshots. The build step requires fresh validated committed content and includes it in the player; preview buffers are never published accidentally. WPF settings choose the project's targets once; no developer paths are hardcoded into content. Unity bindings use serialized asset references keyed by semantic IDs, not runtime `AssetDatabase` lookups. AssetDatabase may assist Editor validation/export only.
 
-Create a Unity binding registry asset plus stage bindings for clips, masks, facial presets, voice clips, props, gaze targets and transitions. Export its technical manifest for WPF. Validate resource kind, duplicates, missing bindings, actual clip bounds, region signature and rig compatibility. Hash/revision mismatches block visual audition/build until manifests and content agree.
+Create a Unity binding registry asset plus stage bindings for clips, masks, facial presets, voice clips, props, gaze targets and transitions. Unity refreshes its technical manifest automatically on actual asset/binding changes; WPF refreshes it automatically. Validate kinds, duplicate/missing required bindings, actual clip bounds, region signatures and rig compatibility for the selected dependency set. Changed required signatures block until refreshed/validated; unrelated asset additions do not stale a valid take. Avoid reciprocal hash dependencies between content and manifests.
 
 Replace the legacy SO launcher path for the new player with session selection from the imported snapshot and the existing Core eligibility rules. Keep the legacy bridge only for old fixtures until retired deliberately. Do not add a third sample-only engine.
 
@@ -403,7 +421,7 @@ Depends on A's rig/region findings.
 
 Depends on B's model.
 
-**Deliver:** the next migrations, typed repositories/commands, snapshot loader and reference validation. Persist profile/cue/state/transition/recipe data, dialogue presentation fields and imported curve points. Extend action writer, clone/duplicate paths, Action Blocks and undo. Add where-used/delete protection for shared resources.
+**Deliver:** next migrations, typed repositories/commands and scoped snapshot validation; persist cue Enabled, partial performance updates, recipe-duration inheritance, dialogue fields and motion points. Extend action writer, clone/duplicate, Action Blocks/undo, usage protection and script Replace source. Provide stable-ID starter installation commands. Test/commit code first, then separately checkpoint/migrate canonical content in Ticket 03 so later authored work can be kept.
 
 **Gate:** close/reopen round trip including nested choices and template insertion; profile/cue edits undo atomically; direct and tagged dialogue retain presentation fields; invalid references fail at load/export. Use disposable DB fixtures. Follow canonical DB backup/checkpoint/integrity rules before any migration of authored content.
 
@@ -411,7 +429,7 @@ Depends on B's model.
 
 Depends on C.
 
-**Deliver:** performance/session/player action controls and dialogue overrides in the existing sequence editor; basic profile/cue editors and live simulated director inspector. Make the fake host a real WPF reference service with explicit timing and pause/stop.
+**Deliver:** inherited defaults, keyboard/paste Dialogue entry, shared Apply/Revert buffers, minimal coverage/use-site diagnostics, New conversation scaffold and simulated Audition controls with explicit buffer overlays/context. Install reviewed starter content once and begin the real canonical conversation. Preserve normal Reference Player dirty-Card safety.
 
 **Gate:** author the first conversation through the GUI, run the actual Core engine, exercise both mood branches and a movement request; restart without leftover motion/tasks. This establishes the first complete nonvisual path before further editor polish.
 
@@ -419,9 +437,9 @@ Depends on C.
 
 Depends on C and B. Can precede advanced WPF tools.
 
-**Deliver:** complete explicit DTO transport, transactional export, round-trip validator, Unity runtime loader/binding registry and snapshot-based session launcher. Include nested action coverage and build freshness checks. Replace demo SO selection for this path.
+**Deliver:** complete DTO mapping, transactional scoped export, Unity runtime loader/binding registry and session launcher. Connect one-command WPF audition to the real proof renderer and a basic text-only presenter now, with request cancellation/stale handling, preview JSON outside Assets, and automatic manifest refresh. Use participating buffer overlays only for labelled preview; keep build export committed-only.
 
-**Gate:** the same exported conversation produces the same semantic action/selection trace in WPF and Unity under controlled clock events. Missing bindings are caught before starting. Load in a development player, not only Editor, to expose serialization or Editor-only references early.
+**Gate:** controlled WPF/Unity traces agree; required bindings fail preflight; unrelated disabled/unbound content cannot block the valid scoped preview. Ten dirty-line edit/Audition cycles work from WPF without manual export or a second Unity click. Measure warm latency and test a development player with committed content and WPF closed.
 
 ### F. Production movement and layered actor renderer
 
@@ -429,7 +447,7 @@ Depends on A, B and E.
 
 **Deliver:** integrate the reusable proof renderer with semantic requests; all six station bindings, nine legal states, 16 directed transition edges, arrival validation and timeouts. Implement region suppression, face composition, gaze, breath and blink. Calibrate chair/bed contacts.
 
-**Gate:** a real character travels through all locations, sits and lies down and returns via valid paths. Run dialogue gestures in both standing and sitting, demonstrate suppressed head aim during a nod, and verify no foundation reset after a gesture. No teleport success, no unrelated controllers writing the same body.
+**Gate:** a real character travels through all locations, sits/lies/returns via valid paths, gestures in standing/sitting, suppresses head aim during a nod and retains the foundation after gestures. At Ticket 06's user gate also edit a line/mood, audition it, compare takes and pin a cue from WPF. Settled audition setup is not a substitute for actual route verification.
 
 ### G. Dialogue and player presentation
 
@@ -451,15 +469,15 @@ Depends on B/C/F. Implement the portable sampler first, then bind it to the alre
 
 Depends on D and functioning F/G/H.
 
-**Deliver:** compatibility/reachability/region-conflict views, readable exclusion reasons, bulk metadata editing, usage links/Make Unique, motion plot/scrub controls, manifest import and filesystem Unity audition requests/results. All changes persist through existing undo infrastructure.
+**Deliver:** full computed coverage/reachability/conflict views, before/after shared impact and direct repair links, bulk metadata/sibling-rule copying, acknowledged asset intake/registration, enable-to-rotation and one-at-a-time cue audition. Refine existing buffers and visual audition rather than creating them this late. Keep technical metadata owned by Unity and author suitability owned by WPF.
 
-**Gate:** complete every authoring acceptance task in section 12. Verify stale manifest/preview-result detection. Adding a cue changes eligible profile pools without touching consumers. The matrix never becomes a second rules implementation.
+**Gate:** executor rehearses every authoring task in section 12 and repairs friction; final user acceptance is Ticket 10. Verify shared drafts, scope/freshness, idempotent registration and preserved context. Enabling a cue updates querying consumers without editing them. The matrix never becomes a second rules implementation.
 
 ### J. Playable content, regression and handoff
 
 Depends on all above. Populate and refine acceptance content throughout earlier packages; this ticket completes integration, it does not begin asset production.
 
-**Deliver:** a hand-authored 3–5 minute session with mood branches, repeated conversational lines, movement, all requested presentation mechanisms, a route/pose tour and procedural demonstrations. Produce a Windows development build, run instructions, authoring guide and limitations/evidence report; update README and the relevant stale Unity-plan documentation.
+**Deliver:** complete the canonical conversation begun in basic WPF authoring into a 3–5 minute session with mood branches, movement, requested presentation mechanisms, tour and procedural demonstrations. Preserve IDs/lines rather than re-entering a disposable demo. Checkpoint meaningful authoring batches with writers closed only for backup/Git operations. Produce a Windows development build, run instructions, authoring guide and evidence report; update README/stale Unity-plan documentation.
 
 **Gate:** the user plays the entire session and authors a small new conversation through WPF. Run the tests below, record visual review findings, repair material animation/authoring failures, and leave the appropriate apps running. A backend-only implementation is not completion of this stack.
 
@@ -502,7 +520,7 @@ Acceptance play path:
 - Clock/sampler tests: seeded oscillator boundaries across unequal frame steps; script interpolation/inversion/hold/end; invalid input; entry/exit clock semantics; pause and catch-up. Use a common sample grid for WPF/Unity parity.
 - Action tests: blocking presentation versus flow actions, tracker/barrier behavior, background faults reaching visible session failure, and cleanup after error/cancel with another cleanup service failing.
 - SQLite/transport tests: every action discriminator including nested/template sequences, stable IDs, revision hashes, transactional export, reimport/reopen, semantic undo/redo and referenced-definition deletion guards.
-- WPF tests: picker values survive refresh, shared edits preserve dirty card buffers, matrix uses the Core result, bulk undo and stale audition responses cannot show success for a new request.
+- WPF tests: inherited field intent, keyboard/paste one-unit undo, picker focus, isolated buffer overlays/shared Apply/Revert/Make unique, scoped validation, idempotent starter/intake, recipe Replace source, matrix Core parity, request replacement and obsolete-response rejection. Verify a new text edit does not require unchanged binding hashes to change and build export excludes preview buffers.
 - Unity EditMode tests: missing/duplicate/wrong-kind bindings, invalid clip interval, required facial channels, manifest region signatures and runtime DTO reconstruction.
 - Unity PlayMode tests: arrival and pose readiness, movement cancel, speech completion, layer suppression/release, exact-time motion samples, teardown/replay and no advancing twice from repeated clicks.
 
@@ -513,6 +531,8 @@ Run the existing relevant .NET suite and Unity suites in the pinned Editor; also
 Review feet sliding, chair/bed penetration, expression changes while speaking, head/gaze fights, pops at clip boundaries, robotic cadence, excessive gesturing, camera/body clipping and visible range extremes. Watch the scripted and oscillator motion at slow/fast limits, including reverse and release. A legal mask combination that looks bad is a content defect to fix, not a passing performance.
 
 Record pass/fail evidence and limitations separately for engine, WPF authoring, Unity rendering and built player. No count of passing unit tests replaces these visual and authoring gates.
+
+The execution packet groups explicit user acceptance at Tickets 01 (rig), 06 (first integrated writer/visual loop) and 10 (final game/authoring). Other tickets require real executor hands-on checks and evidence with optional user feedback; avoid adding an approval pause for every visual refinement.
 
 ## 17. What deliberately waits
 

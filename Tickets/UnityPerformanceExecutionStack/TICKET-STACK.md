@@ -1,6 +1,6 @@
 # Ticket Stack — Unity Performance Playable Slice
 
-Read every ticket before starting Ticket 00. Execute in order. Each ticket repeats its local context so it can be handed to a fresh worker, but the architecture contract and build plan remain binding.
+Read every ticket before starting Ticket 00. Execute in order. Each ticket repeats its local context so it can be handed to a fresh worker, but the architecture contract and build plan remain binding. Workflow revision: September 11, 2026. Tickets are dependency milestones that may span coherent commits. Only 01, 06 and 10 require user acceptance; other manual checks require executor evidence, not a new permission pause. The first real WPF-to-Unity audition must work in Ticket 05.
 
 ## Ticket 00 — Baseline, Protection, and Focused Implementation Map
 
@@ -10,17 +10,18 @@ Create a reproducible execution base, protect authored content, inventory the re
 
 ### Context
 
-The repository currently reports schema v11 and 384 passing .NET tests, but these are documentation claims to verify. Unity still uses the legacy SO/deck bridge. The working directory may contain untracked database backups that must remain untouched. Ticket 01 cannot close without a real rig and animation/audio inputs.
+The repository has migration files through v11 and reports 384 passing .NET tests; the actual canonical DB version and test results must be measured. Unity still uses the legacy SO/deck bridge. The working directory may contain untracked database backups that must remain untouched. Ticket 01 cannot close without a real rig and animation/audio inputs.
 
 ### Contract
 
 1. Confirm the exact user-approved packet commit, create the implementation branch, and record Git/SDK/Unity/package state.
-2. Run the full .NET baseline, available Unity EditMode/PlayMode baseline, WPF build/start smoke, and current Unity batch compile. Report observed totals and limitations rather than copying README numbers.
+2. Run the full .NET baseline, available Unity EditMode/PlayMode baseline, WPF build/start smoke against an explicit disposable DB, and current Unity batch compile. Avoid an automatic canonical migration during smoke launch. Report observed totals and limitations rather than copying README numbers.
 3. Close canonical DB writers normally, prove no WAL/SHM companions, make/hash a timestamped byte copy outside the commit, and record integrity, FK, migration ledger and semantic table row counts.
 4. Create disposable DB copies for migration/authoring tests. Never use the canonical DB for exploratory work.
 5. Inventory actual character/room/animation/voice/player assets and their licenses/provenance. Record missing items against Ticket 01's manifest.
 6. Trace and document exact current extension points for portable definitions/Core, action execution, services/shutdown, SQLite migration/loader/writer/undo/clone, WPF sequence/library/reference player, Unity bootstrap/bindings, and all relevant tests.
 7. Create `Docs/UnityPerformance/Execution/IMPLEMENTATION-MAP.md` and `RUNNING-REPORT.md`. Include expected file groups and any justified ticket split needed for reviewable commits.
+8. Walk through one current Card edit/Save/preview and record focus, dirty-buffer and snapshot-loading behavior. Map `CardEditBuffer`, the global validator call in `GameContentSnapshotLoader.Load`, and the Reference Player dirty pause. These are explicit integration points for isolated buffered audition; do not bypass them with a logging-only preview.
 
 ### Guardrails
 
@@ -102,7 +103,7 @@ Portable source lives under `Assets/Scripts/Portable` and is linked into .NET pr
 
 ### Contract
 
-1. Add semantic definitions and stable resource kinds for stages, legal states, directed transitions, cues/profiles, motion recipes/curves, session setup, player presentation and structured dialogue fields.
+1. Add semantic definitions and stable resource kinds for stages, legal states, directed transitions, cues/profiles, motion recipes/curves, session setup, player presentation and structured dialogue fields. Include cue Enabled state, independent Keep/Set profile/mood intent, dialogue Inherit/Auto/None distinctions, voice-associated text fingerprint, and nullable action duration override (Use recipe by default).
 2. Add closed moods/regions/destination policies/line-cue policies with explicit validation. Keep extensible catalog IDs where the architecture contract says names are content, not engine enums.
 3. Add `IPerformanceService` or equivalent semantic host boundary and a session-scoped `PerformanceDirector`. Separate requested/committed state and correlate host acknowledgements by request ID.
 4. Implement one serialized execution context, route calculation, typed compatibility/exclusion diagnostics, region arbitration, scheduled update API, manual-clock test seam and structured traces.
@@ -112,6 +113,7 @@ Portable source lives under `Assets/Scripts/Portable` and is linked into .NET pr
 8. Extend direct/tagged dialog resolution to produce structured requests while preserving existing tag selection/order/RNG. Define text-only duration and voiced completion contracts.
 9. Expand session shutdown/fatal error handling. Fatal nonblocking presentation errors latch once, surface to the host even at Continue, reject later work and trigger complete cleanup. Preserve unrelated legacy failure semantics unless a root-cause fix requires a documented change.
 10. Build deterministic fake performance/dialog hosts and manual clock tests for the complete example sequence, nested choices, GOTO/RETURN and replay.
+11. Add the local presentation harness using the production executor/director and disposable run state: selected presentation-only passage plus explicit starting context, settled initialization or Test arrival, stopped/replaced request cleanup. Reject game-flow/choice/stat selections with a typed Play session diagnostic. Normal session playback still uses the existing graph VM. Implement presentation-seed override and take/trace capture so New take changes only acting; Replay take retains the resolved text/cues/events of the last take.
 
 ### Guardrails
 
@@ -129,6 +131,8 @@ Portable source lives under `Assets/Scripts/Portable` and is linked into .NET pr
 - Impossible route, explicit cue conflict, stale acknowledgement, host timeout/failure, cancellation and replay are loud and leave valid committed state.
 - Separate RNG-domain tests prove existing card/dialog traces are unchanged.
 - `WaitForAll` observes only finite accepted work and cannot wait on ambience.
+- Mood-only/location-only updates keep all other effective state; invalid combined updates commit nothing. Missing initial session context is an error; Keep/None/Inherit are never conflated.
+- Local audition has no DB/profile/stat effects, supports Stop/replace, and cannot consume card/dialog RNG on New take. Normal gameplay movement tests cannot use sandbox settled initialization to pass.
 - WPF/.NET build and Unity portable compile succeed.
 
 ### Commit and handoff
@@ -149,14 +153,15 @@ SQLite is canonical; the snapshot loader must reconstruct fully validated portab
 
 ### Contract
 
-1. Use Ticket 00's actual next migration number. Create embedded additive/rebuild SQL and transforms as required for typed normalized definitions/relations, actions, dialogue fields and motion curve points. Add constraints/indexes/FKs that express real invariants without hiding semantic validation.
+1. Use Ticket 00's actual next migration number. Create embedded additive/rebuild SQL and transforms for typed definitions/relations, cue Enabled state, partial-update actions, recipe-duration inheritance, dialogue fields and motion points. Add constraints/indexes/FKs for committed records. Incomplete experiments remain in editor buffers; do not add a generalized draft/versioning subsystem.
 2. Implement typed repositories and semantic commands for all definitions, relations, usage queries, bulk cue metadata changes and importer writes.
-3. Extend snapshot loading and portable reference validation. Unknown future resource kinds may load according to existing policy, but missing/wrong-kind required performance references fail.
+3. Extend shared reconstruction/mappings and Core validation with a scoped snapshot builder. Audition includes the selected rows/context and every eligible referenced candidate; publish includes selected Sessions and all potential reachable branches/tag-query results/required states/routes/assets, not only a sampled seed or consent-filtered subset. Keep global Check library diagnostics available. Do not invoke global fail-fast Load before selecting roots, catch its errors, or silently drop broken included dependencies. Storage corruption/FKs still fail.
 4. Extend action sequence writer, type mapping, default creation, recursive PromptChoice persistence, Action Blocks, Card duplication, Session/Phase clone/Make Unique where relevant, and undo/redo identity restoration.
-5. Implement the narrow `.funscript` importer in the provider/authoring boundary. Parse accepted subset, report point context, apply inversion once, retain provenance/hash/importer version, and persist immutable normalized points transactionally.
+5. Implement the narrow `.funscript` importer in the provider/authoring boundary. Parse accepted subset, report point context, apply inversion once, retain provenance/hash/importer version, and persist immutable normalized points transactionally. Replace source retains the curve ID, validates affected recipes and updates points/provenance in one undoable transaction; existing running snapshots remain immutable.
 6. Implement usage counts/navigation data and RESTRICT/explicit delete behavior for shared profiles, cues, recipes, resources and curves. No orphan repair fallback.
 7. Write migration idempotence, load/roundtrip, invalid schema/content, recursive clone, undo, bulk edit and importer tests on disposable DBs.
-8. Do not migrate or populate the canonical DB in this ticket. Commit code/tests first.
+8. Commit migration/provider code and green disposable-DB tests first. Then separately checkpoint and migrate the canonical DB through the production migrator with backup/hash, no writers/WAL/SHM, before/after integrity/FK/ledger/content checks, and an idempotence check on a disposable copy. Commit the canonical migration separately before launching the new WPF version on it.
+9. Provide an explicit, idempotent starter-content command keyed by stable fixture IDs. It installs reviewed state/route/profile definitions and the minimal valid proof palette supplied by Ticket 01; it never marks nonexistent assets valid or overwrites authored records. Install once at Ticket 04 setup, and evolve one real acceptance conversation thereafter. Destructive tests continue to use disposable DBs.
 
 ### Guardrails
 
@@ -165,7 +170,7 @@ SQLite is canonical; the snapshot loader must reconstruct fully validated portab
 - Do not treat a motion curve as a toy hardware resource.
 - Reject duplicate timestamps/out-of-range values; never sort/clamp/fix invalid scripts silently.
 - Preserve stable IDs on undo; duplicates mint full stable IDs.
-- Do not add sample/demo rows to canonical content.
+- Do not write starter/content rows into canonical storage before the separate migration checkpoint. Starter installation is explicit in Ticket 04; routine authoring thereafter uses normal transactions while WPF remains open.
 
 ### HARD acceptance
 
@@ -175,10 +180,11 @@ SQLite is canonical; the snapshot loader must reconstruct fully validated portab
 - Migration applies once/idempotently to multiple representative prior-version disposable DBs; integrity/FK checks pass.
 - Invalid references/load/imports fail with source IDs and actionable context.
 - Deleting/in-use/undo/redo/duplicate/Make Unique semantics are covered and deterministic.
+- Scoped audition/export succeeds with unrelated invalid authoring outside its roots, but fails with a broken possible included candidate. Disabled cues stay out of Auto; explicit runtime references to them error. Snapshot overrides preserve IDs and cannot write the DB. Replace source and duration inheritance survive reopen/undo.
 
 ### Commit and handoff
 
-Commit migration code, provider code, tests and docs. Handoff states reserved migration version/name, schema diagram/table inventory, canonical DB untouched, and exact WPF APIs for Ticket 04/09.
+Commit code/tests/docs, then the canonical migration checkpoint separately. Handoff records migration name/version, verified backup/hash/checks, typed scoped-load and buffer-overlay APIs, and starter install command for Ticket 04. Do not declare authoring content created yet.
 
 ---
 
@@ -190,24 +196,25 @@ Give a writer the smallest pleasant GUI needed to author and execute the first c
 
 ### Context
 
-The existing shared ActionSequence editor, explicit editor registry, semantic undo and Reference Player are the foundation. This ticket proves ordinary authoring flow; Ticket 09 later adds the full performance library/matrix/audition experience.
+The existing shared ActionSequence editor, explicit editor registry, semantic undo and Reference Player are the foundation. This ticket establishes the daily writing/buffer/preview flow and minimal diagnostic counts. Ticket 05 supplies actual visual audition; Ticket 09 adds bulk intake/matrix tools without postponing essential usability.
 
 ### Contract
 
-1. Add explicit editors for Set Performance, Play Motion and Set Player State in every legal root/nested scope, with filtered name-based pickers and concise row summaries.
+1. Add explicit editors for Set Performance, Play Motion and Set Player State in every legal root/nested scope, with filtered name-based pickers, Keep current/Use recipe defaults, Reset override, effective-value/source hints and concise summaries. A reusable Card shows From caller if no single effective context is known.
 2. Extend Direct Dialog and Dialog Snippet/From Tags editing for voice/duration/mood/cue handling. Keep simple fields visible and advanced acting intent collapsible.
 3. Add session presentation setup editing for required stage, initial state, profile/mood and initial player state.
-4. Add minimal focused Performances library editors sufficient to create stage/location/pose/state/transition, cue/profile and motion recipe records. Reuse semantic commands/undo; do not build matrix yet.
+4. Add minimal focused library editors and buffers for cues/profiles/recipes with Apply/Revert, usage links and eligible counts. Before Apply, show the shared impact/coverage diff. Make unique here copies edited values and rebinds only the selected action in its owning buffer. Install the reviewed starter stage/palette using Ticket 03's command; ordinary writers do not fill out state/transition tables. Reserve detailed technical setup for a separate stage inspector.
 5. Implement a real WPF simulated performance/dialog host with explicit durations, manual/fast-test clock mode and live inspector: requested/committed stage, mood, selected cues, claims, route, scalar and diagnostics.
-6. Preserve active card selection, focus, dirty buffer and nested sequence editors during catalog refresh. Add keyboard-friendly “add next dialogue line” behavior suitable for writing six lines quickly.
+6. Preserve active card selection, focus, dirty buffer and nested editors during refresh. Ctrl+Enter adds/focuses Dialogue; Shift+Enter adds an internal newline; Paste dialogue converts paragraphs into rows as one undo unit at the chosen insertion point. Advanced fields stay collapsed. Distinguish spoken text from Card body text.
 7. Show fatal performance errors and missing coverage/routes in both Workbench preview and Reference Player. Stop/restart leaves no simulated work alive.
-8. Author the first disposable acceptance conversation through the GUI, including two moods, a DifferentLocation request, dialogue, choice, motion and player-state change.
+8. Add New conversation using existing Session/Phase/Card commands, one undoable scaffold/tag/filter with normal graph wiring, starter context, Dialogue and explicit WaitForContinue. A fresh ordinary CardTag attached only to its Card and required by its Phase constrains the single CardExecutor, followed by a normal EndSession action. Test that an existing eligible-looking library Card cannot be drawn instead. Author the canonical conversation through the GUI and evolve it in subsequent tickets; never retype it into a second DB. Use labelled simulated preview until the selected features are bound in Unity; destructive tests stay disposable.
+9. Implement Audition/New take/Replay take/Stop/Use on this line controls and the visible context strip against the simulated harness. Overlay only explicitly participating buffers, label Unsaved changes, and validate the selected scope. Keep Card Save/Revert and the normal player's dirty-Card pause unchanged. This UI must call the same orchestration service that Ticket 05 connects to Unity.
 
 ### Guardrails
 
 - WPF must call Core selectors/validators; do not duplicate compatibility logic.
 - No generic reflection property grid or arbitrary rule editor.
-- No direct SQLite editing in code-behind and no replacement Save-document model.
+- No direct SQLite editing in code-behind, general draft-document store or implicit Save on Audition. Shared-definition buffers use the same focused transactional command pattern as existing Card buffers.
 - Do not expand `MainWindow.xaml.cs`/existing giant partials when a focused control/view model/service can own the feature.
 - Simulated preview must be labeled and cannot claim visual correctness.
 - Do not refresh an open editor by discarding dirty buffers or selection.
@@ -215,26 +222,27 @@ The existing shared ActionSequence editor, explicit editor registry, semantic un
 ### HARD acceptance
 
 - Core/SQLite/WPF suites and WPF build pass.
-- GUI-authored disposable content survives close/reopen and produces the expected structured Core trace.
+- GUI-authored canonical content survives close/reopen and produces the expected structured Core trace; checkpoint it after closing writers per DB rules, then reopen for further writing.
 - Recursive choice/action-block authoring, duplicate and undo/redo work.
 - Fast-test and real-time simulation have explicit distinct labels and deterministic tests.
 - Stop/error/replay do not retain queues, claims, clocks or state.
+- Dirty line/profile audition plays the edited values without changing DB bytes, unrelated dirty buffers, shared consumers or the normal session. Apply shared/Make unique/Revert/undo have distinct tested results.
 
-### HUMAN acceptance
+### Hands-on verification
 
-With WPF left running on a disposable DB, user authors six lines, two moods, movement intent, one choice and a motion action without touching IDs/SQL. User judges the basic sequence editing flow understandable enough to continue. Capture friction for Ticket 09.
+With WPF running, the executor creates a conversation, types/pastes six lines, changes mood without selecting a profile again, and auditions a dirty line/profile in the simulated host. Save/reopen it and record focus/undo/context friction. Invite user feedback without adding an approval stop; Ticket 06 is the first integrated user gate.
 
 ### Commit and handoff
 
-Commit WPF controls/services/tests/content fixtures and docs after gate corrections. Handoff includes the authored fixture/export expectations, UI friction list and any deferred matrix work.
+Commit WPF controls/services/tests/docs and a separate validated authored-content checkpoint as needed. Handoff includes the canonical conversation IDs, preview-service interface, measurements/friction and remaining bulk matrix work.
 
 ---
 
-## Ticket 05 — Runtime Export and Current Unity Bootstrap
+## Ticket 05 — Runtime Export, Unity Bootstrap, and First Visual Audition
 
 ### Goal
 
-Load complete WPF-authored current content in Unity Editor and a Windows development player through a validated explicit transport.
+Load WPF-authored current content through a validated transport and close the first real edit-in-WPF/watch-in-Unity loop, using the approved proof rig at one supported state.
 
 ### Context
 
@@ -243,15 +251,17 @@ Unity currently constructs content from legacy ScriptableObjects and lacks the c
 ### Contract
 
 1. Define a versioned flat field-based runtime DTO envelope with explicit discriminators/arrays for all current definitions/actions, including recursive choices. Keep serializer adapters outside Core.
-2. Export from one consistent SQLite read transaction via the production loader/validator; include schema/transport/binding versions, deterministic payload hash and required semantic resource IDs.
+2. Export a selected scope from one consistent SQLite read using Ticket 03's shared mappings/scoped builder/validators. Include schema/transport version, deterministic content hash and independent required-asset signatures. Publishing reads committed content only; audition overlays participating buffers explicitly. Scope includes all possible candidates, not just the drawn path.
 3. Write temp, deserialize/reconstruct/validate, then atomically replace the prior generated artifact. On failure retain old bytes but mark/display them stale.
 4. Add complete roundtrip tests comparing semantic snapshots and action trees. Unsupported mappings fail export naming source ID/type.
 5. Add Unity loader/reconstructor compatible with built-in JSON serialization constraints and a serialized binding registry keyed by semantic resource ID.
-6. Generate/import the Unity technical manifest for WPF: resource kind, clip duration/sample rate, rig/signature/regions, targets/props and binding revision. Validate duplicate/missing/wrong-kind/stale binding before run/build.
+6. Generate the technical manifest on actual Unity asset/binding changes; WPF refreshes it automatically. Include kind, duration/sample rate, rig/region signature, targets/props and asset descriptors used by later intake. Validate required bindings per selected dependency set. Unchanged clips need no new manifest for a text edit; adding an unrelated asset does not stale a take. Avoid mutually dependent content/binding hashes.
 7. Add snapshot-based session selection and labeled in-memory acceptance profile using existing eligibility/spawn contracts. Reachable unsupported host capability blocks preflight with an in-game error.
-8. Wire current Core services including structured dialog/performance fakes sufficient for semantic execution; do not yet claim production animation.
+8. Connect the current Core performance boundary to Ticket 01's real proof renderer for one bound standing/sitting context, and add a basic text-only dialogue presenter with the existing timing contract. This is a narrow real visual bridge; full route coverage and voiced speech remain Tickets 06/07. Fake hosts remain for tests only. Restrict the visual proof's published profile/session scope to actually bound states/candidates and report other unfinished features explicitly.
 9. Keep legacy SO fixtures isolated for old tests. The new playable path must not call `UnityContentGraphBuilder`.
 10. Produce and smoke-test a Windows development player with WPF closed; show loaded content/binding revision and visible runtime errors.
+11. Connect Ticket 04's Audition command to an already-running development host with one-time setup and Ready/Busy/Unavailable status. WPF writes an atomic local request; the host consumes it automatically, with request/hash validation, cancellation acknowledgement and obsolete-result rejection. No second Unity Run click, Save requirement or manual export. Load immutable preview JSON outside Assets, keep scene/rig loaded, and reset only disposable audition state between requests.
+12. Prove dirty-line/profile audition, replay of the last immutable take, New take that changes only acting, cue pin/reset, and prompt Stop/replacement. Keep text-entry focus and report unavailable/failed connection without losing edits. Measure warm command-to-first-frame latency; target two seconds excluding authored travel/blends/import. Build packaging continues to use its separate committed JSON TextAsset path.
 
 ### Guardrails
 
@@ -261,18 +271,20 @@ Unity currently constructs content from legacy ScriptableObjects and lacks the c
 - No sample-only parallel engine or silent omission of older action kinds.
 - Do not claim persisted WPF user-profile parity.
 - Generated artifacts/build outputs follow repository tracking policy; machine paths stay out of content.
+- No per-line Editor import/domain reload/rebuild, manual manifest handoff, autoplay from ordinary edits, separate Unity button, or active-game snapshot mutation. Audition controls an isolated development host; production builds do not enable its receiver.
 
 ### HARD acceptance
 
 - Core/SQLite/WPF tests plus Unity EditMode transport/binding tests pass.
 - WPF export→Unity reconstruction is semantically equal for every action/definition family under test.
 - Controlled WPF/Unity fake-host semantic traces match after excluding host timing/cosmetic fields.
-- Stale/corrupt/partial/wrong-version artifact and missing bindings fail before session start.
+- Stale/corrupt/partial/wrong-version artifacts and missing required bindings fail before start. Unrelated unfinished Cards/disabled unbound cues do not block local audition; an invalid included possible candidate does.
 - Development player launches the authored session with WPF closed and surfaces a deliberate preflight/runtime error in UI.
+- Edit and audition the same unsaved line ten times from WPF and watch the actual rig/text in Unity with no Save/export/app-switch/second-click loop. Retain context/seed, record latency and repair avoidable churn. Verify committed DB/active-session state is unchanged and the final player never packages preview buffers.
 
 ### Commit and handoff
 
-Commit transport/exporter/loader/bootstrap/tests/generated policy/docs and `.meta` files. Handoff includes exact export/build commands, revisions/hashes and legacy bridge isolation.
+Commit transport/exporter/loader/bootstrap/audition services/tests/docs and `.meta` in coherent changes. Handoff includes one-time connection setup, the working WPF command, proof conversation IDs, latency evidence, build commands and deferred route/audio bindings.
 
 ---
 
@@ -296,6 +308,7 @@ Ticket 01 fixed the rig contract; Ticket 02 fixed Core decisions; Ticket 05 supp
 6. Validate actual clip curves/masks/signatures against semantic declared regions and approved rig. Reject conflicting writers and stale manifests.
 7. Implement Unity pause/cancel/teardown/replay for mover/graph/claims and stale acknowledgement rejection.
 8. Add EditMode/PlayMode tests for topology, routes, arrival/failure, suppression/release and lifecycle.
+9. Extend the existing WPF audition loop to every now-bound stage state and Test arrival. Reuse the canonical conversation and profile; adding supported places must not require creating a replacement writer document. Preserve settled line audition as the fast default and test actual routes separately.
 
 ### Guardrails
 
@@ -315,7 +328,7 @@ Ticket 01 fixed the rig contract; Ticket 02 fixed Core decisions; Ticket 05 supp
 
 ### HUMAN acceptance
 
-User watches real character traverse all locations, chair sit/stand, bed sit/lie/recover, gesture in standing/sitting, retain foundation after overlay, suppress head aim during nod, and continue blink/breath/face appropriately. Review foot slide, furniture contact, penetration, pops, cadence and camera framing. Fix material failures before acceptance.
+User edits a dirty Dialogue row, auditions it from WPF, changes only mood, tries another take and pins a cue. They also watch actual Test arrival travel through all locations, chair sit/stand, bed sit/lie/recover, gesture in standing/sitting, retained foundation, gaze suppression and blink/breath/face. Review both iteration friction and visual quality before proceeding. This is the second of the three explicit user gates.
 
 ### Commit and handoff
 
@@ -336,7 +349,7 @@ Structured dialogue and ordering already exist in Core. The initial proof uses a
 ### Contract
 
 1. Build subtitle presenter and single FIFO speech channel. Blocking/nonblocking dialog respects Core ordering; subtitles remain until replacement/session end.
-2. For voice resources, complete on actual audio end and feed a precomputed amplitude envelope to mouth/jaw. For text-only lines use Core's explicit/estimated duration.
+2. For voice resources, complete on actual audio end and feed a precomputed amplitude envelope to mouth/jaw. For text-only lines use Core's explicit/estimated duration. Track text fingerprint when attaching voice; changed wording displays Voice needs update. Provide explicit persistent Text only audition mode for drafting. A published voiced line must have a current association or its author must clear the optional voice; no silent old-audio/new-text mismatch.
 3. Compose face preset, speech mouth/jaw and blink in the sole face writer; enforce channel limits and line-local mood/cue start/end/restoration.
 4. Revalidate Auto gesture claims at line onset; suppress with trace reason. Explicit incompatible cue fails visibly. Unfinished line gesture blends out at line end.
 5. Implement four player posture/camera/body bindings: Standing, Sitting, Kneeling, LyingDown; toggle body visibility independently; change under short fade; update PlayerFace gaze target.
@@ -361,9 +374,9 @@ Structured dialogue and ordering already exist in Core. The initial proof uses a
 - Repeated Continue clicks cannot advance twice.
 - Every player posture works with body shown/hidden and updates gaze target.
 
-### HUMAN acceptance
+### Hands-on verification
 
-User reviews voiced and text-only lines with all three moods, expression+mouth+blink combinations, gesture timing, gaze, subtitles and every player posture/visibility. Fix facial clipping, robotic mouth, camera/body clipping and pacing severe enough to harm the slice.
+Executor reviews voiced and text-only lines with all three moods, expression+mouth+blink combinations, gesture timing, gaze, subtitles and every posture/visibility through the existing audition controls. Fix material clipping/pacing failures; collect optional user feedback without an extra approval gate. Final user judgment remains Ticket 10.
 
 ### Commit and handoff
 
@@ -391,6 +404,7 @@ Motion definitions/import persistence exist; Ticket 01 proved useful reversible 
 6. Enforce region/stage/mood/player/prop compatibility and relocation conflict ordering. Release claims before Set Performance travel can start.
 7. Bind and tune the real arm/prop and seated pelvis/body examples plus one valid imported script and oscillator recipe.
 8. Add exact controlled-time tests across different update partitions, boundaries/rate extremes, pause/catch-up/cancel and Unity sampled times.
+9. Connect the recipe edit buffer to the existing WPF audition loop. Range/rate slider changes remain local until Apply; Audition uses those values. Actions with Use recipe duration follow later changes; explicit duration overrides are labelled/resettable. Replace source retains curve identity, checks dependent recipes and refreshes its plot without re-adding every action.
 
 ### Guardrails
 
@@ -408,9 +422,9 @@ Motion definitions/import persistence exist; Ticket 01 proved useful reversible 
 - Nonblocking motion overlaps compatible speech/blink/gaze; conflicting explicit requests fail; WaitForAll finishes.
 - Motion completion/cancel permits later relocation and replay starts clean.
 
-### HUMAN acceptance
+### Hands-on verification
 
-User watches both motion examples at slow/fast limits, reversals, script points, entry/release and concurrent speech. Fix visible discontinuities, prop desync, range/contact problems or layer fights.
+Executor watches both motion examples at slow/fast limits, reversals, script points, entry/release and concurrent speech, then edits/reruns the recipe from WPF and replaces its script source. Fix discontinuities, desync or layer fights; record optional user feedback without another approval stop.
 
 ### Commit and handoff
 
@@ -418,7 +432,7 @@ Commit sampler/runtime/bindings/recipes/script fixture/tests/docs/`.meta`. Hando
 
 ---
 
-## Ticket 09 — Computed Performance Matrix and Fast Unity Audition
+## Ticket 09 — Computed Coverage, Asset Intake, and Authoring Polish
 
 ### Goal
 
@@ -426,20 +440,20 @@ Make monthly content creation fast, understandable and enjoyable through reusabl
 
 ### Context
 
-Ticket 04 exposed the basic writer path and captured friction. Ticket 03 owns semantic commands. Ticket 02 owns compatibility. Ticket 05 owns snapshot/manifest versions. Unity renderer now provides a real visual target.
+The basic writer/shared-buffer path shipped in Ticket 04, and real one-command audition shipped in Ticket 05. This ticket completes bulk vocabulary intake/coverage inspection and repairs remaining friction; it must not rebuild those paths or introduce a second preview protocol.
 
 ### Contract
 
-1. Build a focused Performances library with profile, cue, stage and motion recipe editors using dedicated controls/view models/services.
+1. Extend the existing focused Performances library/controls; retain its buffers, usage links and working audition service. Do not rewrite the main shell or create duplicate editing surfaces.
 2. Profile editor: allowed states, three mood tabs, body/face queries or explicit IDs, gaze choices, None/rest weight, cadence/dwell ranges, eligible counts and example candidates.
 3. Computed matrix: legal state rows; mood/channel columns; eligible count, required gap, optional None and binding status; click-through included/excluded candidates with Core rejection reasons.
 4. Add route reachability and region-conflict views. They use Core results and are not editable graph/cell stores.
-5. Add usage counts/list/navigation, duplicate and contextual Make Unique, transactional bulk metadata assignment and semantic undo/redo. Query-shared profiles update consumers; explicit membership stays fixed.
+5. Complete bulk metadata assignment, sibling-rule copying, usage navigation, duplicate/Make unique and semantic undo. Shared Apply shows before/after affected coverage with repair links while preserving the selected cell/test context. Querying profiles include newly enabled matching cues; explicit membership stays fixed.
 6. Motion editor shows normalized/seconds/zero-based-frame interval, source sample rate, derived traversal time/cycles per minute, scalar-time plot, imported points, scrub/time controls and validation after clip reimport.
-7. Implement WPF→Unity filesystem audition: versioned atomic request/response, monotonic ID, content and binding hashes, source/target/profile/line/motion/seed, explicit Run/Replay, trace/status response and stale-result rejection.
+7. Add intake using Ticket 05's Unity descriptors/manifest. Register selected assets once in WPF, mint semantic identities, send idempotent registry-registration requests to Unity's Editor helper and acknowledge bindings. Bulk assign author-reviewed mood/pose/tags; new cues are Not in rotation until explicitly enabled after validation. No GUID copy, duplicate name entry or invisible auto-enabling. Provide Try eligible cues for one-at-a-time visual inspection using the existing audition service.
 8. Preserve dirty Card buffers, selection, focus and open nested editors through hot refresh. Improve dialogue keyboard flow based on Ticket 04 observations.
 9. Write tests proving matrix/UI reuse the Core predicate, shared/fixed semantics, bulk undo, Make Unique, stale manifest/result handling and no second rule implementation.
-10. Complete the measurable authoring acceptance tasks from build-plan section 12 with the real GUI.
+10. Rehearse all authoring tasks from build-plan section 12 with the real GUI; record actions/time/latency/focus. Required user final acceptance is Ticket 10. Fix avoidable repeated setup, modal prompts or export/app-switch chores now.
 
 ### Guardrails
 
@@ -449,6 +463,7 @@ Ticket 04 exposed the basic writer path and captured friction. Ticket 03 owns se
 - Atomic preview files are generated artifacts and must not dirty canonical content/history.
 - Catalog refresh cannot erase unsaved Card edits.
 - Do not declare the authoring workflow pleasant solely from automated tests.
+- Do not make Save a prerequisite to audition or force a full library validation. Do not add a generic importer, template editor, draft database or replay framework to implement these conveniences.
 
 ### HARD acceptance
 
@@ -457,14 +472,16 @@ Ticket 04 exposed the basic writer path and captured friction. Ticket 03 owns se
 - Stale/corrupt/mismatched request/response/manifest cannot show a current success.
 - Reopen retains editor state/content; all bulk/shared/unique operations undo and redo with exact IDs.
 - Adding one matching cue updates two profile consumers without editing their cards; removing sitting support identifies all affected required cells/actions.
+- Register/retry/reimport a sibling clip with no duplicate semantic identities; new disabled clips cannot affect live Auto pools. Enable validates and updates counts. Replacing a required asset/curve invalidates only affected previews/recipes and leads to the relevant repair control.
+- Shared-draft audition leaves DB/other Cards unchanged, Apply affects consumers intentionally, and Make unique/Revert/undo restore exact identities. A valid selected audition works while unrelated disabled/unbound vocabulary remains unfinished.
 
-### HUMAN acceptance
+### Hands-on verification
 
-User performs all six authoring tasks in build-plan section 12: writes conversation, adds reusable gesture, removes compatibility and finds effects, duplicates/makes unique/undoes, imports/previews a script, exports and replays in Unity without editing IDs/JSON/Timeline. Record time, clicks/friction and requested corrections; repair material issues.
+Executor performs the complete revised authoring tasks in build-plan section 12, including dirty-buffer audition, ten edit/watch repetitions, shared experiment/Apply/Make unique, cue intake, scoped errors, script replacement and committed export. Record timings and friction and repair material issues. User may review now, but a fourth pre-final approval gate is not required.
 
 ### Commit and handoff
 
-Commit WPF UI/services/tests/docs and Unity audition receiver/`.meta` after user gate. Handoff includes measured workflow, remaining friction and exact steps for Ticket 10 content production.
+Commit the intake/matrix refinements/tests/docs/Unity Editor binding helper and `.meta` files in coherent commits. Handoff includes measured workflow, remaining friction and the same canonical conversation for Ticket 10 completion.
 
 ---
 
@@ -476,19 +493,19 @@ Ship and prove the first playable 3–5 minute performance session, then leave b
 
 ### Context
 
-This ticket integrates and polishes content accumulated during earlier tickets. It must not begin the animation asset workload. The canonical DB may still be at its pre-performance schema/content state; follow strict separate checkpoints.
+This ticket completes the canonical conversation begun in Ticket 04, after Ticket 03's migration checkpoint. It must not begin the animation asset workload or require re-entering already-authored content. Verify the recorded migrations/content checkpoints before proceeding.
 
 ### Contract
 
 1. Re-read the entire packet and audit each architecture invariant/exclusion against code and content. Resolve drift before canary.
-2. Commit/verify migration code is already green. Close writers; verify WAL/SHM absence; recheck/hash Ticket 00 backup; create a fresh backup; run prechecks. Migrate canonical DB through the real migrator once, prove idempotence, run integrity/FK/ledger/semantic-preservation checks, and commit that binary migration as its own checkpoint.
-3. Hand-author the acceptance session through WPF into the canonical DB using the approved workflow. Include six locations/tour, at least twelve lines, three voiced lines, Happy/Neutral/Mad, choice branch, meaningful DifferentLocation beat, Continue ambience, arm/prop oscillator motion, pelvis recorded-script motion, chair/bed pose changes, all player postures and both visibility states through an optional test path. Validate and commit this authored batch as a content checkpoint.
+2. Verify earlier migration code/DB checkpoints and their backups. Close writers only for the final backup/Git content checkpoint, confirm no WAL/SHM, create/hash a fresh backup, and run integrity/FK/ledger/semantic checks. If intervening tickets added another migration, test/commit its code first and checkpoint canonical migration separately through the real migrator. Do not reapply/rebuild canonical content to satisfy a stale ticket instruction.
+3. Complete the existing acceptance session in WPF, preserving its IDs/authored lines. Include six locations/tour, at least twelve lines, three voiced lines, Happy/Neutral/Mad, choice branch, meaningful DifferentLocation beat, Continue ambience, arm/prop oscillator motion, pelvis recorded-script motion, chair/bed poses, all player postures and both visibility states through an optional test path. Validate/checkpoint the meaningful authored batch, then reopen WPF for iteration.
 4. Meet the minimum asset/content budget in build-plan section 15: required foundations/transitions, at least six body gestures including nod/point/shimmy/Mad hands-on-hips, two faces per mood, actual room/rig/player/audio/motion assets and bindings.
 5. Export a fresh validated runtime snapshot/binding manifest and build a Windows development player. Prove it runs with WPF closed from a clean generated state.
 6. Execute every acceptance play-path step in build-plan section 15, first seed and alternate seed. Record semantic traces, visible variation, errors and replay cleanup.
 7. Run the complete automated matrix: solution tests, WPF build, Unity EditMode/PlayMode, batch compile, built-player smoke, transport/binding freshness, canonical integrity/FK/schema/content semantic checks and `git diff --check`.
 8. Run visual review for foot slide/contact/penetration, facial speech composition, gaze fights, pops, cadence/overgesture, camera/body clipping and motion extremes. Fix material defects and rerun affected gates.
-9. Run final authoring canary: user creates a small new conversation, auditions/exports and plays it without Unity choreography. Do not seed the canonical DB through SQL behind the user's back.
+9. Run final authoring canary: user creates a conversation from the configured starter, types/pastes lines, changes mood/destination with inherited profile, auditions unsaved edits, replays/varies/pins a cue, tries/reverts a shared edit, registers/enables one gesture and replaces a script source. Measure ten warm edit/Audition cycles (two-second target excluding authored movement/blend/import), verify no manual Save/export/Unity-button choreography, then publish committed data and play the build. An unrelated unfinished item cannot block the valid local selection; a broken included dependency must. Do not retype content into another database.
 10. Update README/current architecture docs, Unity run/build/export instructions and final execution report. Clearly label remaining limitations and future work.
 
 ### Guardrails
@@ -507,6 +524,7 @@ This ticket integrates and polishes content accumulated during earlier tickets. 
 - Standalone player completes the session with WPF closed, surfaces deliberate errors visibly, returns to menu and replays cleanly.
 - Alternate seed changes incidental acting where pools permit without changing authored narrative correctness.
 - README and focused docs match the implemented architecture; no stale direct-SQLite/Timeline plan remains presented as current.
+- One-command warm audition, controlled buffer overlays, partial updates, scoped validation and asset registration have measured hands-on evidence. No studio setup/export/version negotiation is required per line. Build export cannot include unsaved buffers accidentally.
 
 ### FINAL HUMAN acceptance
 

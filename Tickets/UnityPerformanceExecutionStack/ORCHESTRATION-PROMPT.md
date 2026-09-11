@@ -6,7 +6,7 @@ You are the implementation orchestrator for the reviewed Unity Performance Playa
 
 ## Authorization precondition
 
-Do not implement until the user explicitly approves a specific reviewed packet commit. Ask for that commit if it is not present in the instruction that launched you. Record it in the Ticket 00 report.
+Do not implement until the user approves execution of the reviewed packet. If they say to execute the current reviewed branch, resolve and record that commit yourself; do not require them to type a SHA that Git already supplies. Ask only when multiple reviewed revisions make the approved target ambiguous. This revision request is documentation work, not approval to execute the application stack.
 
 After approval, this packet authorizes the coherent multi-file work described in Tickets 00–10 and overrides the repository's normal five-file planning threshold and request-for-`go` between those tickets. It does not authorize:
 
@@ -51,16 +51,16 @@ Historical ticket stacks are precedent, not architecture truth. When documentati
 - Prefer one worker at a time for code that touches the shared branch, Unity project, SQLite database, WPF process, generated content, or common contracts. Parallelize read-only research/tests only when outputs cannot race.
 - If delegating, give the worker the full per-ticket `Context`, `Contract`, `Guardrails`, `Acceptance`, and `Handoff` sections. Never ask a worker to infer requirements from the ticket title.
 - The orchestrator owns integration, architecture consistency, canonical DB safety, commits, final application launches, and the truthfulness of reports. A worker saying “done” is not a gate.
-- Inspect the diff and run focused tests after every material edit. At each HARD gate, run the ticket's complete named checks before committing.
-- One ticket normally ends in one commit. Save all intended project state for that ticket, including `.meta` files. Exclude local backups, logs, temp preview messages, builds, `Library`, and machine-specific settings.
+- Inspect the diff and run focused tests for changed behavior. At each HARD gate, run its named checks; repeat a broader suite only after relevant changes/failures, rather than repeatedly running identical checks for paperwork.
+- Tickets are dependency milestones, not single-commit size targets. Split large tickets into coherent commits with a recorded file map; do not bundle the whole Core or WPF feature into one opaque change. Save all intended project state, including `.meta` files. Exclude local backups, logs, temp preview messages, builds, `Library`, and machine-specific settings.
 - Update `README.md` after implemented features. Add focused docs where future maintainers need operational details; do not turn reports into the only specification.
 - If three consecutive attempts fail for the same cause, stop, preserve evidence, and follow repository rule 3.
 
-## Human gates
+## Visual verification and human gates
 
-A HUMAN gate requires the real WPF app and/or pinned Unity Editor/player. The executor must first complete the implementation, automated tests, sample content, launch and exact test steps. Then ask the user to judge the concrete running result. Do not mark a HUMAN gate passed because a test, screenshot, primitive rig, simulated host, or executor opinion says it probably looks good.
+A HUMAN gate requires the real WPF app and/or pinned Unity Editor/player. Complete implementation, checks, content, launch and exact test steps before asking the user to judge the running result. Only Tickets 01, 06 and 10 require explicit human acceptance: actual rig feasibility, the first integrated write-and-watch loop, and final game/authoring acceptance. An existing explicit user acceptance of the same unchanged result satisfies the gate.
 
-Ticket 01's visual rig contract is a blocking human gate. Tickets 04, 06–09 contain focused usability/visual gates. The user may authorize continuation after a gate while listing fixes; incorporate them in the current ticket before its final commit unless the user explicitly defers them.
+Tickets 04, 05, 07, 08 and 09 require hands-on executor verification and evidence, with optional user feedback; they do not add another approval pause. Continue when their checks pass. If actual UI/visual verification is unavailable, report it as pending and do not claim it passed. Human acceptance cannot be inferred from tests or executor opinion. Fix user-reported material friction in the affected ticket unless explicitly deferred.
 
 Keep the applicable application running when handing a HUMAN gate to the user. Record process/editor state and exact scene/card/session to inspect.
 
@@ -68,10 +68,11 @@ Keep the applicable application running when handing a HUMAN gate to the user. R
 
 `Content/GameContent.db` is authored binary content.
 
-- Use disposable databases for schema, loader, authoring, import and canary work until the packet explicitly reaches a canonical checkpoint.
-- Before each canonical write: close all writers normally; verify no WAL/SHM companions; run integrity/FK checks; make a byte-for-byte timestamped backup outside the commit and hash it; record current schema ledger and semantic row counts.
+- Use disposable databases for destructive tests and migration experiments. After Ticket 03's tested migration-code commit, checkpoint/migrate canonical content separately, so real authored examples from Ticket 04 can be preserved and extended through the stack.
+- Before canonical migration, filesystem backup or Git database checkpoint: close writers normally, verify no WAL/SHM companions, run integrity/FK checks, hash the backup and record ledger/semantic counts. These are checkpoint requirements, not requirements before every authoring command.
+- During ordinary authoring, keep WPF open and use its transactional commands and Save/Apply buffers. Scoped read snapshots/exports use SQLite transactions while WPF is open; never copy a live DB file. Checkpoint meaningful authoring batches, not individual lines. Preview requests write generated files only.
 - Migration code/tests are committed before migrating the canonical DB. Canonical migration is a separate checkpoint commit if it changes the tracked DB.
-- Do not hand-edit migration rows, line-merge DB files, silently renumber a migration collision, or add demo content to the canonical DB without the ticket's explicit authoring gate.
+- Do not hand-edit migration rows, line-merge DB files or silently renumber a migration collision. Install starter semantic content once via explicit commands, preserve its IDs, and evolve one canonical acceptance conversation from Ticket 04 onward. Never require the user to retype a successful disposable demo into canonical content at the end.
 - Generated Unity JSON and manifests are build transports. SQLite remains the only editable content authority.
 
 ## Unity and asset protocol
@@ -95,6 +96,14 @@ Enforce `ARCHITECTURE-CONTRACT.md`. In particular:
 - No per-conversation Timeline or Cartesian combination table.
 - No silent fallback for missing routes, required coverage, bindings or capabilities.
 - Existing gameplay/consent/card/dialog selection semantics remain intact.
+
+## Protect the authoring loop
+
+Use the architecture contract's WPF workflow as a deliverable, not end-stage polish. Ticket 04 establishes inherited defaults, dialogue entry, buffers and scoped simulated audition. Ticket 05 must connect one-command WPF audition to the real proof renderer. Ticket 06 is the integrated user gate. Ticket 09 completes bulk coverage/intake tools; it must not introduce the first usable preview.
+
+Treat repeated Save/export/Unity Run, repeated profile selection, copying asset IDs, retyping acceptance content, global validation of unrelated unfinished work, and replaying a whole scene for a single line as defects. Audit every authoring step for them. Add no service/framework to remove a few clicks: use existing commands, a focused local preview host and explicit ownership.
+
+For each ticket, record one brief user task from entry to observed result, including clicks/commands, lost context/focus and warm audition latency where applicable. Fix avoidable friction at its source. Keep hashes, resource IDs, regions and traces in details/technical editors unless needed to explain an actionable error.
 
 ## Test and failure protocol
 
