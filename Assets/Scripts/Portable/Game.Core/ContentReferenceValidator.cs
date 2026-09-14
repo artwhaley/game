@@ -22,7 +22,8 @@ namespace TruthCardGame.Core
             var resources = IndexResources(content.Resources);
             var capabilities = IndexIds(content.SmartToyCapabilityDefinitions, item => item?.Id);
             var dialogTags = IndexIds(content.DialogTags, item => item?.Id);
-            ValidateSequence(sequence, owner ?? "Action Sequence fragment", resources, capabilities, dialogTags);
+            var performanceEvents = IndexIds(content.PerformanceEvents, item => item?.Id);
+            ValidateSequence(sequence, owner ?? "Action Sequence fragment", resources, capabilities, dialogTags, performanceEvents);
         }
 
         public static void Validate(GameContentDefinition content)
@@ -32,6 +33,27 @@ namespace TruthCardGame.Core
             var resources = IndexResources(content.Resources);
             var capabilities = IndexIds(content.SmartToyCapabilityDefinitions, item => item?.Id);
             var dialogTags = IndexIds(content.DialogTags, item => item?.Id);
+            var performanceTags = IndexIds(content.PerformanceTags, item => item?.Id);
+            var performanceEvents = IndexIds(content.PerformanceEvents, item => item?.Id);
+
+            foreach (var performanceEvent in content.PerformanceEvents ?? new List<ConversationPerformanceEventDefinition>())
+            {
+                if (performanceEvent == null) continue;
+                foreach (var tagId in performanceEvent.PerformanceTagIds ?? new List<string>())
+                {
+                    if (!performanceTags.Contains(tagId ?? ""))
+                    {
+                        throw new InvalidOperationException(
+                            $"Performance Event '{performanceEvent.Id}' references unknown Performance Tag '{tagId}'.");
+                    }
+                }
+                if (performanceEvent.StagingPolicy == PerformanceStagingPolicy.NamedLocation
+                    && string.IsNullOrEmpty(performanceEvent.NamedAnchorId))
+                {
+                    throw new InvalidOperationException(
+                        $"Performance Event '{performanceEvent.Id}' uses NamedLocation staging with no named anchor.");
+                }
+            }
 
             foreach (var snippet in content.DialogSnippets ?? new List<DialogSnippetDefinition>())
             {
@@ -47,7 +69,7 @@ namespace TruthCardGame.Core
             }
 
             foreach (var card in content.Cards ?? new List<CardDefinition>())
-                ValidateSequence(card?.Sequence, "Card '" + (card?.Id ?? "<null>") + "'", resources, capabilities, dialogTags);
+                ValidateSequence(card?.Sequence, "Card '" + (card?.Id ?? "<null>") + "'", resources, capabilities, dialogTags, performanceEvents);
 
             foreach (var phase in content.Phases ?? new List<PhaseDefinition>())
             {
@@ -57,7 +79,7 @@ namespace TruthCardGame.Core
                     if (node is ActionNodeDefinition action)
                     {
                         ValidateSequence(action.Sequence,
-                            $"Phase '{phase.Id}' ActionNode '{node.Id}'", resources, capabilities, dialogTags);
+                            $"Phase '{phase.Id}' ActionNode '{node.Id}'", resources, capabilities, dialogTags, performanceEvents);
                     }
                     else if (node is PhaseDecisionNodeDefinition decision)
                     {
@@ -65,7 +87,7 @@ namespace TruthCardGame.Core
                         {
                             ValidateSequence(option?.Sequence,
                                 $"Phase '{phase.Id}' PhaseDecision option '{option?.Id ?? "<null>"}'",
-                                resources, capabilities, dialogTags);
+                                resources, capabilities, dialogTags, performanceEvents);
                         }
                     }
                 }
@@ -81,7 +103,7 @@ namespace TruthCardGame.Core
                     {
                         ValidateSequence(option?.Sequence,
                             $"Session '{session.Id}' SessionDecision option '{option?.Id ?? "<null>"}'",
-                            resources, capabilities, dialogTags);
+                            resources, capabilities, dialogTags, performanceEvents);
                     }
                 }
             }
@@ -89,7 +111,7 @@ namespace TruthCardGame.Core
 
         private static void ValidateSequence(ActionSequenceDefinition sequence, string owner,
             Dictionary<string, ResourceDefinition> resources, HashSet<string> capabilities,
-            HashSet<string> dialogTags)
+            HashSet<string> dialogTags, HashSet<string> performanceEvents)
         {
             if (sequence == null) return; // Structural validation owns missing sequences.
             foreach (var instance in sequence.Instances ?? new List<ActionInstanceDefinition>())
@@ -111,6 +133,18 @@ namespace TruthCardGame.Core
                         RequireCapability(owner, instance.Id, typeKey, setToy.CapabilityId, capabilities);
                         RequireResource(owner, instance.Id, typeKey, setToy.PatternResourceId,
                             ResourceKinds.ToyPattern, resources);
+                        break;
+                    case PerformInstanceDefinition perform:
+                        if (string.IsNullOrEmpty(perform.EventId))
+                        {
+                            throw new InvalidOperationException(
+                                $"{owner} action '{instance.Id}' ({typeKey}) requires a Performance Event.");
+                        }
+                        if (!performanceEvents.Contains(perform.EventId))
+                        {
+                            throw new InvalidOperationException(
+                                $"{owner} action '{instance.Id}' ({typeKey}) references unknown Performance Event '{perform.EventId}'.");
+                        }
                         break;
                     case DialogFromTagsInstanceDefinition dialogFromTags:
                         if (dialogFromTags.RequiredDialogTagIds == null || dialogFromTags.RequiredDialogTagIds.Count == 0)
@@ -135,7 +169,7 @@ namespace TruthCardGame.Core
                     {
                         ValidateSequence(option?.Sequence,
                             owner + " PromptChoice '" + instance.Id + "' option '" + (option?.Id ?? "<null>") + "'",
-                            resources, capabilities, dialogTags);
+                            resources, capabilities, dialogTags, performanceEvents);
                     }
                 }
             }

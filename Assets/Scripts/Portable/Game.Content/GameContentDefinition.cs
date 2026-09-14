@@ -36,6 +36,16 @@ namespace TruthCardGame.Content
         /// <summary>Authored Dialog Tag catalog (Dialog From Tags selection domain).</summary>
         public List<DialogTagDefinition> DialogTags { get; set; } = new List<DialogTagDefinition>();
 
+        /// <summary>
+        /// Authored semantic Performance Tag catalog. Separate namespace from
+        /// Card Tags and Dialog Tags; Unity ingredient membership references
+        /// these stable IDs.
+        /// </summary>
+        public List<PerformanceTagDefinition> PerformanceTags { get; set; } = new List<PerformanceTagDefinition>();
+
+        /// <summary>Reusable Conversation Performance Events the Perform action resolves.</summary>
+        public List<ConversationPerformanceEventDefinition> PerformanceEvents { get; set; } = new List<ConversationPerformanceEventDefinition>();
+
         /// <summary>Authored Dialog Snippet catalog (portable text content, NOT Resources).</summary>
         public List<DialogSnippetDefinition> DialogSnippets { get; set; } = new List<DialogSnippetDefinition>();
 

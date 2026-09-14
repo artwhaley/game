@@ -24,6 +24,10 @@ namespace TruthCardGame.Core
         private readonly Dictionary<string, TemperatureDefinition> _temperatures;
         private readonly Dictionary<string, DialogTagDefinition> _dialogTags;
         private readonly Dictionary<string, DialogSnippetDefinition> _dialogSnippets;
+        private readonly Dictionary<string, PerformanceTagDefinition> _performanceTags;
+        private readonly Dictionary<string, ConversationPerformanceEventDefinition> _performanceEvents;
+        private readonly IReadOnlyList<PerformanceTagDefinition> _performanceTagsList;
+        private readonly IReadOnlyList<ConversationPerformanceEventDefinition> _performanceEventsList;
         private readonly IReadOnlyList<TemperatureDefinition> _temperaturesList;
         private readonly IReadOnlyList<SessionDefinition> _sessionsList;
         private readonly IReadOnlyList<DialogTagDefinition> _dialogTagsList;
@@ -41,6 +45,14 @@ namespace TruthCardGame.Core
             _temperatures = Index(content.Temperatures, "Temperature", t => t.Id);
             _dialogTags = Index(content.DialogTags, "DialogTag", t => t.Id);
             _dialogSnippets = Index(content.DialogSnippets, "DialogSnippet", s => s.Id);
+            _performanceTags = Index(content.PerformanceTags, "PerformanceTag", t => t.Id);
+            _performanceEvents = Index(content.PerformanceEvents, "PerformanceEvent", e => e.Id);
+            _performanceTagsList = content.PerformanceTags == null
+                ? (IReadOnlyList<PerformanceTagDefinition>)new List<PerformanceTagDefinition>()
+                : content.PerformanceTags;
+            _performanceEventsList = content.PerformanceEvents == null
+                ? (IReadOnlyList<ConversationPerformanceEventDefinition>)new List<ConversationPerformanceEventDefinition>()
+                : content.PerformanceEvents;
             _temperaturesList = content.Temperatures == null
                 ? (IReadOnlyList<TemperatureDefinition>)new List<TemperatureDefinition>()
                 : content.Temperatures;
@@ -146,6 +158,27 @@ namespace TruthCardGame.Core
 
         /// <summary>All Dialog Snippets in stable order (DialogFromTags selection input).</summary>
         public IReadOnlyList<DialogSnippetDefinition> DialogSnippetsList => _dialogSnippetsList;
+
+        public PerformanceTagDefinition PerformanceTagById(string id)
+        {
+            return Lookup(_performanceTags, "PerformanceTag", id);
+        }
+
+        public bool TryPerformanceTagById(string id, out PerformanceTagDefinition tag)
+        {
+            return _performanceTags.TryGetValue(id ?? "", out tag);
+        }
+
+        /// <summary>All Performance Tags in stable authoring order (Unity picker + diagnostics).</summary>
+        public IReadOnlyList<PerformanceTagDefinition> PerformanceTagsList => _performanceTagsList;
+
+        public ConversationPerformanceEventDefinition PerformanceEventById(string id)
+        {
+            return Lookup(_performanceEvents, "PerformanceEvent", id);
+        }
+
+        /// <summary>All Conversation Performance Events in stable authoring order.</summary>
+        public IReadOnlyList<ConversationPerformanceEventDefinition> PerformanceEventsList => _performanceEventsList;
 
         private static T Lookup<T>(Dictionary<string, T> index, string typeName, string id) where T : class
         {

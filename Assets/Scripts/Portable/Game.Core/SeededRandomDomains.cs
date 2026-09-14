@@ -12,6 +12,7 @@ namespace TruthCardGame.Core
         private const uint SessionSelectionSalt = 0x51E55101u;
         private const uint PhaseRunCardSalt = 0xCA4D5EEDu;
         private const uint DialogSelectionSalt = 0xD1A106u;
+        private const uint PerformanceSalt = 0x9E4F0C4Du;
 
         public static IRandomSource CreateSessionSelection(int seed)
         {
@@ -26,6 +27,17 @@ namespace TruthCardGame.Core
         public static IRandomSource CreateDialogSelection(int seed)
         {
             return new SystemRandomSource(DeriveSeed(seed, DialogSelectionSalt));
+        }
+
+        /// <summary>
+        /// Dedicated Performance stream. Fixed salt keeps semantic ingredient
+        /// selection independent from Session, PhaseRun/Card and Dialog draws,
+        /// so adding or removing Perform actions never perturbs existing
+        /// randomness consumption.
+        /// </summary>
+        public static IRandomSource CreatePerformance(int seed)
+        {
+            return new SystemRandomSource(DeriveSeed(seed, PerformanceSalt));
         }
 
         public static PhaseRunRngFactory CreatePhaseRunFactory(int seed)

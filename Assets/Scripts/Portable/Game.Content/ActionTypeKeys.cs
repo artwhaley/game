@@ -26,6 +26,7 @@ namespace TruthCardGame.Content
         public const string WaitForAll = "wait_for_all";
         public const string PromptChoice = "prompt_choice";
         public const string WaitForContinue = "wait_for_continue";
+        public const string Perform = "perform";
 
         // Flow-control types.
         public const string PhaseGoto = "phase_goto";
@@ -42,7 +43,8 @@ namespace TruthCardGame.Content
                 || typeKey == EndSession
                 || typeKey == WaitForContinue
                 || typeKey == WaitForAll
-                || typeKey == PromptChoice;
+                || typeKey == PromptChoice
+                || typeKey == Perform;
         }
 
         /// <summary>Actions that must never be persisted or authored as blocking.</summary>

@@ -129,6 +129,7 @@ namespace TruthCardGame.Core
             if (instance is WaitForAllInstanceDefinition) return ActionTypeKeys.WaitForAll;
             if (instance is PromptChoiceInstanceDefinition) return ActionTypeKeys.PromptChoice;
             if (instance is WaitForContinueInstanceDefinition) return ActionTypeKeys.WaitForContinue;
+            if (instance is PerformInstanceDefinition) return ActionTypeKeys.Perform;
             if (instance is PhaseGotoInstanceDefinition) return ActionTypeKeys.PhaseGoto;
             if (instance is SessionGotoInstanceDefinition) return ActionTypeKeys.SessionGoto;
             if (instance is ReturnInstanceDefinition) return ActionTypeKeys.Return;
@@ -284,6 +285,22 @@ namespace TruthCardGame.Core
                 EditorDiscriminator = "ToySetPattern",
                 DefaultInstance = () => new ToySetPatternInstanceDefinition
                     { Id = "", CapabilityId = "", PatternResourceId = "", IsBlocking = false },
+            });
+
+            Add(new ActionTypeInfo
+            {
+                TypeKey = ActionTypeKeys.Perform,
+                DisplayLabel = "Perform",
+                AuthoringCategory = "Activity/Host",
+                SearchKeywords = "perform performance event stage acting",
+                // Perform is an ordinary blocking activity legal anywhere a card,
+                // phase or choice sequence can run; it has no authored toggle.
+                LegalScopes = ActionOwnerScope.All,
+                IsAlwaysBlocking = true,
+                BlockingConfigurable = false,
+                DefaultBlocking = true,
+                EditorDiscriminator = "Perform",
+                DefaultInstance = () => new PerformInstanceDefinition { Id = "", EventId = "", IsBlocking = true },
             });
 
             Add(new ActionTypeInfo

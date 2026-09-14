@@ -3,6 +3,7 @@
     "rootNamespace": "TruthCardGame.EditorTools",
     "references": [
         "TruthCardGame",
+        "Game.Content",
         "Unity.Timeline",
         "Unity.Cinemachine",
         "Unity.Timeline.Editor",
