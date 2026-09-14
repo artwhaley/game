@@ -39,7 +39,7 @@ namespace TruthCardGame.Tests
             Assert.DoesNotThrow(() => PresentationCatalogValidator.Validate(readBack));
             Assert.AreEqual(catalog.Ingredients.Count, readBack.Ingredients.Count);
             CollectionAssert.AreEquivalent(
-                new[] { PerformanceCatalogSetupTags.Playful, PerformanceCatalogSetupTags.Tease },
+                new[] { SyntheticTagIds.Playful, SyntheticTagIds.Tease },
                 readBack.Ingredients.Find(i => i.Id == "ing-smile").PerformanceTagIds);
         }
 
@@ -79,8 +79,8 @@ namespace TruthCardGame.Tests
             var view = new PerformanceRegistryView(null,
                 new List<PerformanceIngredientEntry>
                 {
-                    Body("ing-dup", enabled: true, tags: new[] { PerformanceCatalogSetupTags.Playful }),
-                    Body("ing-dup", enabled: true, tags: new[] { PerformanceCatalogSetupTags.Playful }),
+                    Body("ing-dup", enabled: true, tags: new[] { SyntheticTagIds.Playful }),
+                    Body("ing-dup", enabled: true, tags: new[] { SyntheticTagIds.Playful }),
                 },
                 new List<PerformanceAnchorEntry>(),
                 new List<PerformanceOperationEntry>());
@@ -123,10 +123,10 @@ namespace TruthCardGame.Tests
             {
                 Foundation("ing-standing", Standing),
                 Foundation("ing-sitting", new[] { PresentationPostures.Sitting }),
-                Body("ing-talking", true, new[] { PerformanceCatalogSetupTags.Playful, PerformanceCatalogSetupTags.Tease }, BothPostures),
-                Body("ing-interact", true, new[] { PerformanceCatalogSetupTags.Tease }, Standing),
-                Face("ing-smile", new[] { PerformanceCatalogSetupTags.Playful, PerformanceCatalogSetupTags.Tease }),
-                Face("ing-frown", new[] { PerformanceCatalogSetupTags.Stern }),
+                Body("ing-talking", true, new[] { SyntheticTagIds.Playful, SyntheticTagIds.Tease }, BothPostures),
+                Body("ing-interact", true, new[] { SyntheticTagIds.Tease }, Standing),
+                Face("ing-smile", new[] { SyntheticTagIds.Playful, SyntheticTagIds.Tease }),
+                Face("ing-frown", new[] { SyntheticTagIds.Stern }),
             };
             var anchors = new List<PerformanceAnchorEntry>
             {
@@ -185,12 +185,17 @@ namespace TruthCardGame.Tests
             return entry;
         }
 
-        /// <summary>Mirror of the editor fixture's tag vocabulary without referencing editor code.</summary>
-        private static class PerformanceCatalogSetupTags
+        /// <summary>
+        /// Synthetic tag IDs. These are deliberately not the editor fixture's
+        /// vocabulary — the fixture publishes none — and exist only to prove
+        /// that whatever stable IDs an ingredient carries survive projection and
+        /// JSON round-tripping unchanged.
+        /// </summary>
+        private static class SyntheticTagIds
         {
-            public const string Playful = "perf-tag-playful";
-            public const string Tease = "perf-tag-tease";
-            public const string Stern = "perf-tag-stern";
+            public const string Playful = "tag-synthetic-playful";
+            public const string Tease = "tag-synthetic-tease";
+            public const string Stern = "tag-synthetic-stern";
         }
     }
 }

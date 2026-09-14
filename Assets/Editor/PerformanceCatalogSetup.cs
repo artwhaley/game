@@ -12,9 +12,11 @@ namespace TruthCardGame.EditorTools
 {
     /// <summary>
     /// Ticket 01 authoring commands for the Unity-owned presentation registry.
-    /// The registry is the factual authority for ingredient membership,
-    /// compatibility, anchors and reusable operations; the generated catalog is
-    /// its read-only projection for Core and WPF.
+    /// The registry is the factual authority for ingredient compatibility,
+    /// anchors and reusable operations; the generated catalog is its read-only
+    /// projection for Core and WPF. Tag *membership* is authored here too, but
+    /// the tag vocabulary and its stable IDs belong to WPF/SQLite, so this file
+    /// never mints a tag ID of its own — see SuggestedTagTitles.
     ///
     /// Lifetime split (matching the Phase 00 conventions):
     ///  - <c>Ensure V1 Performance Fixture</c> is idempotent and may create/repair
@@ -30,16 +32,19 @@ namespace TruthCardGame.EditorTools
         public const string CatalogFileName = "PresentationCatalog.json";
 
         /// <summary>
-        /// Shared V1 dev-fixture Performance Tag IDs. The real vocabulary is
-        /// authored in WPF/SQLite (ticket 03); this fixture must use those exact
-        /// IDs so ingredient membership and the authored event line up.
+        /// Suggested V1 Performance Tag *titles* to author in the WPF Workbench.
+        /// Unity deliberately keeps no tag IDs here: the vocabulary (and its
+        /// opaque stable IDs) is WPF/SQLite-owned, so ingredient membership is
+        /// assigned with the Performance Tag Picker, which reads the real IDs
+        /// from the content database. Titles are affordances for a human, never
+        /// identifiers — nothing joins on them.
         /// </summary>
-        public static class FixtureTags
+        public static class SuggestedTagTitles
         {
-            public const string Playful = "perf-tag-playful";
-            public const string Tease = "perf-tag-tease";
-            public const string Stern = "perf-tag-stern";
-            public const string Comforting = "perf-tag-comforting";
+            public const string Playful = "Playful";
+            public const string Tease = "Tease";
+            public const string Stern = "Stern";
+            public const string Comforting = "Comforting";
         }
 
         [MenuItem("TruthCardGame/Performance/Ensure V1 Performance Fixture")]
@@ -65,18 +70,24 @@ namespace TruthCardGame.EditorTools
                 var sitting = new[] { PresentationPostures.Sitting };
                 var bothPostures = new[] { PresentationPostures.Standing, PresentationPostures.Sitting };
 
+                // Ticket 01 / Ticket 03 alignment: Unity owns anchor and
+                // operation identity, but NOT the Performance Tag vocabulary.
+                // The fixture therefore ships expressive ingredients untagged
+                // and disabled rather than hard-coding invented tag IDs that
+                // could never match the WPF-owned vocabulary. The author
+                // authors the tags in the Workbench, assigns the real stable
+                // IDs with the Performance Tag Picker, then enables each
+                // ingredient. Foundation ingredients express no tag by
+                // definition and stay enabled.
                 var entries = new List<PerformanceIngredientEntry>
                 {
                     Foundation("V1 Standing Idle", clips, "Idle_Loop", standing),
                     Foundation("V1 Sitting Idle", clips, "Sitting_Idle_Loop", sitting),
-                    Body("V1 Talking Idle", clips, "Idle_Talking_Loop", bothPostures,
-                        FixtureTags.Playful, FixtureTags.Tease),
-                    Body("V1 Interact", clips, "Interact", standing, FixtureTags.Tease),
-                    Body("V1 Dance (later variety)", clips, "Dance_Loop", standing,
-                        FixtureTags.Playful, enabled: false),
-                    Face("V1 Smile", "ST Mika 8 Natural Smile", bothPostures,
-                        FixtureTags.Playful, FixtureTags.Tease),
-                    Face("V1 Frown", "eCTRLFrown_HD", bothPostures, FixtureTags.Stern),
+                    Body("V1 Talking Idle", clips, "Idle_Talking_Loop", bothPostures),
+                    Body("V1 Interact", clips, "Interact", standing),
+                    Body("V1 Dance (later variety)", clips, "Dance_Loop", standing),
+                    Face("V1 Smile", "ST Mika 8 Natural Smile", bothPostures),
+                    Face("V1 Frown", "eCTRLFrown_HD", bothPostures),
                 };
 
                 var anchorEntries = new List<PerformanceAnchorEntry>
@@ -97,6 +108,15 @@ namespace TruthCardGame.EditorTools
                 EditorUtility.SetDirty(registry);
                 AssetDatabase.SaveAssets();
                 AssetDatabase.Refresh();
+
+                Debug.Log(
+                    "[PERFORMANCE] Fixture built with untagged, disabled expressive ingredients. " +
+                    "Author Performance Tags (" + string.Join(", ", new[]
+                    {
+                        SuggestedTagTitles.Playful, SuggestedTagTitles.Tease,
+                        SuggestedTagTitles.Stern, SuggestedTagTitles.Comforting,
+                    }) + ") in the WPF Workbench, assign them to ingredients with " +
+                    "TruthCardGame/Performance/Open Performance Tag Picker, then enable each ingredient.");
             }
 
             Debug.Log("[PERFORMANCE] Registry ready at " + RegistryPath +
@@ -208,26 +228,23 @@ namespace TruthCardGame.EditorTools
                 postures, Array.Empty<string>(), enabled: true);
         }
 
+        /// <summary>
+        /// Expressive body ingredients start untagged and disabled: an enabled
+        /// body/face ingredient with no Performance Tag is invalid, so the
+        /// fixture leaves enabling to the author who assigns real tag IDs.
+        /// </summary>
         private static PerformanceIngredientEntry Body(
-            string name, Dictionary<string, AnimationClip> clips, string role, string[] postures,
-            string tag, bool enabled = true)
+            string name, Dictionary<string, AnimationClip> clips, string role, string[] postures)
         {
             return Ingredient(name, PresentationIngredientKinds.Body, RequireClip(clips, role),
-                postures, new[] { tag }, enabled);
-        }
-
-        private static PerformanceIngredientEntry Body(
-            string name, Dictionary<string, AnimationClip> clips, string role, string[] postures,
-            string tagA, string tagB, bool enabled = true)
-        {
-            return Ingredient(name, PresentationIngredientKinds.Body, RequireClip(clips, role),
-                postures, new[] { tagA, tagB }, enabled);
+                postures, Array.Empty<string>(), enabled: false);
         }
 
         private static PerformanceIngredientEntry Face(
-            string name, string controlName, string[] postures, params string[] tags)
+            string name, string controlName, string[] postures)
         {
-            return Ingredient(name, PresentationIngredientKinds.Face, null, postures, tags, true, controlName);
+            return Ingredient(name, PresentationIngredientKinds.Face, null, postures,
+                Array.Empty<string>(), enabled: false, controlName);
         }
 
         private static PerformanceIngredientEntry Ingredient(
