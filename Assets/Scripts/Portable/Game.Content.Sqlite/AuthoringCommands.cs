@@ -1778,6 +1778,17 @@ namespace TruthCardGame.Content.Sqlite
                 case CatalogKinds.DialogTag:
                     DialogCatalogRepository.CreateTag(connection, new DialogTagDefinition { Id = _id, Title = _title });
                     break;
+                case CatalogKinds.PerformanceTag:
+                    PerformanceCatalogRepository.CreateTag(connection, new PerformanceTagDefinition { Id = _id, Title = _title });
+                    break;
+                case CatalogKinds.PerformanceEvent:
+                    // A brand-new event is immediately usable: ALL tags, stay in
+                    // place, refresh at dialogue start.
+                    PerformanceCatalogRepository.SaveEvent(connection, new ConversationPerformanceEventDefinition
+                    {
+                        Id = _id, Name = _title, RequireAllTags = true, RefreshAtDialogueStart = true,
+                    });
+                    break;
                 default:
                     throw new InvalidOperationException("Unknown catalog kind '" + _kind + "'.");
             }
@@ -1793,6 +1804,8 @@ namespace TruthCardGame.Content.Sqlite
                 case CatalogKinds.Equipment: Sql.Execute(connection, null, "DELETE FROM equipment_definition WHERE id = @id;", ("id", _id)); break;
                 case CatalogKinds.SmartToyCapability: CatalogRepositories.DeleteSmartToyCapabilityIfUnused(connection, _id); break;
                 case CatalogKinds.DialogTag: DialogCatalogRepository.DeleteTagIfUnused(connection, _id); break;
+                case CatalogKinds.PerformanceTag: PerformanceCatalogRepository.DeleteTagIfUnused(connection, _id); break;
+                case CatalogKinds.PerformanceEvent: PerformanceCatalogRepository.DeleteEventIfUnused(connection, _id); break;
             }
         }
     }
@@ -1803,10 +1816,12 @@ namespace TruthCardGame.Content.Sqlite
         private readonly string _kind;
         private readonly string _id;
         private readonly string _title;
+        private readonly CatalogEntryEdit _snapshot;
 
-        public DeleteCatalogEntryCommand(Func<DbConnection> conn, string kind, string id, string title) : base(conn)
+        public DeleteCatalogEntryCommand(Func<DbConnection> conn, string kind, string id, string title,
+            CatalogEntryEdit snapshot = null) : base(conn)
         {
-            _kind = kind; _id = id; _title = title;
+            _kind = kind; _id = id; _title = title; _snapshot = snapshot;
         }
 
         public override string Name => "Delete " + _kind;
@@ -1825,13 +1840,22 @@ namespace TruthCardGame.Content.Sqlite
                 case CatalogKinds.Equipment: Sql.Execute(connection, null, "DELETE FROM equipment_definition WHERE id = @id;", ("id", _id)); break;
                 case CatalogKinds.SmartToyCapability: CatalogRepositories.DeleteSmartToyCapabilityIfUnused(connection, _id); break;
                 case CatalogKinds.DialogTag: DialogCatalogRepository.DeleteTagIfUnused(connection, _id); break;
+                case CatalogKinds.PerformanceTag: PerformanceCatalogRepository.DeleteTagIfUnused(connection, _id); break;
+                case CatalogKinds.PerformanceEvent: PerformanceCatalogRepository.DeleteEventIfUnused(connection, _id); break;
             }
         }
 
         protected override void UndoCore(DbConnection connection)
         {
             // Re-creates the row; the definition was unreferenced when deleted,
-            // and undo restores exactly the same stable id/title.
+            // and undo restores exactly the same stable id/title. Performance
+            // rows restore their full snapshot so tags, staging and constraints
+            // survive the round trip.
+            if (_snapshot != null)
+            {
+                UpdateCatalogEntryCommand.ApplyEdit(connection, _snapshot);
+                return;
+            }
             switch (_kind)
             {
                 case CatalogKinds.SessionType:
@@ -1851,6 +1875,15 @@ namespace TruthCardGame.Content.Sqlite
                     break;
                 case CatalogKinds.DialogTag:
                     DialogCatalogRepository.CreateTag(connection, new DialogTagDefinition { Id = _id, Title = _title });
+                    break;
+                case CatalogKinds.PerformanceTag:
+                    PerformanceCatalogRepository.CreateTag(connection, new PerformanceTagDefinition { Id = _id, Title = _title });
+                    break;
+                case CatalogKinds.PerformanceEvent:
+                    PerformanceCatalogRepository.SaveEvent(connection, new ConversationPerformanceEventDefinition
+                    {
+                        Id = _id, Name = _title, RequireAllTags = true, RefreshAtDialogueStart = true,
+                    });
                     break;
             }
         }
@@ -1892,6 +1925,15 @@ namespace TruthCardGame.Content.Sqlite
                 case CatalogKinds.Equipment: Sql.Execute(connection, null, "UPDATE equipment_definition SET title = @t WHERE id = @id;", ("t", (object)title ?? DBNull.Value), ("id", _id)); break;
                 case CatalogKinds.SmartToyCapability: Sql.Execute(connection, null, "UPDATE smart_toy_capability_definition SET title = @t WHERE id = @id;", ("t", (object)title ?? DBNull.Value), ("id", _id)); break;
                 case CatalogKinds.DialogTag: DialogCatalogRepository.RenameTag(connection, _id, title); break;
+                case CatalogKinds.PerformanceTag: PerformanceCatalogRepository.RenameTag(connection, _id, title); break;
+                case CatalogKinds.PerformanceEvent:
+                {
+                    var performanceEvent = PerformanceCatalogRepository.ReadEvent(connection, _id);
+                    if (performanceEvent == null) throw new InvalidOperationException("Unknown Performance Event '" + _id + "'.");
+                    performanceEvent.Name = title ?? "";
+                    PerformanceCatalogRepository.SaveEvent(connection, performanceEvent);
+                    break;
+                }
             }
         }
     }
@@ -1915,7 +1957,10 @@ namespace TruthCardGame.Content.Sqlite
 
         protected override void UndoCore(DbConnection connection) => Apply(connection, _oldValue);
 
-        private static void Apply(DbConnection connection, CatalogEntryEdit value)
+        private static void Apply(DbConnection connection, CatalogEntryEdit value) => ApplyEdit(connection, value);
+
+        /// <summary>Applies one full-row snapshot; shared with delete-undo.</summary>
+        internal static void ApplyEdit(DbConnection connection, CatalogEntryEdit value)
         {
             switch (value.Kind)
             {
@@ -1950,6 +1995,30 @@ namespace TruthCardGame.Content.Sqlite
                 case CatalogKinds.DialogTag:
                     DialogCatalogRepository.RenameTag(connection, value.Id, value.Title);
                     break;
+                case CatalogKinds.PerformanceTag:
+                    PerformanceCatalogRepository.UpdateTag(connection, new PerformanceTagDefinition
+                    {
+                        Id = value.Id, Title = value.Title, SortOrder = value.SortOrder, IsRetired = value.IsRetired,
+                    });
+                    break;
+                case CatalogKinds.PerformanceEvent:
+                {
+                    var performanceEvent = new ConversationPerformanceEventDefinition
+                    {
+                        Id = value.Id,
+                        Name = value.Title,
+                        SortOrder = value.SortOrder,
+                        RequireAllTags = value.RequireAllTags,
+                        StagingPolicy = value.StagingPolicy,
+                        NamedAnchorId = value.NamedAnchorId ?? "",
+                        RefreshAtDialogueStart = value.RefreshAtDialogueStart,
+                    };
+                    performanceEvent.PerformanceTagIds.AddRange(value.PerformanceTagIds ?? new List<string>());
+                    performanceEvent.AllowedAnchorIds.AddRange(value.AllowedAnchorIds ?? new List<string>());
+                    performanceEvent.AllowedPostureIds.AddRange(value.AllowedPostureIds ?? new List<string>());
+                    PerformanceCatalogRepository.SaveEvent(connection, performanceEvent);
+                    break;
+                }
                 case CatalogKinds.DialogSnippet:
                 {
                     var snippet = new DialogSnippetDefinition
@@ -1977,6 +2046,54 @@ namespace TruthCardGame.Content.Sqlite
         public int SortOrder { get; set; }
         public List<string> RequiredCapabilityIds { get; set; } = new List<string>();
         public List<string> DialogTagIds { get; set; } = new List<string>();
+
+        // Performance Tag retirement flag; a retired tag keeps identity and
+        // stays resolvable but is hidden from new selections.
+        public bool IsRetired { get; set; }
+
+        // Conversation Performance Event form fields.
+        public bool RequireAllTags { get; set; } = true;
+        public PerformanceStagingPolicy StagingPolicy { get; set; } = PerformanceStagingPolicy.Stay;
+        public string NamedAnchorId { get; set; }
+        public bool RefreshAtDialogueStart { get; set; } = true;
+        public List<string> PerformanceTagIds { get; set; } = new List<string>();
+        public List<string> AllowedAnchorIds { get; set; } = new List<string>();
+        public List<string> AllowedPostureIds { get; set; } = new List<string>();
+
+        /// <summary>Snapshot a Performance Tag row for edit/delete undo.</summary>
+        public static CatalogEntryEdit FromPerformanceTag(PerformanceTagDefinition tag)
+        {
+            if (tag == null) return null;
+            return new CatalogEntryEdit
+            {
+                Kind = CatalogKinds.PerformanceTag,
+                Id = tag.Id,
+                Title = tag.Title,
+                SortOrder = tag.SortOrder,
+                IsRetired = tag.IsRetired,
+            };
+        }
+
+        /// <summary>Snapshot a Performance Event row, relations included.</summary>
+        public static CatalogEntryEdit FromPerformanceEvent(ConversationPerformanceEventDefinition performanceEvent)
+        {
+            if (performanceEvent == null) return null;
+            var edit = new CatalogEntryEdit
+            {
+                Kind = CatalogKinds.PerformanceEvent,
+                Id = performanceEvent.Id,
+                Title = performanceEvent.Name,
+                SortOrder = performanceEvent.SortOrder,
+                RequireAllTags = performanceEvent.RequireAllTags,
+                StagingPolicy = performanceEvent.StagingPolicy,
+                NamedAnchorId = performanceEvent.NamedAnchorId ?? "",
+                RefreshAtDialogueStart = performanceEvent.RefreshAtDialogueStart,
+            };
+            edit.PerformanceTagIds.AddRange(performanceEvent.PerformanceTagIds ?? new List<string>());
+            edit.AllowedAnchorIds.AddRange(performanceEvent.AllowedAnchorIds ?? new List<string>());
+            edit.AllowedPostureIds.AddRange(performanceEvent.AllowedPostureIds ?? new List<string>());
+            return edit;
+        }
     }
 
     /// <summary>Creates a Card with the default owned sequence (WaitForContinue + IncrementProgress +10).</summary>
@@ -2942,5 +3059,10 @@ namespace TruthCardGame.Content.Sqlite
         public const string SmartToyCapability = "smart-toy-capability";
         public const string DialogTag = "dialog-tag";
         public const string DialogSnippet = "dialog-snippet";
+        // Conversation Performance V1: a separate namespace from Card/Dialog
+        // tags, owned by WPF and referenced by Unity ingredients and the
+        // Perform action.
+        public const string PerformanceTag = "performance-tag";
+        public const string PerformanceEvent = "performance-event";
     }
 }

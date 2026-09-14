@@ -69,6 +69,31 @@ namespace TruthCardGame.Content.Sqlite
             return result;
         }
 
+        /// <summary>One tag by stable id, or null. Used to snapshot undo state.</summary>
+        public static PerformanceTagDefinition ReadTag(DbConnection connection, string id)
+        {
+            if (string.IsNullOrEmpty(id)) return null;
+            PerformanceTagDefinition tag = null;
+            Sql.QueryAll(connection,
+                "SELECT id, title, sort_order, is_retired FROM performance_tag_definition WHERE id = @id;",
+                reader => tag = new PerformanceTagDefinition
+                {
+                    Id = reader.GetString(0),
+                    Title = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    SortOrder = reader.GetInt32(2),
+                    IsRetired = reader.GetInt64(3) == 1,
+                },
+                ("id", id));
+            return tag;
+        }
+
+        /// <summary>One event with all of its relations by stable id, or null.</summary>
+        public static ConversationPerformanceEventDefinition ReadEvent(DbConnection connection, string id)
+        {
+            if (string.IsNullOrEmpty(id)) return null;
+            return ListEvents(connection).Find(item => item.Id == id);
+        }
+
         /// <summary>Event references for one Performance Tag (DB-side usage; Unity ingredient membership is in the catalog).</summary>
         public static int GetTagUsage(DbConnection connection, string tagId)
         {
