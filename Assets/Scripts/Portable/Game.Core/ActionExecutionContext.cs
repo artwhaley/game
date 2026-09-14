@@ -34,6 +34,13 @@ namespace TruthCardGame.Core
         /// </summary>
         public IRandomSource DialogRng { get; }
 
+        /// <summary>
+        /// Session-scoped performance director, when the run supplies a
+        /// performance host. Ordinary actions never require it; Perform and the
+        /// blocking-dialogue refresh use it when present.
+        /// </summary>
+        public PerformanceDirector Performance { get; }
+
         public ActionExecutionContext(
             Player player,
             CoreServices services,
@@ -41,7 +48,8 @@ namespace TruthCardGame.Core
             TemperatureState temperatures,
             PhaseProgressState phaseProgress,
             ActionOwnerScope activeScope,
-            IRandomSource dialogRng = null)
+            IRandomSource dialogRng = null,
+            PerformanceDirector performance = null)
         {
             Player = player ?? throw new ArgumentNullException(nameof(player));
             Services = services ?? throw new ArgumentNullException(nameof(services));
@@ -50,6 +58,7 @@ namespace TruthCardGame.Core
             PhaseProgress = phaseProgress;
             ActiveScope = activeScope;
             DialogRng = dialogRng;
+            Performance = performance;
         }
     }
 

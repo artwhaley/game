@@ -19,9 +19,17 @@ namespace TruthCardGame.Core
         public IDialogService Dialog { get; }
         public IExecutionPauseGate PauseGate { get; }
 
+        /// <summary>
+        /// Optional presentation host. Perform requires it; when absent, a
+        /// Perform action is a loud runtime error (never a silent no-op) while
+        /// every other action type remains fully compatible.
+        /// </summary>
+        public IPerformanceHost Performance { get; }
+
         public CoreServices(IGameDelay delay, IGameLog log = null, IPromptService prompts = null,
             ICutsceneService cutscene = null, IToyActivityService toyActivity = null,
-            IDialogService dialog = null, IExecutionPauseGate pauseGate = null)
+            IDialogService dialog = null, IExecutionPauseGate pauseGate = null,
+            IPerformanceHost performance = null)
         {
             Delay = delay ?? throw new ArgumentNullException(nameof(delay));
             Log = log ?? new NullGameLog();
@@ -30,6 +38,7 @@ namespace TruthCardGame.Core
             ToyActivity = toyActivity;
             Dialog = dialog;
             PauseGate = pauseGate ?? NoOpExecutionPauseGate.Instance;
+            Performance = performance;
         }
     }
 }

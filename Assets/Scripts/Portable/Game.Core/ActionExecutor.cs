@@ -227,7 +227,22 @@ namespace TruthCardGame.Core
                         context.Services.Log.Info(dialog.Text);
                         return ActionExecutionResult.Continue;
                     }
+                    // Automatic acting refresh happens immediately before the
+                    // blocking line is presented; nonblocking dialogue is
+                    // deliberately unchanged.
+                    await RefreshActingForDialogueAsync(dialog.IsBlocking, context, cancellationToken);
                     await context.Services.Dialog.ShowAsync(dialog.Text, cancellationToken);
+                    return ActionExecutionResult.Continue;
+
+                case PerformInstanceDefinition perform:
+                    if (context.Performance == null)
+                    {
+                        throw new InvalidOperationException(
+                            $"Perform action '{instance.Id}' requires a performance host, " +
+                            $"but this run supplied none (event '{perform.EventId}').");
+                    }
+                    await context.Performance.PerformAsync(
+                        context.Catalog.PerformanceEventById(perform.EventId), cancellationToken);
                     return ActionExecutionResult.Continue;
 
                 case DialogFromTagsInstanceDefinition dialogFromTags:
@@ -309,8 +324,26 @@ namespace TruthCardGame.Core
                     $"DialogFromTags action '{instance.Id}' has no dialog service; logging text only.");
                 return ActionExecutionResult.Continue;
             }
+            // Snippet selection above is synchronous and consumed the dialog RNG
+            // before any host await. The acting refresh is asked for immediately
+            // before presenting the blocking line; nonblocking is unchanged.
+            await RefreshActingForDialogueAsync(instance.IsBlocking, context, cancellationToken);
             await context.Services.Dialog.ShowAsync(selection.Snippet.Text, cancellationToken);
             return ActionExecutionResult.Continue;
+        }
+
+        /// <summary>
+        /// Blocking dialogue asks the active performance director to select and
+        /// await acceptance of compatible expressive acting immediately before
+        /// <see cref="IDialogService.ShowAsync"/>. No director, no active event or
+        /// a disabled refresh flag leaves presentation unchanged. Nonblocking
+        /// dialogue never requests acting, preserving existing behavior.
+        /// </summary>
+        private static Task RefreshActingForDialogueAsync(
+            bool blocking, ActionExecutionContext context, CancellationToken cancellationToken)
+        {
+            if (!blocking || context.Performance == null) return Task.CompletedTask;
+            return context.Performance.RefreshAtDialogueStartAsync(cancellationToken);
         }
 
         /// <summary>Readable "title [id]" list for diagnostics; unknown ids stay loud-but-readable.</summary>
@@ -371,7 +404,8 @@ namespace TruthCardGame.Core
                 context.Temperatures,
                 context.PhaseProgress,
                 nestedScope,
-                context.DialogRng);
+                context.DialogRng,
+                context.Performance);
             ActionSequenceScopeValidator.ValidatePromptChoiceDescendant(selected.Sequence, nestedScope);
             return await ExecuteSequenceAsync(selected.Sequence, nestedContext, cancellationToken, budget);
         }

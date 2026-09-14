@@ -604,7 +604,8 @@ namespace TruthCardGame.Core
                 baseContext.Temperatures,
                 null, // no PhaseRun at session level
                 ActionOwnerScope.SessionDecisionOptionSequence,
-                baseContext.DialogRng);
+                baseContext.DialogRng,
+                baseContext.Performance);
         }
 
         private async Task<SessionDecisionOptionDefinition> PromptForSessionDecisionAsync(

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using TruthCardGame.Content;
 using TruthCardGame.Core;
 
 namespace TruthCardGame.Core.Tests
@@ -224,14 +225,76 @@ namespace TruthCardGame.Core.Tests
     }
 
     /// <summary>Dialog fake: records presented text; optionally gated for blocking tests.</summary>
-    public sealed class FakeDialogService : IDialogService
+    public class FakeDialogService : IDialogService
     {
         public readonly List<string> Shown = new List<string>();
 
-        public Task ShowAsync(string text, CancellationToken cancellationToken)
+        public virtual Task ShowAsync(string text, CancellationToken cancellationToken)
         {
             Shown.Add(text ?? "");
             return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>Dialog fake that records presentation into a shared ordering list (refresh-before-show tests).</summary>
+    public sealed class OrderRecordingDialogService : FakeDialogService
+    {
+        private readonly List<string> _order;
+
+        public OrderRecordingDialogService(List<string> order)
+        {
+            _order = order ?? throw new ArgumentNullException(nameof(order));
+        }
+
+        public override Task ShowAsync(string text, CancellationToken cancellationToken)
+        {
+            _order.Add("dialog:" + text);
+            return base.ShowAsync(text, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Presentation host fake: records requests (and their order) and answers
+    /// with an accepted result unless a responder rejects. A gate holds requests
+    /// pending for cancellation/readiness tests.
+    /// </summary>
+    public sealed class FakePerformanceHost : IPerformanceHost
+    {
+        public PresentationCatalogDefinition Catalog { get; set; }
+        public PerformanceActorState InitialState { get; set; }
+        public readonly List<PerformanceExecutionRequest> Requests = new List<PerformanceExecutionRequest>();
+        public List<string> Order;
+        public Func<PerformanceExecutionRequest, PerformanceExecutionResult> Responder;
+        public TaskCompletionSource<bool> Gate;
+
+        public FakePerformanceHost(PresentationCatalogDefinition catalog, PerformanceActorState initialState)
+        {
+            Catalog = catalog;
+            InitialState = initialState;
+        }
+
+        public async Task<PerformanceExecutionResult> ExecuteAsync(
+            PerformanceExecutionRequest request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            Order?.Add("perform:" + request.Kind);
+            if (Gate != null)
+            {
+                var gate = Gate;
+                var registration = cancellationToken.Register(() => gate.TrySetCanceled(cancellationToken));
+                try
+                {
+                    await gate.Task;
+                }
+                finally
+                {
+                    registration.Dispose();
+                }
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return Responder != null
+                ? Responder(request)
+                : PerformanceExecutionResult.Accept(request.CorrelationId);
         }
     }
 

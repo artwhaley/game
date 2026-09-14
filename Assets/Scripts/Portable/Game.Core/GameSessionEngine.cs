@@ -20,6 +20,7 @@ namespace TruthCardGame.Core
         private readonly BackgroundActionTracker _tracker;
         private readonly PhaseRunRngFactory _rngFactory;
         private readonly IRandomSource _dialogRng;
+        private readonly PerformanceDirector _performance;
         private readonly CardSelectionProfile _selectionProfile;
         private readonly int _executionBudget;
         private readonly object _shutdownGate = new object();
@@ -72,6 +73,17 @@ namespace TruthCardGame.Core
             SpawnOptions = spawn ?? SessionSpawnOptions.Default;
             _rngFactory = rngFactory ?? SeededRandomDomains.CreatePhaseRunFactory(SpawnOptions.Seed);
             _dialogRng = SeededRandomDomains.CreateDialogSelection(SpawnOptions.Seed);
+            if (_services.Performance != null)
+            {
+                var presentationCatalog = _services.Performance.Catalog
+                    ?? throw new InvalidOperationException("PerformanceHost supplied no presentation catalog.");
+                PresentationCatalogValidator.Validate(presentationCatalog);
+                _performance = new PerformanceDirector(
+                    presentationCatalog,
+                    _services.Performance,
+                    SeededRandomDomains.CreatePerformance(SpawnOptions.Seed),
+                    _services.Log);
+            }
             _selectionProfile = selectionProfile ?? new CardSelectionProfile();
             if (executionBudget <= 0) throw new ArgumentOutOfRangeException(nameof(executionBudget));
             _executionBudget = executionBudget;
@@ -133,28 +145,41 @@ namespace TruthCardGame.Core
 
         private async Task ShutdownCoreAsync(string reason)
         {
+            // Each cleanup service is independent: one failure or timeout must
+            // not skip the others (toy output and presentation both release
+            // resources on the same shutdown path).
+            await RunCleanupAsync("TOY STOP ALL", reason, async token =>
+            {
+                if (_services.ToyActivity != null) await _services.ToyActivity.StopAllAsync(token);
+            });
+
+            await RunCleanupAsync("PERFORMANCE STOP", reason, async token =>
+            {
+                if (_performance != null) await _performance.StopAsync(token);
+            });
+        }
+
+        private async Task RunCleanupAsync(string label, string reason, Func<CancellationToken, Task> cleanup)
+        {
             try
             {
-                if (_services.ToyActivity != null)
+                using (var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
                 {
-                    using (var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                    var stopTask = cleanup(cleanupCts.Token);
+                    var timeoutTask = Task.Delay(Timeout.InfiniteTimeSpan, cleanupCts.Token);
+                    var completed = await Task.WhenAny(stopTask, timeoutTask);
+                    if (completed != stopTask)
                     {
-                        var stopTask = _services.ToyActivity.StopAllAsync(cleanupCts.Token);
-                        var timeoutTask = Task.Delay(Timeout.InfiniteTimeSpan, cleanupCts.Token);
-                        var completed = await Task.WhenAny(stopTask, timeoutTask);
-                        if (completed != stopTask)
-                        {
-                            _services.Log.Error($"TOY STOP ALL timed out during teardown ({reason}).");
-                            return;
-                        }
-                        await stopTask;
+                        _services.Log.Error($"{label} timed out during teardown ({reason}).");
+                        return;
                     }
-                    _services.Log.Info($"TOY STOP ALL reason: {reason}");
+                    await stopTask;
                 }
+                _services.Log.Info($"{label} reason: {reason}");
             }
             catch (Exception ex)
             {
-                _services.Log.Error($"TOY STOP ALL failed during teardown ({reason}): {ex.Message}");
+                _services.Log.Error($"{label} failed during teardown ({reason}): {ex.Message}");
             }
         }
 
@@ -191,7 +216,7 @@ namespace TruthCardGame.Core
             {
                 var vm = EnsureVm();
                 var context = new ActionExecutionContext(
-                    Player, _services, _catalog, Temperatures, null, ActionOwnerScope.All, _dialogRng);
+                    Player, _services, _catalog, Temperatures, null, ActionOwnerScope.All, _dialogRng, _performance);
 
                 while (!vm.IsComplete)
                 {
