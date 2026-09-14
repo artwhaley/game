@@ -111,6 +111,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 {
                     TypeKey = ActionTypeKeys.DialogFromTags, HasDialogTagEditor = true, HasBlockingEditor = true
                 },
+                // Perform always blocks, so it has no blocking toggle; its single
+                // parameter is the reusable Performance Event it resolves.
+                [ActionTypeKeys.Perform] = new ActionEditorDescriptor
+                {
+                    TypeKey = ActionTypeKeys.Perform, HasChoiceEditor = true, ChoiceLabel = "Performance Event"
+                },
                 [ActionTypeKeys.Delay] = new ActionEditorDescriptor
                 {
                     TypeKey = ActionTypeKeys.Delay, HasNumberEditor = true, NumberLabel = "Duration", HasBlockingEditor = true
@@ -184,7 +190,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             bool isPromptChoiceDescendant = false,
             IEnumerable<ActionParameterOption> toyPatternOptions = null,
             IEnumerable<RelationChoice> dialogTagOptions = null,
-            string sourcePhaseId = null)
+            string sourcePhaseId = null,
+            IEnumerable<ActionParameterOption> performanceEventOptions = null)
         {
             OwnerNode = ownerNode;
             SequenceId = sequenceId ?? "";
@@ -195,6 +202,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
             ToyCapabilityOptions = new List<ActionParameterOption>(toyCapabilityOptions ?? Enumerable.Empty<ActionParameterOption>());
             ToyPatternOptions = new List<ActionParameterOption>(toyPatternOptions ?? Enumerable.Empty<ActionParameterOption>());
             DialogTagOptions = new List<RelationChoice>(dialogTagOptions ?? Enumerable.Empty<RelationChoice>());
+            PerformanceEventOptions = new List<ActionParameterOption>(performanceEventOptions ?? Enumerable.Empty<ActionParameterOption>());
             ExitOptions = new List<ExitOption>(exitOptions ?? Enumerable.Empty<ExitOption>());
             IsPromptChoiceDescendant = isPromptChoiceDescendant;
             SourcePhaseId = sourcePhaseId ?? "";
@@ -224,6 +232,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public List<ActionParameterOption> ToyCapabilityOptions { get; }
         public List<ActionParameterOption> ToyPatternOptions { get; }
         public List<RelationChoice> DialogTagOptions { get; }
+        public List<ActionParameterOption> PerformanceEventOptions { get; }
         public List<ExitOption> ExitOptions { get; }
 
         public IEnumerable<ActionRowData> SelectedRows => Rows.Where(row => row.IsSelected);
@@ -314,6 +323,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 if (ToyCapabilityOptions.Count > 0) setToy.CapabilityId = ToyCapabilityOptions[0].Id;
                 if (ToyPatternOptions.Count > 0) setToy.PatternResourceId = ToyPatternOptions[0].Id;
             }
+            if (instance is PerformInstanceDefinition perform && PerformanceEventOptions.Count > 0)
+                perform.EventId = PerformanceEventOptions[0].Id;
             if (instance is PromptChoiceInstanceDefinition choice)
             {
                 for (var i = 0; i < 2; i++)
@@ -352,6 +363,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
             Replace(DialogTagOptions, content.DialogTags
                 .Select(item => new RelationChoice { Id = item.Id, DisplayName = string.IsNullOrEmpty(item.Title) ? item.Id : item.Title })
                 .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase));
+            Replace(PerformanceEventOptions, content.PerformanceEvents
+                .Select(item => new ActionParameterOption
+                {
+                    Id = item.Id,
+                    Name = string.IsNullOrEmpty(item.Name) ? item.Id : item.Name,
+                })
+                .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase));
 
             foreach (var row in Rows)
             {
@@ -396,6 +414,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 sequence.ToyCapabilityOptions.Count == 0)
             {
                 return "Add a Smart Toy Capability before authoring a toy pattern action.";
+            }
+            if (typeKey == ActionTypeKeys.Perform && sequence.PerformanceEventOptions.Count == 0)
+            {
+                return "Add a Performance Event before authoring a Perform action.";
             }
             return null;
         }

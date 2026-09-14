@@ -145,6 +145,7 @@ namespace TruthCardGame.Content.Sqlite
                 case CutsceneInstanceDefinition cutscene: item.Text = cutscene.ResourceId; break;
                 case DialogInstanceDefinition dialog: item.Text = dialog.Text; break;
                 case DialogFromTagsInstanceDefinition tags: item.References.AddRange(tags.RequiredDialogTagIds ?? new List<string>()); break;
+                case PerformInstanceDefinition perform: item.Text = perform.EventId; break;
                 case DelayInstanceDefinition delay: item.Number = delay.DurationSeconds; break;
                 case ToyActivityInstanceDefinition toy: item.Text = toy.CapabilityId; item.Pattern = toy.PatternResourceId; item.Number = toy.DurationSeconds; break;
                 case ToySetPatternInstanceDefinition toySet: item.Text = toySet.CapabilityId; item.Pattern = toySet.PatternResourceId; break;
@@ -187,6 +188,7 @@ namespace TruthCardGame.Content.Sqlite
                     tags.RequiredDialogTagIds.AddRange(item.References ?? new List<string>());
                     action = tags;
                     break;
+                case ActionTypeKeys.Perform: action = new PerformInstanceDefinition { EventId = item.Text ?? "" }; break;
                 case ActionTypeKeys.Delay: action = new DelayInstanceDefinition { DurationSeconds = item.Number }; break;
                 case ActionTypeKeys.ToyActivity: action = new ToyActivityInstanceDefinition { CapabilityId = item.Text ?? "", PatternResourceId = item.Pattern ?? "", DurationSeconds = item.Number }; break;
                 case ActionTypeKeys.ToySetPattern: action = new ToySetPatternInstanceDefinition { CapabilityId = item.Text ?? "", PatternResourceId = item.Pattern ?? "" }; break;

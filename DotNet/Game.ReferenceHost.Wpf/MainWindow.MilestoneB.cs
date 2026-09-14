@@ -2065,11 +2065,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
             var toyCapabilities = content.SmartToyCapabilityDefinitions
                 .Select(c => new ActionParameterOption { Id = c.Id, Name = string.IsNullOrEmpty(c.Title) ? c.Id : c.Title })
                 .ToList();
+            var performanceEvents = content.PerformanceEvents
+                .Select(e => new ActionParameterOption { Id = e.Id, Name = string.IsNullOrEmpty(e.Name) ? e.Id : e.Name })
+                .OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
             node.ActionSequence = new ActionSequenceEditorViewModel(node, sequence?.Id,
                 ActionOwnerScope.CardSequence, sequence?.Instances,
                 temperatures, resources, new List<ExitOption>(), statOptions: stats,
                 toyCapabilityOptions: toyCapabilities, toyPatternOptions: toyPatterns,
-                dialogTagOptions: dialogTags);
+                dialogTagOptions: dialogTags, performanceEventOptions: performanceEvents);
             return node.ActionSequence;
         }
     }

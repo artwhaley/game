@@ -37,6 +37,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     clone = clonedTags;
                     break;
                 }
+                case PerformInstanceDefinition perform:
+                    clone = new PerformInstanceDefinition { EventId = perform.EventId };
+                    break;
                 case DelayInstanceDefinition delay:
                     clone = new DelayInstanceDefinition { DurationSeconds = delay.DurationSeconds };
                     break;

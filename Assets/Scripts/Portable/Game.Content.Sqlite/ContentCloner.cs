@@ -323,6 +323,9 @@ namespace TruthCardGame.Content.Sqlite
                     result = clone;
                     break;
                 }
+                case PerformInstanceDefinition perform:
+                    result = new PerformInstanceDefinition { EventId = perform.EventId };
+                    break;
                 case DelayInstanceDefinition delay:
                     result = new DelayInstanceDefinition { DurationSeconds = delay.DurationSeconds };
                     break;

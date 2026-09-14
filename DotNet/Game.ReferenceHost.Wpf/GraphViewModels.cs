@@ -363,6 +363,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 if (TypeKey == ActionTypeKeys.DialogFromTags &&
                     (string.IsNullOrWhiteSpace(PatternValue) || PatternValue.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Length == 0))
                     return "Select at least one Dialog Tag.";
+                if (TypeKey == ActionTypeKeys.Perform &&
+                    (string.IsNullOrWhiteSpace(TextValue) || !ParameterOptions.Any(option => option.Id == TextValue)))
+                    return "Select an existing Performance Event.";
                 return null;
             }
         }
@@ -453,6 +456,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     break;
                 case DialogInstanceDefinition dialog:
                     dialog.Text = TextValue ?? "";
+                    break;
+                case PerformInstanceDefinition perform:
+                    perform.EventId = TextValue ?? "";
                     break;
                 case DelayInstanceDefinition delay:
                     delay.DurationSeconds = Math.Max(0f, ParseNumber(NumberText));
@@ -909,6 +915,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public List<ActionParameterOption> ToyPatternOptions { get; private set; } = new List<ActionParameterOption>();
         public List<RelationChoice> DialogTagOptions { get; private set; } = new List<RelationChoice>();
         public List<ActionParameterOption> ToyCapabilityOptions { get; private set; } = new List<ActionParameterOption>();
+        public List<ActionParameterOption> PerformanceEventOptions { get; private set; } = new List<ActionParameterOption>();
 
         public PendingConnectionViewModel PendingConnection { get; }
         public ICommand DisconnectConnectorCommand { get; }
@@ -1138,6 +1145,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
             DialogTagOptions = (content?.DialogTags ?? new List<DialogTagDefinition>())
                 .Select(item => new RelationChoice { Id = item.Id, DisplayName = string.IsNullOrEmpty(item.Title) ? item.Id : item.Title })
                 .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            PerformanceEventOptions = (content?.PerformanceEvents ?? new List<ConversationPerformanceEventDefinition>())
+                .Select(item => new ActionParameterOption { Id = item.Id, Name = string.IsNullOrEmpty(item.Name) ? item.Id : item.Name })
+                .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             ToyCapabilityOptions = (content?.SmartToyCapabilityDefinitions ?? new List<SmartToyCapabilityDefinition>())
                 .Select(item => new ActionParameterOption { Id = item.Id, Name = string.IsNullOrEmpty(item.Title) ? item.Id : item.Title })
@@ -1496,7 +1507,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         ToyCapabilityOptions,
                         ToyPatternOptions,
                         DialogTagOptions,
-                        _ => new List<ExitOption>());
+                        _ => new List<ExitOption>(),
+                        performanceEventOptions: PerformanceEventOptions);
                 }
                 var input = new ConnectorViewModel { Id = node.Id + "-input", Title = "" };
                 input.Owner = vm;
@@ -1720,7 +1732,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         ActionOwnerScope.PhaseActionSequence,
                         actionNode.Sequence?.Instances,
                         TemperatureOptions, ResourceOptions, ExitOptionsFor(phase), vm.ActionRows,
-                         StatOptions, ToyCapabilityOptions, false, ToyPatternOptions, DialogTagOptions, phase.Id);
+                         StatOptions, ToyCapabilityOptions, false, ToyPatternOptions, DialogTagOptions, phase.Id,
+                         PerformanceEventOptions);
                 }
                 if (node is PhaseDecisionNodeDefinition phaseDecision)
                 {
@@ -1735,7 +1748,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         ToyCapabilityOptions,
                         ToyPatternOptions,
                         DialogTagOptions,
-                         _ => ExitOptionsFor(phase), phase.Id);
+                         _ => ExitOptionsFor(phase), phase.Id,
+                         PerformanceEventOptions);
                 }
                 var input = new ConnectorViewModel { Id = node.Id + "-input", Title = "" };
                 input.Owner = vm;
@@ -1789,7 +1803,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 ParameterOptions = info.TypeKey == ActionTypeKeys.StatIncrease
                     ? sequence.StatOptions
                     : info.TypeKey == ActionTypeKeys.ModifyTemperature ? sequence.TemperatureOptions
-                    : info.TypeKey == ActionTypeKeys.Cutscene ? sequence.ResourceOptions : new List<ActionParameterOption>(),
+                    : info.TypeKey == ActionTypeKeys.Cutscene ? sequence.ResourceOptions
+                    : info.TypeKey == ActionTypeKeys.Perform ? sequence.PerformanceEventOptions
+                    : new List<ActionParameterOption>(),
                 ExitOptions = sequence.ExitOptions,
             };
             if (info.TypeKey == ActionTypeKeys.ToyActivity || info.TypeKey == ActionTypeKeys.ToySetPattern)
@@ -1828,6 +1844,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     break;
                 case DialogInstanceDefinition dialog:
                     row.TextValue = dialog.Text;
+                    break;
+                case PerformInstanceDefinition perform:
+                    row.TextValue = perform.EventId;
                     break;
                 case DelayInstanceDefinition delay:
                     row.NumberText = delay.DurationSeconds.ToString("0.###", CultureInfo.InvariantCulture);
@@ -1890,7 +1909,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         true,
                         sequence.ToyPatternOptions,
                         sequence.DialogTagOptions,
-                        sequence.SourcePhaseId)
+                        sequence.SourcePhaseId,
+                        sequence.PerformanceEventOptions)
                     {
                         OptionId = option.Id,
                     };
@@ -1966,7 +1986,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             IEnumerable<ActionParameterOption> toyPatternOptions,
             IEnumerable<RelationChoice> dialogTagOptions,
              Func<string, List<ExitOption>> exitOptionsFor,
-             string sourcePhaseId = null)
+             string sourcePhaseId = null,
+             IEnumerable<ActionParameterOption> performanceEventOptions = null)
         {
             vm.DecisionScope = scope;
             vm.DecisionPrompt = prompt ?? "";
@@ -1993,7 +2014,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     false,
                      toyPatternOptions,
                      dialogTagOptions,
-                     sourcePhaseId)
+                     sourcePhaseId,
+                     performanceEventOptions)
                 {
                     OptionId = row.OptionId,
                 };

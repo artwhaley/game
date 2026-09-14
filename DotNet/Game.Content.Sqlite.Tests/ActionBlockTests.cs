@@ -41,6 +41,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 new SessionGotoInstanceDefinition { Id = "session-goto", Label = "path" },
                 new ReturnInstanceDefinition { Id = "return" },
                 new EndSessionInstanceDefinition { Id = "end" },
+                new PerformInstanceDefinition { Id = "perform", EventId = "evt-tease", IsBlocking = true },
             };
             ((DialogFromTagsInstanceDefinition)actions[6]).RequiredDialogTagIds.Add("teasing");
 
@@ -55,6 +56,7 @@ namespace TruthCardGame.Content.Sqlite.Tests
             Assert.That(clonedPrompt.Options[0].Id, Is.EqualTo("inserted-10-option-1"));
             Assert.That(clonedPrompt.Options[0].Sequence.Instances[0].Id, Is.EqualTo("inserted-10-option-1-action-1"));
             Assert.That(((DialogFromTagsInstanceDefinition)clone[6]).RequiredDialogTagIds, Is.EqualTo(new[] { "teasing" }));
+            Assert.That(clone.OfType<PerformInstanceDefinition>().Single().EventId, Is.EqualTo("evt-tease"));
         }
 
         [Test]

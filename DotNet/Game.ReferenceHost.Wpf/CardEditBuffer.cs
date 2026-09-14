@@ -144,6 +144,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case DialogFromTagsInstanceDefinition dialogFromTags:
                     return b is DialogFromTagsInstanceDefinition otherDialogFromTags &&
                         IdListsEqual(dialogFromTags.RequiredDialogTagIds, otherDialogFromTags.RequiredDialogTagIds);
+                case PerformInstanceDefinition perform:
+                    return b is PerformInstanceDefinition otherPerform &&
+                        string.Equals(perform.EventId, otherPerform.EventId, StringComparison.Ordinal);
                 case PromptChoiceInstanceDefinition choice:
                     var otherChoice = b as PromptChoiceInstanceDefinition;
                     if (otherChoice == null ||
@@ -305,6 +308,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 dialog.RequiredDialogTagIds.Contains(dialogTagId));
         }
 
+        public bool ReferencesPerformanceEvent(string performanceEventId)
+        {
+            return AnyAction(Sequence, instance =>
+                instance is PerformInstanceDefinition perform &&
+                string.Equals(perform.EventId, performanceEventId, StringComparison.Ordinal));
+        }
+
         public bool ReferencesSmartToyCapability(string capabilityId)
         {
             return RequiredCapabilityIds.Contains(capabilityId) || AnyAction(Sequence, instance =>
@@ -365,6 +375,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     break;
                 case DialogInstanceDefinition dialog:
                     dialog.Text = textValue ?? "";
+                    break;
+                case PerformInstanceDefinition perform:
+                    perform.EventId = textValue ?? "";
                     break;
                 case DelayInstanceDefinition delay:
                     if (numberValue.HasValue) delay.DurationSeconds = Math.Max(0f, numberValue.Value);
