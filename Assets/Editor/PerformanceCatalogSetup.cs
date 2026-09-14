@@ -355,18 +355,18 @@ namespace TruthCardGame.EditorTools
             string name, Dictionary<string, AnimationClip> clips, string role, string[] postures,
             TagVocabulary vocabulary, bool enableWhenResolved, params string[] tagTitles)
         {
-            var tags = vocabulary.ResolveAll(tagTitles);
+            var tags = vocabulary.ResolveAll(tagTitles).ToArray();
             return Ingredient(name, PresentationIngredientKinds.Body, RequireClip(clips, role),
-                postures, tags, enabled: enableWhenResolved && tags.Count > 0);
+                postures, tags, enabled: enableWhenResolved && tags.Length > 0);
         }
 
         private static PerformanceIngredientEntry Face(
             string name, string controlName, string[] postures,
             TagVocabulary vocabulary, bool enableWhenResolved, params string[] tagTitles)
         {
-            var tags = vocabulary.ResolveAll(tagTitles);
+            var tags = vocabulary.ResolveAll(tagTitles).ToArray();
             return Ingredient(name, PresentationIngredientKinds.Face, null, postures,
-                tags, enabled: enableWhenResolved && tags.Count > 0, controlName);
+                tags, enabled: enableWhenResolved && tags.Length > 0, controlName);
         }
 
         private static PerformanceIngredientEntry Ingredient(

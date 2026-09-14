@@ -12,7 +12,7 @@ namespace TruthCardGame.EditorTools
     /// Ticket 04 scene wiring: places the catalog anchors inside the open
     /// disposable showcase, binds the character's presentation controllers and
     /// the performance registry into a <see cref="UnityPerformanceHost"/>, and
-    /// attaches the smoke panel that drives the real Core planning stack.
+    /// attaches the session panel that drives the real Core planning stack.
     ///
     /// Only the disposable showcase is ever touched, matching the Phase 00
     /// convention; authored scenes are never modified by this command. Re-running
@@ -67,7 +67,7 @@ namespace TruthCardGame.EditorTools
                     "No 'PlayerGazeTarget' in the open scene; rebuild the showcase with the Phase 00 command.");
             }
 
-            // One rig object owns the anchors, the host and the smoke panel.
+            // One rig object owns the anchors, the host and the session panel.
             var rigObject = GameObject.Find(RigObjectName);
             if (rigObject == null)
             {
@@ -104,7 +104,7 @@ namespace TruthCardGame.EditorTools
             EditorUtility.SetDirty(anchors);
             EditorUtility.SetDirty(host);
 
-            // The smoke panel loads Content/PresentationCatalog.json from disk, so
+            // The session panel loads Content/PresentationCatalog.json from disk, so
             // a stale catalog would silently misrepresent the registry.
             var catalogPath = PerformanceCatalogSetup.ResolveCatalogPath();
             if (!File.Exists(catalogPath))
@@ -117,7 +117,7 @@ namespace TruthCardGame.EditorTools
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             Debug.Log(
                 "[PERFORMANCE] Scene wired: 2 anchors placed (anchor-room-center, anchor-chair), " +
-                "host bound to TARGET_Lara's presentation controllers, smoke panel ready. " +
+                "host bound to TARGET_Lara's presentation controllers, session panel ready. " +
                 "Save the scene to keep the wiring.");
         }
 

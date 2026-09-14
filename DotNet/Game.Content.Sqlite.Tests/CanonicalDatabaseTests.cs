@@ -275,6 +275,14 @@ namespace TruthCardGame.Content.Sqlite.Tests
                     "the card opens with the Perform action");
                 Assert.AreEqual(performanceEvent.Id, ((PerformInstanceDefinition)card.Sequence.Instances[0]).EventId,
                     "the Perform action plays the authored event");
+                var taggedDialogues = card.Sequence.Instances
+                    .OfType<DialogFromTagsInstanceDefinition>()
+                    .ToList();
+                Assert.AreEqual(2, taggedDialogues.Count,
+                    "the V1 card keeps two ordinary tagged dialogue lines");
+                Assert.IsTrue(taggedDialogues.All(dialog =>
+                    dialog.IsBlocking && dialog.RequiredDialogTagIds.Count > 0),
+                    "both tagged dialogue lines are blocking and query authored tags");
 
                 var services = new Core.CoreServices(new NoOpDelay(), performance: host);
                 var engine = new Core.GameSessionEngine(content, "phase00-session", services);

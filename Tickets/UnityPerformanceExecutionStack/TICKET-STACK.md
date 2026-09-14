@@ -1,6 +1,6 @@
 # Conversation Performance V1 — execution tickets
 
-Current source-audited packet, September 11, 2026. Six tickets, numbered 00–05. Read ARCHITECTURE-CONTRACT.md for decisions. These are future implementation tasks; this packet revision changes documentation only.
+Current source-audited packet, September 11, 2026. Six tickets, numbered 00–05. Read ARCHITECTURE-CONTRACT.md for decisions. The implementation handoff is recorded in ../../Docs/UnityPerformance/V1-INTEGRATION-RESULTS.md; this packet remains the scope and acceptance contract, including the boundary around intentional character import/attachment work.
 
 ## Instructions applying to every ticket
 

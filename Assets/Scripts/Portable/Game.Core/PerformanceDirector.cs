@@ -188,9 +188,12 @@ namespace TruthCardGame.Core
         /// <summary>Stops presentation and clears the active event. Safe when nothing was staged.</summary>
         public async Task StopAsync(CancellationToken cancellationToken)
         {
-            _activeEvent = null;
-            _acting = null;
-            if (!_staged) return;
+            if (!_staged)
+            {
+                _activeEvent = null;
+                _acting = null;
+                return;
+            }
 
             var request = new PerformanceExecutionRequest
             {
@@ -198,12 +201,10 @@ namespace TruthCardGame.Core
                 Kind = PerformanceRequestKind.Stop,
             };
             var result = await _host.ExecuteAsync(request, cancellationToken);
-            if (result == null || !result.Accepted)
-            {
-                throw new InvalidOperationException(
-                    $"Performance stop was not accepted: {result?.FailureReason ?? "no result"}");
-            }
+            EnsureAccepted(request, result);
             _staged = false;
+            _activeEvent = null;
+            _acting = null;
         }
 
         private bool _staged;
@@ -211,13 +212,7 @@ namespace TruthCardGame.Core
         private async Task CommitAsync(PerformanceExecutionRequest request, CancellationToken cancellationToken)
         {
             var result = await _host.ExecuteAsync(request, cancellationToken);
-            if (result == null || !result.Accepted)
-            {
-                throw new InvalidOperationException(
-                    $"Performance request '{request.CorrelationId}' ({request.Kind}) was rejected: " +
-                    $"{result?.FailureReason ?? "no result returned"}. " +
-                    "Committed state is unchanged; this is a host failure, not a silent fallback.");
-            }
+            EnsureAccepted(request, result);
 
             // Commit only after acceptance: a failed or canceled request never
             // claims arrival.
@@ -231,6 +226,31 @@ namespace TruthCardGame.Core
                 OwnsHead = request.OwnsHead,
             };
             _staged = true;
+        }
+
+        /// <summary>
+        /// A host acknowledgement is meaningful only for the request that is
+        /// currently awaiting it. Accepting a stale acknowledgement would let
+        /// a late Unity task commit a state that Core no longer requested.
+        /// </summary>
+        private static void EnsureAccepted(
+            PerformanceExecutionRequest request, PerformanceExecutionResult result)
+        {
+            if (result == null || !result.Accepted)
+            {
+                throw new InvalidOperationException(
+                    $"Performance request '{request.CorrelationId}' ({request.Kind}) was rejected: " +
+                    $"{result?.FailureReason ?? "no result returned"}. " +
+                    "Committed state is unchanged; this is a host failure, not a silent fallback.");
+            }
+
+            if (!string.Equals(result.CorrelationId, request.CorrelationId, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Performance request '{request.CorrelationId}' ({request.Kind}) received " +
+                    $"acknowledgement for '{result.CorrelationId}'. Committed state is unchanged; " +
+                    "the host returned a stale or mismatched result.");
+            }
         }
 
         /// <summary>

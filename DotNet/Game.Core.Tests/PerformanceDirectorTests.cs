@@ -227,6 +227,49 @@ namespace TruthCardGame.Core.Tests
         }
 
         [Test]
+        public void MismatchedAcknowledgement_IsLoud_AndDoesNotCommitArrival()
+        {
+            var catalog = PerformanceTestCatalog.CreateV1();
+            var host = new FakePerformanceHost(catalog,
+                new PerformanceActorState(RoomCenter, PresentationPostures.Standing))
+            {
+                Responder = request => PerformanceExecutionResult.Accept("stale-acknowledgement"),
+            };
+            var director = Director(catalog, host);
+
+            var failure = Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await director.PerformAsync(
+                    Event("evt", PerformanceStagingPolicy.DifferentLocation), CancellationToken.None));
+
+            StringAssert.Contains("stale or mismatched result", failure.Message);
+            Assert.AreEqual(RoomCenter + "/" + PresentationPostures.Standing, director.CommittedState.ToString());
+            Assert.IsNull(director.Acting);
+            Assert.IsEmpty(director.ActiveEventId);
+        }
+
+        [Test]
+        public void RejectedStop_RetainsActivePresentationForRetry()
+        {
+            var catalog = PerformanceTestCatalog.CreateV1();
+            var host = new FakePerformanceHost(catalog,
+                new PerformanceActorState(RoomCenter, PresentationPostures.Standing))
+            {
+                Responder = request => request.Kind == PerformanceRequestKind.Stop
+                    ? PerformanceExecutionResult.Reject(request.CorrelationId, "rig still active")
+                    : PerformanceExecutionResult.Accept(request.CorrelationId),
+            };
+            var director = Director(catalog, host);
+            director.PerformAsync(Event("evt"), CancellationToken.None).GetAwaiter().GetResult();
+
+            var failure = Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await director.StopAsync(CancellationToken.None));
+
+            StringAssert.Contains("rig still active", failure.Message);
+            Assert.AreEqual("evt", director.ActiveEventId);
+            Assert.IsNotNull(director.Acting);
+        }
+
+        [Test]
         public void Cancellation_DoesNotCommitArrival()
         {
             var catalog = PerformanceTestCatalog.CreateV1();

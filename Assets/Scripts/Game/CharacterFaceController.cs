@@ -54,6 +54,33 @@ namespace TruthCardGame
             }
         }
 
+        /// <summary>
+        /// Checks a generated facial control without changing the current
+        /// expression. Hosts use this as a preflight so a missing channel is
+        /// reported before a body overlay or gaze state is applied.
+        /// </summary>
+        public int CountPresetMatches(string exactExportedControl)
+        {
+            CaptureNeutralIfNeeded();
+            if (string.IsNullOrWhiteSpace(exactExportedControl)) return 0;
+
+            var matches = 0;
+            foreach (var renderer in facialRenderers)
+            {
+                if (renderer == null || renderer.sharedMesh == null) continue;
+                var mesh = renderer.sharedMesh;
+                for (var index = 0; index < mesh.blendShapeCount; index++)
+                {
+                    var shapeName = mesh.GetBlendShapeName(index);
+                    var separator = shapeName.LastIndexOf("__", StringComparison.Ordinal);
+                    var controlName = separator < 0 ? shapeName : shapeName.Substring(separator + 2);
+                    if (string.Equals(controlName, exactExportedControl, StringComparison.OrdinalIgnoreCase))
+                        matches++;
+                }
+            }
+            return matches;
+        }
+
         public int SetPreset(string exactExportedControl, float weight)
         {
             CaptureNeutralIfNeeded();

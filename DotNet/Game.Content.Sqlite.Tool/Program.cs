@@ -29,6 +29,12 @@ namespace TruthCardGame.Content.Sqlite.Tool
         /// <summary>Stable id of the Perform action the fixture inserts into that card.</summary>
         private const string V1PerformanceActionId = "phase00-perform";
 
+        /// <summary>Stable id of the second ordinary tagged dialogue line in the fixture card.</summary>
+        private const string V1SecondDialogActionId = "phase00-dialog-tease";
+
+        /// <summary>The existing first tagged dialogue line that the second line follows.</summary>
+        private const string V1FirstDialogActionId = "phase00-dialog";
+
         /// <summary>Performance Tag titles the V1 event queries with ANY semantics.</summary>
         private static readonly string[] V1PerformanceEventTagTitles = { "Playful", "Tease" };
 
@@ -200,10 +206,35 @@ namespace TruthCardGame.Content.Sqlite.Tool
                 // never be authored nonblocking.
                 IsBlocking = true,
             });
+            var insertedSecondDialog = false;
             foreach (var instance in card.Sequence.Instances)
             {
-                if (instance.Id == V1PerformanceActionId) continue;
+                if (instance.Id == V1PerformanceActionId || instance.Id == V1SecondDialogActionId) continue;
                 desired.Instances.Add(instance);
+
+                if (instance.Id == V1FirstDialogActionId)
+                {
+                    if (!(instance is DialogFromTagsInstanceDefinition firstDialog))
+                    {
+                        throw new InvalidOperationException(
+                            $"card '{V1PerformanceCardId}' action '{V1FirstDialogActionId}' is not a tagged dialogue action.");
+                    }
+                    var secondDialog = new DialogFromTagsInstanceDefinition
+                    {
+                        Id = V1SecondDialogActionId,
+                        IsBlocking = true,
+                    };
+                    secondDialog.RequiredDialogTagIds.AddRange(
+                        firstDialog.RequiredDialogTagIds);
+                    desired.Instances.Add(secondDialog);
+                    insertedSecondDialog = true;
+                }
+            }
+            if (!insertedSecondDialog)
+            {
+                throw new InvalidOperationException(
+                    $"card '{V1PerformanceCardId}' has no '{V1FirstDialogActionId}' tagged dialogue action " +
+                    "to extend with the V1 performance fixture.");
             }
             ActionSequenceRepository.Save(connection, desired);
 
@@ -227,6 +258,15 @@ namespace TruthCardGame.Content.Sqlite.Tool
             if (authoredCard.Sequence.Instances[0].Id != V1PerformanceActionId)
             {
                 throw new InvalidOperationException("the V1 Perform action is not the card's first action.");
+            }
+            var taggedDialogues = authoredCard.Sequence.Instances
+                .OfType<DialogFromTagsInstanceDefinition>()
+                .ToList();
+            if (taggedDialogues.Count != 2 ||
+                taggedDialogues.Any(dialog => !dialog.IsBlocking || dialog.RequiredDialogTagIds.Count == 0))
+            {
+                throw new InvalidOperationException(
+                    "the V1 card does not contain the two blocking tagged dialogue actions required by the fixture.");
             }
 
             using (var integrity = connection.CreateCommand())

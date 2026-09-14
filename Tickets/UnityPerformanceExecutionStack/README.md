@@ -4,7 +4,7 @@
 
 **September 13 foundation state:** the Lara asset kit, external Humanoid motion source, reusable CharacterRig/attachment foundation and disposable showcase visual pass are verified. Read [Phase 00 — setup and content acquisition](PHASE-00-SETUP-AND-CONTENT.md) only for a concrete missing prerequisite; do not reacquire or destructively rebuild assets that are present. Ticket 00 and the real-rig portion of Ticket 01 are complete. Start at Ticket 01's remaining ingredient registry, factored anchor/operation bindings and generated PresentationCatalog, then continue through Tickets 02–05 while preserving the approved architecture.
 
-Source-audited September 11, 2026 revision. This replaces the preceding eleven-ticket design with six tickets proving an ordinary Card through WPF → SQLite → GameContentDefinition → Core → Unity.
+Source-audited September 11, 2026 revision. This replaces the preceding eleven-ticket design with six tickets proving an ordinary Card through WPF → SQLite → GameContentDefinition → Core → Unity. The implementation handoff is recorded in [V1 integration results](../../Docs/UnityPerformance/V1-INTEGRATION-RESULTS.md); this packet remains the scope and acceptance contract, not a request to reopen intentional character import/attachment work.
 
 Read the [build plan and source audit](../../Docs/UnityPerformance/BUILD-PLAN.md), [architecture contract](ARCHITECTURE-CONTRACT.md), [tickets](TICKET-STACK.md) and [orchestrator prompt](ORCHESTRATION-PROMPT.md). The V1 packet remains an execution specification; the foundation prerequisite is the implemented portion documented above.
 

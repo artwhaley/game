@@ -89,6 +89,27 @@ namespace TruthCardGame.Performance
             _catalogFailureLogged = false;
         }
 
+        /// <summary>
+        /// Returns the character to the declared starting placement between
+        /// independent session runs. This is presentation reset only; Core
+        /// still reloads the canonical content snapshot for Repeat.
+        /// </summary>
+        public void ResetToInitialPlacement()
+        {
+            ApplyStop();
+            if (stageAnchors == null || stageAnchors.CharacterRoot == null) return;
+            if (!stageAnchors.TryGetAnchor(stageAnchors.StartingAnchorId, out var startingAnchor) ||
+                startingAnchor == null)
+            {
+                Debug.LogWarning(
+                    "[PERFORMANCE] Cannot reset character placement: starting anchor '" +
+                    stageAnchors.StartingAnchorId + "' is not placed.");
+                return;
+            }
+            stageAnchors.CharacterRoot.SetPositionAndRotation(
+                startingAnchor.position, startingAnchor.rotation);
+        }
+
         /// <summary>Repo-relative catalog location, matching the editor generator.</summary>
         public static string ResolveCatalogPath()
         {
@@ -102,6 +123,16 @@ namespace TruthCardGame.Performance
             if (request == null) throw new ArgumentNullException(nameof(request));
             cancellationToken.ThrowIfCancellationRequested();
 
+            // Stop is teardown, not a content-resolution request. It must still
+            // release the rig when a generated catalog was deleted or is being
+            // regenerated during Repeat.
+            if (request.Kind == PerformanceRequestKind.Stop)
+            {
+                ApplyStop();
+                Record(request, "ready: stop: release presentation");
+                return PerformanceExecutionResult.Accept(request.CorrelationId);
+            }
+
             if (!PerformanceStagingResolver.TryResolve(
                     request, registry, Catalog, out var plan, out var failure))
             {
@@ -112,9 +143,6 @@ namespace TruthCardGame.Performance
             {
                 switch (plan.Kind)
                 {
-                    case PerformanceRequestKind.Stop:
-                        ApplyStop();
-                        break;
                     case PerformanceRequestKind.RefreshActing:
                         if (!ApplyActing(plan, out var actingFailure)) return Refuse(request, actingFailure);
                         break;
@@ -129,7 +157,9 @@ namespace TruthCardGame.Performance
                                 "the scene has no CharacterAnimationPlayer, so staging cannot be presented");
                         }
                         await ApplyStagingAsync(destination, plan, cancellationToken);
+                        cancellationToken.ThrowIfCancellationRequested();
                         if (!ApplyActing(plan, out var stagingFailure)) return Refuse(request, stagingFailure);
+                        cancellationToken.ThrowIfCancellationRequested();
                         break;
                 }
             }
@@ -187,7 +217,11 @@ namespace TruthCardGame.Performance
         {
             failure = null;
 
-            if (animationPlayer != null) animationPlayer.SetOverlay(plan.OverlayClip);
+            if (animationPlayer == null)
+            {
+                failure = "the scene has no CharacterAnimationPlayer, so acting cannot be presented";
+                return false;
+            }
 
             if (face == null)
             {
@@ -195,8 +229,7 @@ namespace TruthCardGame.Performance
                 return false;
             }
 
-            var matched = face.SetPreset(plan.FaceControl, plan.FaceWeight);
-            if (matched <= 0)
+            if (face.CountPresetMatches(plan.FaceControl) <= 0)
             {
                 failure =
                     $"facial control '{plan.FaceControl}' matched no channel on this character's facial renderers";
@@ -209,18 +242,30 @@ namespace TruthCardGame.Performance
                 return false;
             }
 
+            Transform target = null;
             if (!plan.SuspendGaze)
             {
-                var target = stageAnchors == null ? null : stageAnchors.PlayerGazeTarget;
+                target = stageAnchors == null ? null : stageAnchors.PlayerGazeTarget;
                 if (target == null)
                 {
                     failure =
                         "gaze is on for this acting but no player gaze target is placed in PerformanceStageAnchors";
                     return false;
                 }
-                gaze.SetTarget(target);
             }
 
+            // All required presentation dependencies are known before any
+            // state changes. The remaining match check is defensive only; the
+            // non-mutating preflight above is what prevents partial updates.
+            animationPlayer.SetOverlay(plan.OverlayClip);
+            var matched = face.SetPreset(plan.FaceControl, plan.FaceWeight);
+            if (matched <= 0)
+            {
+                failure =
+                    $"facial control '{plan.FaceControl}' matched no channel on this character's facial renderers";
+                return false;
+            }
+            if (target != null) gaze.SetTarget(target);
             gaze.SetEnabled(!plan.SuspendGaze);
             gaze.ResetSmoothing();
             return true;
