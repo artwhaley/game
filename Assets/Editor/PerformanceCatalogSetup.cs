@@ -32,12 +32,13 @@ namespace TruthCardGame.EditorTools
         public const string CatalogFileName = "PresentationCatalog.json";
 
         /// <summary>
-        /// Suggested V1 Performance Tag *titles* to author in the WPF Workbench.
-        /// Unity deliberately keeps no tag IDs here: the vocabulary (and its
-        /// opaque stable IDs) is WPF/SQLite-owned, so ingredient membership is
-        /// assigned with the Performance Tag Picker, which reads the real IDs
-        /// from the content database. Titles are affordances for a human, never
-        /// identifiers — nothing joins on them.
+        /// The Performance Tag *titles* the V1 fixture intends each ingredient to
+        /// express. Unity stores no tag IDs here: the vocabulary (and its opaque
+        /// stable IDs) is WPF/SQLite-owned, so the fixture looks these titles up
+        /// in the content database through the same read-only bridge the picker
+        /// uses and stores the real stable IDs it finds. A title is only ever a
+        /// lookup key during fixture authoring; nothing at runtime joins on it,
+        /// and a rename in WPF changes the title without changing identity.
         /// </summary>
         public static class SuggestedTagTitles
         {
@@ -72,22 +73,34 @@ namespace TruthCardGame.EditorTools
 
                 // Ticket 01 / Ticket 03 alignment: Unity owns anchor and
                 // operation identity, but NOT the Performance Tag vocabulary.
-                // The fixture therefore ships expressive ingredients untagged
-                // and disabled rather than hard-coding invented tag IDs that
-                // could never match the WPF-owned vocabulary. The author
-                // authors the tags in the Workbench, assigns the real stable
-                // IDs with the Performance Tag Picker, then enables each
-                // ingredient. Foundation ingredients express no tag by
-                // definition and stay enabled.
+                // Membership is therefore resolved from the content database
+                // through the same read-only bridge the picker uses, so the
+                // fixture stores the real WPF-owned stable IDs and still copies
+                // none. An ingredient whose tags cannot all be resolved stays
+                // disabled and is reported, because an enabled body/face
+                // ingredient with no tag can never be selected. Foundation
+                // ingredients express no tag by definition and stay enabled.
+                var vocabulary = ResolveTagVocabulary();
+
                 var entries = new List<PerformanceIngredientEntry>
                 {
                     Foundation("V1 Standing Idle", clips, "Idle_Loop", standing),
                     Foundation("V1 Sitting Idle", clips, "Sitting_Idle_Loop", sitting),
-                    Body("V1 Talking Idle", clips, "Idle_Talking_Loop", bothPostures),
-                    Body("V1 Interact", clips, "Interact", standing),
-                    Body("V1 Dance (later variety)", clips, "Dance_Loop", standing),
-                    Face("V1 Smile", "ST Mika 8 Natural Smile", bothPostures),
-                    Face("V1 Frown", "eCTRLFrown_HD", bothPostures),
+                    Body("V1 Talking Idle", clips, "Idle_Talking_Loop", bothPostures, vocabulary,
+                        enableWhenResolved: true,
+                        SuggestedTagTitles.Playful, SuggestedTagTitles.Tease),
+                    Body("V1 Interact", clips, "Interact", standing, vocabulary,
+                        enableWhenResolved: true,
+                        SuggestedTagTitles.Tease),
+                    Body("V1 Dance (later variety)", clips, "Dance_Loop", standing, vocabulary,
+                        enableWhenResolved: false,
+                        SuggestedTagTitles.Playful),
+                    Face("V1 Smile", "ST Mika 8 Natural Smile", bothPostures, vocabulary,
+                        enableWhenResolved: true,
+                        SuggestedTagTitles.Playful, SuggestedTagTitles.Tease),
+                    Face("V1 Frown", "eCTRLFrown_HD", bothPostures, vocabulary,
+                        enableWhenResolved: true,
+                        SuggestedTagTitles.Stern),
                 };
 
                 var anchorEntries = new List<PerformanceAnchorEntry>
@@ -109,14 +122,7 @@ namespace TruthCardGame.EditorTools
                 AssetDatabase.SaveAssets();
                 AssetDatabase.Refresh();
 
-                Debug.Log(
-                    "[PERFORMANCE] Fixture built with untagged, disabled expressive ingredients. " +
-                    "Author Performance Tags (" + string.Join(", ", new[]
-                    {
-                        SuggestedTagTitles.Playful, SuggestedTagTitles.Tease,
-                        SuggestedTagTitles.Stern, SuggestedTagTitles.Comforting,
-                    }) + ") in the WPF Workbench, assign them to ingredients with " +
-                    "TruthCardGame/Performance/Open Performance Tag Picker, then enable each ingredient.");
+                ReportVocabulary(vocabulary);
             }
 
             Debug.Log("[PERFORMANCE] Registry ready at " + RegistryPath +
@@ -229,22 +235,96 @@ namespace TruthCardGame.EditorTools
         }
 
         /// <summary>
-        /// Expressive body ingredients start untagged and disabled: an enabled
-        /// body/face ingredient with no Performance Tag is invalid, so the
-        /// fixture leaves enabling to the author who assigns real tag IDs.
+        /// Title-to-stable-ID lookup built from the content database. Titles are
+        /// matched case-insensitively and only for unretired tags, since a
+        /// retired tag must not be handed to new content.
+        /// </summary>
+        private sealed class TagVocabulary
+        {
+            private readonly Dictionary<string, string> _idsByTitle =
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            public readonly List<string> UnresolvedTitles = new List<string>();
+
+            public TagVocabulary(IEnumerable<PerformanceTagInfo> tags)
+            {
+                foreach (var tag in tags ?? new List<PerformanceTagInfo>())
+                {
+                    if (tag == null || tag.IsRetired) continue;
+                    if (string.IsNullOrEmpty(tag.Title) || string.IsNullOrEmpty(tag.Id)) continue;
+                    if (!_idsByTitle.ContainsKey(tag.Title)) _idsByTitle.Add(tag.Title, tag.Id);
+                }
+            }
+
+            public int TagCount => _idsByTitle.Count;
+
+            /// <summary>
+            /// Stable IDs for every requested title, or an empty list when any is
+            /// missing: a partial membership would silently change what the
+            /// ingredient means, so it is reported instead of stored.
+            /// </summary>
+            public List<string> ResolveAll(string[] titles)
+            {
+                var ids = new List<string>();
+                var complete = true;
+                foreach (var title in titles ?? Array.Empty<string>())
+                {
+                    if (_idsByTitle.TryGetValue(title, out var id))
+                    {
+                        ids.Add(id);
+                        continue;
+                    }
+                    complete = false;
+                    if (!UnresolvedTitles.Contains(title)) UnresolvedTitles.Add(title);
+                }
+                if (!complete) ids.Clear();
+                return ids;
+            }
+        }
+
+        private static TagVocabulary ResolveTagVocabulary()
+        {
+            return new TagVocabulary(
+                PerformanceTagCatalogBridge.ReadTags(PerformanceTagCatalogBridge.CanonicalDatabasePath));
+        }
+
+        private static void ReportVocabulary(TagVocabulary vocabulary)
+        {
+            if (vocabulary.UnresolvedTitles.Count == 0)
+            {
+                Debug.Log("[PERFORMANCE] Fixture resolved every Performance Tag against the content database (" +
+                          vocabulary.TagCount + " tag(s) available).");
+                return;
+            }
+
+            Debug.LogWarning(
+                "[PERFORMANCE] The content database has no unretired Performance Tag named: " +
+                string.Join(", ", vocabulary.UnresolvedTitles) +
+                ". Those ingredients were left disabled. Author the tags in the WPF Workbench, then re-run " +
+                "TruthCardGame/Performance/Ensure V1 Performance Fixture.");
+        }
+
+        /// <summary>
+        /// Expressive body ingredient. Its membership comes from the resolved
+        /// vocabulary; it is enabled only when its whole intended tag set exists,
+        /// since an enabled body/face ingredient with no tag is invalid.
         /// </summary>
         private static PerformanceIngredientEntry Body(
-            string name, Dictionary<string, AnimationClip> clips, string role, string[] postures)
+            string name, Dictionary<string, AnimationClip> clips, string role, string[] postures,
+            TagVocabulary vocabulary, bool enableWhenResolved, params string[] tagTitles)
         {
+            var tags = vocabulary.ResolveAll(tagTitles);
             return Ingredient(name, PresentationIngredientKinds.Body, RequireClip(clips, role),
-                postures, Array.Empty<string>(), enabled: false);
+                postures, tags, enabled: enableWhenResolved && tags.Count > 0);
         }
 
         private static PerformanceIngredientEntry Face(
-            string name, string controlName, string[] postures)
+            string name, string controlName, string[] postures,
+            TagVocabulary vocabulary, bool enableWhenResolved, params string[] tagTitles)
         {
+            var tags = vocabulary.ResolveAll(tagTitles);
             return Ingredient(name, PresentationIngredientKinds.Face, null, postures,
-                Array.Empty<string>(), enabled: false, controlName);
+                tags, enabled: enableWhenResolved && tags.Count > 0, controlName);
         }
 
         private static PerformanceIngredientEntry Ingredient(
