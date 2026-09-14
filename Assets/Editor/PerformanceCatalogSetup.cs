@@ -328,7 +328,7 @@ namespace TruthCardGame.EditorTools
         }
 
         private static PerformanceIngredientEntry Ingredient(
-            string name, string kind, AnimationClip clip, string[] postures, string[] tags,
+            string name, string kind, AnimationClip clip, string[] postures, IEnumerable<string> tags,
             bool enabled, string faceControlName = "")
         {
             var entry = new PerformanceIngredientEntry();
