@@ -280,6 +280,11 @@ namespace TruthCardGame.Content.Sqlite
                 case DialogFromTagsInstanceDefinition dialogFromTags:
                     SyncDialogFromTagRelations(connection, transaction, instance.Id, dialogFromTags.RequiredDialogTagIds);
                     break;
+                case PerformInstanceDefinition perform:
+                    Sql.Execute(connection, transaction,
+                        "UPDATE action_instance_perform SET event_id = @event WHERE action_instance_id = @i;",
+                        ("event", perform.EventId ?? ""), ("i", instance.Id));
+                    break;
                 case PromptChoiceInstanceDefinition choice:
                     Sql.Execute(connection, transaction,
                         "UPDATE action_instance_prompt_choice SET prompt = @prompt WHERE action_instance_id = @i;",
@@ -471,6 +476,12 @@ namespace TruthCardGame.Content.Sqlite
                     }
                     break;
 
+                case PerformInstanceDefinition perform:
+                    Sql.Execute(connection, transaction,
+                        "INSERT INTO action_instance_perform (action_instance_id, event_id) VALUES (@i, @event);",
+                        ("i", instance.Id), ("event", perform.EventId ?? ""));
+                    break;
+
                 case PromptChoiceInstanceDefinition choice:
                     Sql.Execute(connection, transaction,
                         "INSERT INTO action_instance_prompt_choice (action_instance_id, prompt) VALUES (@i, @prompt);",
@@ -593,6 +604,7 @@ namespace TruthCardGame.Content.Sqlite
             if (instance is ToyActivityInstanceDefinition) return ActionType.ToyActivityV6;
             if (instance is ToySetPatternInstanceDefinition) return ActionType.ToySetPatternV8;
             if (instance is DialogFromTagsInstanceDefinition) return ActionType.DialogFromTagsV8;
+            if (instance is PerformInstanceDefinition) return ActionType.PerformV12;
             if (instance is PromptChoiceInstanceDefinition) return ActionType.PromptChoiceV2;
             if (instance is WaitForContinueInstanceDefinition) return ActionType.WaitForContinueV2;
             if (instance is WaitForAllInstanceDefinition) return ActionType.WaitForAllV8;

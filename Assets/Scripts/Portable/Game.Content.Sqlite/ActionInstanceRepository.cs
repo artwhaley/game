@@ -147,6 +147,11 @@ namespace TruthCardGame.Content.Sqlite
                 case ActionTypeKeys.DialogFromTags:
                     ReplaceDialogFromTagRelations(connection, instanceId, patternValue);
                     break;
+                case ActionTypeKeys.Perform:
+                    Sql.Execute(connection, null,
+                        "UPDATE action_instance_perform SET event_id = @text WHERE action_instance_id = @id;",
+                        ("text", (object)textValue ?? ""), ("id", instanceId));
+                    break;
                 case ActionTypeKeys.PromptChoice:
                     Sql.Execute(connection, null,
                         "UPDATE action_instance_prompt_choice SET prompt = @text WHERE action_instance_id = @id;",

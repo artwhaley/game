@@ -69,6 +69,12 @@ namespace TruthCardGame.Content.Sqlite
             content.DialogTags.AddRange(TableExists(connection, "dialog_tag_definition") ? LoadDialogTags(connection) : new List<DialogTagDefinition>());
             content.DialogSnippets.AddRange(TableExists(connection, "dialog_snippet") ? LoadDialogSnippets(connection) : new List<DialogSnippetDefinition>());
             content.CardFolders.AddRange(TableExists(connection, "card_folder") ? CardFolderRepository.Load(connection) : new List<CardFolderDefinition>());
+            content.PerformanceTags.AddRange(TableExists(connection, "performance_tag_definition")
+                ? LoadPerformanceTags(connection)
+                : new List<PerformanceTagDefinition>());
+            content.PerformanceEvents.AddRange(TableExists(connection, "conversation_performance_event")
+                ? LoadPerformanceEvents(connection)
+                : new List<ConversationPerformanceEventDefinition>());
             content.Cards.AddRange(LoadCards(connection, sequences));
             content.Phases.AddRange(LoadPhases(connection, sequences));
             content.Sessions.AddRange(LoadSessions(connection, sequences));
@@ -306,6 +312,56 @@ namespace TruthCardGame.Content.Sqlite
                     Param("id", snippet.Id));
             }
             return snippets;
+        }
+
+        private static List<PerformanceTagDefinition> LoadPerformanceTags(DbConnection connection)
+        {
+            var tags = new List<PerformanceTagDefinition>();
+            QueryAll(connection,
+                "SELECT id, title, sort_order, is_retired FROM performance_tag_definition ORDER BY sort_order, id;",
+                reader => tags.Add(new PerformanceTagDefinition
+                {
+                    Id = reader.GetString(0),
+                    Title = reader.GetString(1),
+                    SortOrder = reader.GetInt32(2),
+                    IsRetired = reader.GetInt64(3) == 1,
+                }));
+            return tags;
+        }
+
+        private static List<ConversationPerformanceEventDefinition> LoadPerformanceEvents(DbConnection connection)
+        {
+            var events = new List<ConversationPerformanceEventDefinition>();
+            QueryAll(connection,
+                "SELECT id, name, require_all_tags, staging_policy, named_anchor_id, refresh_at_dialogue_start, sort_order " +
+                "FROM conversation_performance_event ORDER BY sort_order, id;",
+                reader => events.Add(new ConversationPerformanceEventDefinition
+                {
+                    Id = reader.GetString(0),
+                    Name = reader.GetString(1),
+                    RequireAllTags = reader.GetInt64(2) == 1,
+                    StagingPolicy = (PerformanceStagingPolicy)reader.GetInt32(3),
+                    NamedAnchorId = reader.IsDBNull(4) ? "" : reader.GetString(4),
+                    RefreshAtDialogueStart = reader.GetInt64(5) == 1,
+                    SortOrder = reader.GetInt32(6),
+                }));
+
+            foreach (var performanceEvent in events)
+            {
+                QueryAll(connection,
+                    "SELECT performance_tag_id FROM performance_event_tag WHERE event_id = @id ORDER BY ordinal;",
+                    reader => performanceEvent.PerformanceTagIds.Add(reader.GetString(0)),
+                    Param("id", performanceEvent.Id));
+                QueryAll(connection,
+                    "SELECT anchor_id FROM performance_event_allowed_anchor WHERE event_id = @id ORDER BY ordinal;",
+                    reader => performanceEvent.AllowedAnchorIds.Add(reader.GetString(0)),
+                    Param("id", performanceEvent.Id));
+                QueryAll(connection,
+                    "SELECT posture_id FROM performance_event_allowed_posture WHERE event_id = @id ORDER BY ordinal;",
+                    reader => performanceEvent.AllowedPostureIds.Add(reader.GetString(0)),
+                    Param("id", performanceEvent.Id));
+            }
+            return events;
         }
 
         private static void LoadSessionWeighting(DbConnection connection, SessionDefinition session)
@@ -1069,6 +1125,21 @@ namespace TruthCardGame.Content.Sqlite
                             reader => fromTags.RequiredDialogTagIds.Add(reader.GetString(0)),
                             Param("i", instanceId));
                         return fromTags;
+                    }
+
+                    case ActionType.PerformV12:
+                    {
+                        string eventId = null;
+                        QueryOne(_connection,
+                            "SELECT event_id FROM action_instance_perform WHERE action_instance_id = @i;",
+                            reader => eventId = reader.GetString(0), Param("i", instanceId));
+                        RequireSubtypeRow(eventId != null, sequenceId, instanceId, type);
+                        return new PerformInstanceDefinition
+                        {
+                            Id = instanceId,
+                            IsBlocking = true,
+                            EventId = eventId,
+                        };
                     }
 
                     case ActionType.PromptChoiceV2:

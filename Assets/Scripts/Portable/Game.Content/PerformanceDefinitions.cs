@@ -50,6 +50,9 @@ namespace TruthCardGame.Content
         public string Id { get; set; } = "";
         public string Name { get; set; } = "";
 
+        /// <summary>Authoring order; runtime selection ignores it.</summary>
+        public int SortOrder { get; set; }
+
         /// <summary>All required tags must be present (ALL) versus at least one (ANY).</summary>
         public bool RequireAllTags { get; set; } = true;
 

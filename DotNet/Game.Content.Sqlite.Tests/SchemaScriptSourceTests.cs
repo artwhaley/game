@@ -21,8 +21,8 @@ namespace TruthCardGame.Content.Sqlite.Tests
         [Test]
         public void EveryRegisteredMigration_ResolvesANonEmptyScript()
         {
-            Assert.AreEqual(11, CoreMigrations.All.Count, "registered migrations");
-            Assert.AreEqual(11, CoreMigrations.MaxVersion, "highest schema version");
+            Assert.AreEqual(12, CoreMigrations.All.Count, "registered migrations");
+            Assert.AreEqual(12, CoreMigrations.MaxVersion, "highest schema version");
 
             foreach (var migration in CoreMigrations.All)
             {

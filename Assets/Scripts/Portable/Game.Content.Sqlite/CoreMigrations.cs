@@ -12,7 +12,9 @@ namespace TruthCardGame.Content.Sqlite
     /// physically present but unused (see the v2 script header). v4 changes
     /// PhaseGoto assignment to nullable so Unassigned is a first-class state.
     /// v10 adds editor-only WPF Action Block templates; runtime action models
-    /// remain unchanged.
+    /// remain unchanged. v11 adds WPF graph portals. v12 adds the Conversation
+    /// Performance vocabulary (Performance Tags, Performance Events and the
+    /// Perform action subtype).
     /// </summary>
     public static class CoreMigrations
     {
@@ -63,6 +65,7 @@ namespace TruthCardGame.Content.Sqlite
                     Migration9Transform.Transform),
                 new CoreMigration(10, "wpf-action-block-templates", "SQLITE-SCHEMA-V10-ACTION-BLOCKS.sql"),
                 new CoreMigration(11, "wpf-graph-portal-pairs", "SQLITE-SCHEMA-V11-WPF-GRAPH-PORTALS.sql"),
+                new CoreMigration(12, "conversation-performance", "SQLITE-SCHEMA-V12-PERFORMANCE.sql"),
             };
         }
     }

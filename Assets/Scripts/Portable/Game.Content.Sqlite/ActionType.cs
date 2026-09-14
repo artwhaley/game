@@ -33,6 +33,7 @@ namespace TruthCardGame.Content.Sqlite
         public const string SessionGotoV2 = ActionTypeKeys.SessionGoto;
         public const string ReturnV2 = ActionTypeKeys.Return;
         public const string EndSessionV2 = ActionTypeKeys.EndSession;
+        public const string PerformV12 = ActionTypeKeys.Perform;
 
         /// <summary>Flow-control actions can never be authored as nonblocking.</summary>
         public static bool IsAlwaysBlocking(string actionType)
