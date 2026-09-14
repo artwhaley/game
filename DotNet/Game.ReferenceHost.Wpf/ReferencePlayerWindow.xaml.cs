@@ -178,6 +178,37 @@ namespace TruthCardGame.ReferenceHost.Wpf
 
         // ---------- session lifecycle ----------
 
+        /// <summary>
+        /// The Workbench simulates presentation: it validates and logs a
+        /// performance decision with the same accept/reject contract Unity
+        /// honours. Without a generated catalog there is nothing to plan
+        /// against, so no host is registered and a Perform action fails loudly
+        /// rather than pretending to have staged something.
+        /// </summary>
+        private IPerformanceHost CreateSimulatedPerformanceHost()
+        {
+            var catalog = PresentationCatalogLoader.TryLoad(ResolveDatabasePath());
+            if (catalog == null)
+            {
+                Log("No generated presentation catalog next to the content database; " +
+                    "run TruthCardGame/Performance/Generate Presentation Catalog in Unity " +
+                    "before playing a Card that performs.");
+                return null;
+            }
+
+            var initial = PresentationCatalogLoader.TryDefaultInitialState(catalog);
+            if (initial == null)
+            {
+                Log("The generated presentation catalog declares no usable anchor; " +
+                    "performance simulation is unavailable for this run.");
+                return null;
+            }
+
+            Log($"Simulated presentation host ready: start {initial}, " +
+                $"{catalog.Anchors.Count} anchor(s), {catalog.Ingredients.Count} ingredient(s).");
+            return new SimulatedPerformanceHostService(catalog, initial, Log);
+        }
+
         private async void OnStartSession(object sender, RoutedEventArgs e)
         {
             try
@@ -207,7 +238,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     cutscene: new UiCutsceneService(this),
                     toyActivity: _toyHost,
                     dialog: new DialogHostService((text, ct) => ShowDialogAsync(text, ct), new UiGameLog(Log)),
-                    pauseGate: _pauseGate);
+                    pauseGate: _pauseGate,
+                    performance: CreateSimulatedPerformanceHost());
 
                 UnsubscribeEngine();
                 _engine = new GameSessionEngine(_content, selected.Id, services, SpawnOptionsForRun(seed),

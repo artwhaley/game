@@ -1391,26 +1391,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
             }
         }
 
-        /// <summary>
-        /// Reads the Unity-generated presentation catalog that sits next to the
-        /// content database. It is an optional read-only artifact: a missing or
-        /// malformed file must never block content editing, so failures degrade
-        /// to "not generated" rather than surfacing an error.
-        /// </summary>
         private static PresentationCatalogDefinition TryLoadPresentationCatalog(string databasePath)
         {
-            try
-            {
-                var directory = System.IO.Path.GetDirectoryName(databasePath);
-                if (string.IsNullOrEmpty(directory)) return null;
-                var catalogPath = System.IO.Path.Combine(directory, "PresentationCatalog.json");
-                if (!System.IO.File.Exists(catalogPath)) return null;
-                return PresentationCatalogJson.FromJson(System.IO.File.ReadAllText(catalogPath));
-            }
-            catch
-            {
-                return null;
-            }
+            return PresentationCatalogLoader.TryLoad(databasePath);
         }
 
         private void BindLibrary()
