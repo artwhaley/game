@@ -796,6 +796,37 @@
                                                       Visibility="Collapsed"
                                                       SelectionChanged="OnCatalogEditorChanged"
                                                       ToolTip="Required Smart Toy capabilities for a Session Type"/>
+                            <CheckBox x:Name="CatalogRetiredBox" Content="Retired (hidden from new selections)"
+                                      Margin="0,5,0,0" Foreground="#FFDDDDDD" Visibility="Collapsed"
+                                      Checked="OnCatalogEditorChanged" Unchecked="OnCatalogEditorChanged"
+                                      ToolTip="Retiring keeps the stable ID resolvable for existing content"/>
+                            <StackPanel x:Name="CatalogPerformanceEventPanel" Visibility="Collapsed">
+                                <TextBlock Text="Performance tags" FontSize="10" Foreground="#FFB0B0B0" Margin="0,5,0,0"/>
+                                <vm:RelationPickerControl x:Name="CatalogPerformanceTagPicker" Margin="0,3,0,0"
+                                                          SelectionChanged="OnCatalogEditorChanged"
+                                                          ToolTip="Semantic ingredients the selected Unity motion must carry"/>
+                                <CheckBox x:Name="CatalogRequireAllTagsBox" Content="Require all tags (ALL) instead of any (ANY)"
+                                          Margin="0,5,0,0" Foreground="#FFDDDDDD"
+                                          Checked="OnCatalogEditorChanged" Unchecked="OnCatalogEditorChanged"/>
+                                <TextBlock Text="Staging policy" FontSize="10" Foreground="#FFB0B0B0" Margin="0,5,0,0"/>
+                                <ComboBox x:Name="CatalogStagingPolicyBox" Style="{StaticResource DarkComboBox}"
+                                          Margin="0,3,0,0" SelectionChanged="OnCatalogStagingPolicyChanged"/>
+                                <TextBlock Text="Named anchor (Named location only)" FontSize="10" Foreground="#FFB0B0B0" Margin="0,5,0,0"/>
+                                <TextBox x:Name="CatalogNamedAnchorBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
+                                         Margin="0,3,0,0" TextChanged="OnCatalogEditorChanged"
+                                         ToolTip="Unity-owned anchor id, e.g. anchor-chair"/>
+                                <TextBlock Text="Allowed anchors (';' separated, blank = any)" FontSize="10" Foreground="#FFB0B0B0" Margin="0,5,0,0"/>
+                                <TextBox x:Name="CatalogAllowedAnchorsBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
+                                         Margin="0,3,0,0" TextChanged="OnCatalogEditorChanged"
+                                         ToolTip="Optional restriction to specific Unity anchors"/>
+                                <TextBlock Text="Allowed postures (';' separated, blank = any)" FontSize="10" Foreground="#FFB0B0B0" Margin="0,5,0,0"/>
+                                <TextBox x:Name="CatalogAllowedPosturesBox" Style="{StaticResource DarkTextBox}" Padding="3,1"
+                                         Margin="0,3,0,0" TextChanged="OnCatalogEditorChanged"
+                                         ToolTip="Optional restriction to specific Unity postures"/>
+                                <CheckBox x:Name="CatalogRefreshAtDialogueBox" Content="Refresh automatically at dialogue start"
+                                          Margin="0,5,0,0" Foreground="#FFDDDDDD"
+                                          Checked="OnCatalogEditorChanged" Unchecked="OnCatalogEditorChanged"/>
+                            </StackPanel>
                             <Button Content="Save entry" Click="OnSaveCatalogEntry" Padding="6,1" Margin="0,4,0,0"
                                     HorizontalAlignment="Left" Style="{StaticResource DarkButton}"/>
                         </StackPanel>

@@ -483,6 +483,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 return "Delete blocked:\nResource is referenced by the currently edited unsaved Card.";
             if (kind == CatalogKinds.DialogTag && _cardBuffer.ReferencesDialogTag(id))
                 return "Delete blocked:\nDialog Tag is referenced by the currently edited unsaved Card.";
+            if (kind == CatalogKinds.PerformanceEvent && _cardBuffer.ReferencesPerformanceEvent(id))
+                return "Delete blocked:\nPerformance Event is performed by the currently edited unsaved Card.";
             if (kind == CatalogKinds.SmartToyCapability && _cardBuffer.ReferencesSmartToyCapability(id))
                 return "This capability is referenced by the currently edited unsaved Card.";
             return null;
@@ -1375,6 +1377,7 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     content = GameContentSnapshotLoader.Load(connection);
                 }
                 _vm.LoadContent(content);
+                _vm.PresentationCatalog = TryLoadPresentationCatalog(path);
                 BindLibrary();
                 ReloadSessionEditor();
                 ReloadPhaseEditor();
@@ -1385,6 +1388,28 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 StatusText.Text = "Content error";
                 MessageBox.Show(this, "Failed to load content:\n\n" + ex.Message,
                     "Workbench", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// Reads the Unity-generated presentation catalog that sits next to the
+        /// content database. It is an optional read-only artifact: a missing or
+        /// malformed file must never block content editing, so failures degrade
+        /// to "not generated" rather than surfacing an error.
+        /// </summary>
+        private static PresentationCatalogDefinition TryLoadPresentationCatalog(string databasePath)
+        {
+            try
+            {
+                var directory = System.IO.Path.GetDirectoryName(databasePath);
+                if (string.IsNullOrEmpty(directory)) return null;
+                var catalogPath = System.IO.Path.Combine(directory, "PresentationCatalog.json");
+                if (!System.IO.File.Exists(catalogPath)) return null;
+                return PresentationCatalogJson.FromJson(System.IO.File.ReadAllText(catalogPath));
+            }
+            catch
+            {
+                return null;
             }
         }
 

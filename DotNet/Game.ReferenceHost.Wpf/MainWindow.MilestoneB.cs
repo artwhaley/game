@@ -117,8 +117,30 @@ namespace TruthCardGame.ReferenceHost.Wpf
         private static readonly string[] MilestoneBCatalogKinds =
         {
             "Session Types", "Card Tags", "Kinks", "Equipment", "Smart Toys",
-            "Dialog Tags", "Dialog Snippets"
+            "Dialog Tags", "Dialog Snippets", "Performance Tags", "Performance Events"
         };
+
+        /// <summary>Staging policy labels in enum order (Stay, ChooseCompatible, DifferentLocation, NamedLocation).</summary>
+        private static readonly string[] StagingPolicyLabels =
+        {
+            "Stay in place",
+            "Choose compatible location",
+            "Different location",
+            "Named location",
+        };
+
+        private bool IsPerformanceEventKind => SelectedCatalogKind == "Performance Events";
+
+        private static List<string> SplitIds(string value)
+        {
+            var ids = new List<string>();
+            foreach (var part in (value ?? "").Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var trimmed = part.Trim();
+                if (trimmed.Length > 0) ids.Add(trimmed);
+            }
+            return ids;
+        }
 
         private string SelectedCatalogKind => CatalogKindList.SelectedItem as string;
 
@@ -175,6 +197,21 @@ namespace TruthCardGame.ReferenceHost.Wpf
                         .OrderBy(t => t.SortOrder).ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase).ToList();
                     break;
                 }
+                case "Performance Tags":
+                    CatalogEntryList.ItemsSource = _vm.Content.PerformanceTags
+                        .Where(t => MatchesCatalog(t.Id, t.Title, null, null, query))
+                        .OrderBy(t => t.SortOrder).ThenBy(t => t.Title, StringComparer.OrdinalIgnoreCase).ToList();
+                    break;
+                case "Performance Events":
+                {
+                    var performanceTagNames = _vm.Content.PerformanceTags.ToDictionary(tag => tag.Id, tag => tag.Title ?? "");
+                    CatalogEntryList.ItemsSource = _vm.Content.PerformanceEvents
+                        .Where(t => MatchesCatalog(t.Id, t.Name, null,
+                            string.Join(" ", (t.PerformanceTagIds ?? new List<string>())
+                                .Select(id => performanceTagNames.TryGetValue(id, out var name) ? name : id)), query))
+                        .OrderBy(t => t.SortOrder).ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase).ToList();
+                    break;
+                }
             }
             if (selectedId != null) SelectCatalogEntry(selectedId);
             if (CatalogEntryList.SelectedItem == null && CatalogEntryList.Items.Count > 0)
@@ -199,6 +236,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (entry is SmartToyCapabilityDefinition capability) return capability.Id;
             if (entry is DialogTagDefinition dialogTag) return dialogTag.Id;
             if (entry is DialogSnippetDefinition dialogSnippet) return dialogSnippet.Id;
+            if (entry is PerformanceTagDefinition performanceTag) return performanceTag.Id;
+            if (entry is ConversationPerformanceEventDefinition performanceEvent) return performanceEvent.Id;
             return null;
         }
 
@@ -222,6 +261,11 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 var isCategory = entry is EquipmentDefinition || entry is SmartToyCapabilityDefinition;
                 var isSessionType = entry is SessionTypeDefinition;
                 var isDialogSnippet = entry is DialogSnippetDefinition;
+                var isPerformanceTag = entry is PerformanceTagDefinition;
+                var isPerformanceEvent = entry is ConversationPerformanceEventDefinition;
+                CatalogRetiredBox.Visibility = isPerformanceTag ? Visibility.Visible : Visibility.Collapsed;
+                CatalogRetiredBox.IsChecked = (entry as PerformanceTagDefinition)?.IsRetired ?? false;
+                CatalogPerformanceEventPanel.Visibility = isPerformanceEvent ? Visibility.Visible : Visibility.Collapsed;
                 CatalogDescriptionLabel.Text = isSnippet ? "Text" : "Description";
                 CatalogDescriptionLabel.Visibility = isKink || isSnippet ? Visibility.Visible : Visibility.Collapsed;
                 CatalogDescriptionBox.Visibility = isKink || isSnippet ? Visibility.Visible : Visibility.Collapsed;
@@ -249,6 +293,25 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 else if (entry is SessionTypeDefinition sessionType)
                     selectedRelations = sessionType.RequiredCapabilityIds;
                 CatalogCapabilityPicker.SetItems(relationItems, selectedRelations);
+
+                if (isPerformanceEvent)
+                {
+                    var performanceEvent = (ConversationPerformanceEventDefinition)entry;
+                    CatalogPerformanceTagPicker.SetItems(
+                        _vm.Content.PerformanceTags.Select(tag => new RelationChoice
+                        {
+                            Id = tag.Id,
+                            DisplayName = tag.IsRetired ? (tag.Title + " (retired)") : tag.Title,
+                        }),
+                        performanceEvent.PerformanceTagIds);
+                    CatalogRequireAllTagsBox.IsChecked = performanceEvent.RequireAllTags;
+                    CatalogStagingPolicyBox.ItemsSource = StagingPolicyLabels;
+                    CatalogStagingPolicyBox.SelectedIndex = (int)performanceEvent.StagingPolicy;
+                    CatalogNamedAnchorBox.Text = performanceEvent.NamedAnchorId ?? "";
+                    CatalogAllowedAnchorsBox.Text = string.Join(";", performanceEvent.AllowedAnchorIds ?? new List<string>());
+                    CatalogAllowedPosturesBox.Text = string.Join(";", performanceEvent.AllowedPostureIds ?? new List<string>());
+                    CatalogRefreshAtDialogueBox.IsChecked = performanceEvent.RefreshAtDialogueStart;
+                }
             }
             finally
             {
@@ -265,6 +328,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (entry is SmartToyCapabilityDefinition capability) return capability.Title;
             if (entry is DialogTagDefinition dialogTag) return dialogTag.Title;
             if (entry is DialogSnippetDefinition dialogSnippet) return dialogSnippet.Name;
+            if (entry is PerformanceTagDefinition performanceTag) return performanceTag.Title;
+            if (entry is ConversationPerformanceEventDefinition performanceEvent) return performanceEvent.Name;
             return "";
         }
 
@@ -285,6 +350,10 @@ namespace TruthCardGame.ReferenceHost.Wpf
             if (entry is DialogSnippetDefinition dialogSnippet)
                 return new CatalogEntryEdit { Kind = CatalogKinds.DialogSnippet, Id = dialogSnippet.Id, Title = dialogSnippet.Name, Description = dialogSnippet.Text,
                     SortOrder = dialogSnippet.SortOrder, DialogTagIds = new List<string>(dialogSnippet.DialogTagIds) };
+            if (entry is PerformanceTagDefinition performanceTag)
+                return CatalogEntryEdit.FromPerformanceTag(performanceTag);
+            if (entry is ConversationPerformanceEventDefinition performanceEvent)
+                return CatalogEntryEdit.FromPerformanceEvent(performanceEvent);
             return null;
         }
 
@@ -292,6 +361,27 @@ namespace TruthCardGame.ReferenceHost.Wpf
         {
             if (_syncingCatalogEditor) return;
             UpdateCatalogUsageText();
+        }
+
+        private void OnCatalogStagingPolicyChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_syncingCatalogEditor) return;
+            UpdateCatalogUsageText();
+        }
+
+        /// <summary>
+        /// Read-only pointer at the Unity-side ingredient membership for one tag.
+        /// Unity owns membership, so WPF can only show which generated
+        /// descriptor file would carry it; a missing catalog simply means the
+        /// Unity project has not generated one yet.
+        /// </summary>
+        private string UnityIngredientUsageText(PerformanceTagDefinition tag)
+        {
+            var catalog = _vm.PresentationCatalog;
+            if (catalog == null) return " Unity catalog not generated.";
+            var count = catalog.Ingredients.Count(item =>
+                (item.PerformanceTagIds ?? new List<string>()).Contains(tag.Id));
+            return $" {count} Unity ingredient(s) carry it.";
         }
 
         private void OnSaveCatalogEntry(object sender, RoutedEventArgs e)
@@ -304,8 +394,25 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 Kind = oldValue.Kind, Id = oldValue.Id, Title = CatalogTitleBox.Text?.Trim() ?? "",
                 Description = CatalogDescriptionBox.Text ?? "", Category = CatalogCategoryBox.Text?.Trim() ?? "",
                 SortOrder = oldValue.SortOrder, RequiredCapabilityIds = CatalogCapabilityPicker.SelectedIds.ToList(),
-                DialogTagIds = CatalogCapabilityPicker.SelectedIds.ToList()
+                DialogTagIds = CatalogCapabilityPicker.SelectedIds.ToList(),
+                IsRetired = CatalogRetiredBox.IsChecked == true,
+                RequireAllTags = CatalogRequireAllTagsBox.IsChecked == true,
+                StagingPolicy = CatalogStagingPolicyBox.SelectedIndex >= 0
+                    ? (PerformanceStagingPolicy)CatalogStagingPolicyBox.SelectedIndex
+                    : PerformanceStagingPolicy.Stay,
+                NamedAnchorId = CatalogNamedAnchorBox.Text?.Trim() ?? "",
+                RefreshAtDialogueStart = CatalogRefreshAtDialogueBox.IsChecked == true,
+                PerformanceTagIds = CatalogPerformanceTagPicker.SelectedIds.ToList(),
+                AllowedAnchorIds = SplitIds(CatalogAllowedAnchorsBox.Text),
+                AllowedPostureIds = SplitIds(CatalogAllowedPosturesBox.Text),
             };
+            if (oldValue.Kind == CatalogKinds.PerformanceEvent && newValue.StagingPolicy == PerformanceStagingPolicy.NamedLocation &&
+                string.IsNullOrWhiteSpace(newValue.NamedAnchorId))
+            {
+                MessageBox.Show(this, "A named location requires a named anchor.", "Catalog",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
             if (string.IsNullOrWhiteSpace(newValue.Title))
             {
                 MessageBox.Show(this, "A catalog title is required.", "Catalog", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -317,7 +424,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 BindCatalogEntries();
                 SelectCatalogEntry(newValue.Id);
                 BindSessionTypeBox();
-                if (newValue.Kind == CatalogKinds.SmartToyCapability || newValue.Kind == CatalogKinds.DialogTag)
+                if (newValue.Kind == CatalogKinds.SmartToyCapability || newValue.Kind == CatalogKinds.DialogTag ||
+                    newValue.Kind == CatalogKinds.PerformanceTag || newValue.Kind == CatalogKinds.PerformanceEvent)
                     RefreshActionAuthoringCatalogs();
                 StatusText.Text = "Saved catalog entry.";
             });
@@ -339,6 +447,25 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 dialogSnippet.Name = value.Title; dialogSnippet.Text = value.Description ?? "";
                 dialogSnippet.DialogTagIds.Clear();
                 dialogSnippet.DialogTagIds.AddRange(value.DialogTagIds ?? new List<string>());
+                return;
+            }
+            if (entry is PerformanceTagDefinition performanceTag)
+            {
+                performanceTag.Title = value.Title; performanceTag.IsRetired = value.IsRetired; return;
+            }
+            if (entry is ConversationPerformanceEventDefinition performanceEvent)
+            {
+                performanceEvent.Name = value.Title;
+                performanceEvent.RequireAllTags = value.RequireAllTags;
+                performanceEvent.StagingPolicy = value.StagingPolicy;
+                performanceEvent.NamedAnchorId = value.NamedAnchorId ?? "";
+                performanceEvent.RefreshAtDialogueStart = value.RefreshAtDialogueStart;
+                performanceEvent.PerformanceTagIds.Clear();
+                performanceEvent.PerformanceTagIds.AddRange(value.PerformanceTagIds ?? new List<string>());
+                performanceEvent.AllowedAnchorIds.Clear();
+                performanceEvent.AllowedAnchorIds.AddRange(value.AllowedAnchorIds ?? new List<string>());
+                performanceEvent.AllowedPostureIds.Clear();
+                performanceEvent.AllowedPostureIds.AddRange(value.AllowedPostureIds ?? new List<string>());
             }
         }
 
@@ -393,6 +520,21 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     if (CatalogEntryList.SelectedItem is DialogSnippetDefinition dialogSnippet)
                         text = $"Uses {dialogSnippet.DialogTagIds.Count} dialog tag(s).";
                     break;
+                case "Performance Tags":
+                    if (CatalogEntryList.SelectedItem is PerformanceTagDefinition performanceTag)
+                    {
+                        var count = WithConnectionResult(connection => PerformanceCatalogRepository.GetTagUsage(connection, performanceTag.Id));
+                        var unity = UnityIngredientUsageText(performanceTag);
+                        text = $"Used by {count} Performance Event(s).{unity}";
+                    }
+                    break;
+                case "Performance Events":
+                    if (CatalogEntryList.SelectedItem is ConversationPerformanceEventDefinition performanceEvent)
+                    {
+                        var count = WithConnectionResult(connection => PerformanceCatalogRepository.GetEventUsage(connection, performanceEvent.Id));
+                        text = $"Used by {count} Perform action(s).";
+                    }
+                    break;
             }
             CatalogUsageText.Text = text;
         }
@@ -414,6 +556,35 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     BindCatalogEntries();
                     SelectCatalogEntry(id);
                     StatusText.Text = $"Created dialog snippet '{title}'.";
+                });
+                return;
+            }
+            if (kindKey == CatalogKinds.PerformanceTag)
+            {
+                var performanceTag = new PerformanceTagDefinition { Id = id, Title = title };
+                PushOrMergeWithReload(new CreateCatalogEntryCommand(OpenConnection, kindKey, id, title), () =>
+                {
+                    _vm.Content.PerformanceTags.Add(performanceTag);
+                    BindCatalogEntries();
+                    SelectCatalogEntry(id);
+                    RefreshActionAuthoringCatalogs();
+                    StatusText.Text = $"Created performance tag '{title}'.";
+                });
+                return;
+            }
+            if (kindKey == CatalogKinds.PerformanceEvent)
+            {
+                var performanceEvent = new ConversationPerformanceEventDefinition
+                {
+                    Id = id, Name = title, RequireAllTags = true, RefreshAtDialogueStart = true,
+                };
+                PushOrMergeWithReload(new CreateCatalogEntryCommand(OpenConnection, kindKey, id, title), () =>
+                {
+                    _vm.Content.PerformanceEvents.Add(performanceEvent);
+                    BindCatalogEntries();
+                    SelectCatalogEntry(id);
+                    RefreshActionAuthoringCatalogs();
+                    StatusText.Text = $"Created performance event '{title}'.";
                 });
                 return;
             }
@@ -472,6 +643,15 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case CatalogKinds.DialogSnippet:
                     _vm.Content.DialogSnippets.Add(new DialogSnippetDefinition { Id = id, Name = title });
                     break;
+                case CatalogKinds.PerformanceTag:
+                    _vm.Content.PerformanceTags.Add(new PerformanceTagDefinition { Id = id, Title = title });
+                    break;
+                case CatalogKinds.PerformanceEvent:
+                    _vm.Content.PerformanceEvents.Add(new ConversationPerformanceEventDefinition
+                    {
+                        Id = id, Name = title, RequireAllTags = true, RefreshAtDialogueStart = true,
+                    });
+                    break;
             }
         }
 
@@ -500,6 +680,12 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case CatalogKinds.DialogSnippet:
                     _vm.Content.DialogSnippets.RemoveAll(t => t.Id == id);
                     break;
+                case CatalogKinds.PerformanceTag:
+                    _vm.Content.PerformanceTags.RemoveAll(t => t.Id == id);
+                    break;
+                case CatalogKinds.PerformanceEvent:
+                    _vm.Content.PerformanceEvents.RemoveAll(t => t.Id == id);
+                    break;
             }
         }
 
@@ -514,7 +700,9 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     CatalogEntryList.Items[i] is EquipmentDefinition equipment && equipment.Id == id ||
                     CatalogEntryList.Items[i] is SmartToyCapabilityDefinition capability && capability.Id == id ||
                     CatalogEntryList.Items[i] is DialogTagDefinition dialogTag && dialogTag.Id == id ||
-                    CatalogEntryList.Items[i] is DialogSnippetDefinition dialogSnippet && dialogSnippet.Id == id)
+                    CatalogEntryList.Items[i] is DialogSnippetDefinition dialogSnippet && dialogSnippet.Id == id ||
+                    CatalogEntryList.Items[i] is PerformanceTagDefinition performanceTag && performanceTag.Id == id ||
+                    CatalogEntryList.Items[i] is ConversationPerformanceEventDefinition performanceEvent && performanceEvent.Id == id)
                 {
                     CatalogEntryList.SelectedIndex = i;
                     return;
@@ -533,6 +721,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 case "Smart Toys": return CatalogKinds.SmartToyCapability;
                 case "Dialog Tags": return CatalogKinds.DialogTag;
                 case "Dialog Snippets": return CatalogKinds.DialogSnippet;
+                case "Performance Tags": return CatalogKinds.PerformanceTag;
+                case "Performance Events": return CatalogKinds.PerformanceEvent;
                 default: throw new InvalidOperationException("Unknown catalog kind '" + uiKind + "'.");
             }
         }
@@ -583,6 +773,16 @@ namespace TruthCardGame.ReferenceHost.Wpf
                     id = dialogSnippet.Id; title = dialogSnippet.Name;
                     usage = 0;
                     break;
+                case "Performance Tags":
+                    if (!(CatalogEntryList.SelectedItem is PerformanceTagDefinition performanceTag)) return;
+                    id = performanceTag.Id; title = performanceTag.Title;
+                    usage = WithConnectionResult(connection => PerformanceCatalogRepository.GetTagUsage(connection, id));
+                    break;
+                case "Performance Events":
+                    if (!(CatalogEntryList.SelectedItem is ConversationPerformanceEventDefinition performanceEvent)) return;
+                    id = performanceEvent.Id; title = performanceEvent.Name;
+                    usage = WithConnectionResult(connection => PerformanceCatalogRepository.GetEventUsage(connection, id));
+                    break;
                 default:
                     return;
             }
@@ -625,7 +825,8 @@ namespace TruthCardGame.ReferenceHost.Wpf
                 RemoveCatalogEntryFromContent(kindKey, id);
                 BindCatalogEntries();
                 BindSessionTypeBox();
-                if (kindKey == CatalogKinds.SmartToyCapability || kindKey == CatalogKinds.DialogTag)
+                if (kindKey == CatalogKinds.SmartToyCapability || kindKey == CatalogKinds.DialogTag ||
+                    kindKey == CatalogKinds.PerformanceTag || kindKey == CatalogKinds.PerformanceEvent)
                     RefreshActionAuthoringCatalogs();
                 StatusText.Text = $"Deleted '{title}'.";
             });

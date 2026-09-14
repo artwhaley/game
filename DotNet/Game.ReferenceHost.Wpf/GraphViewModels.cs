@@ -2136,6 +2136,13 @@ namespace TruthCardGame.ReferenceHost.Wpf
         public WorkbenchLayout Layout { get; } = new WorkbenchLayout();
 
         public GameContentDefinition Content { get; private set; }
+
+        /// <summary>
+        /// The Unity-generated presentation catalog (anchors, ingredients and
+        /// reusable operations), read read-only so the Workbench can show which
+        /// Unity ingredients carry a Performance Tag. Null until generated.
+        /// </summary>
+        public PresentationCatalogDefinition PresentationCatalog { get; set; }
         public SessionDefinition SelectedSession { get; private set; }
         public PhaseDefinition SelectedPhase { get; private set; }
 
