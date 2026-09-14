@@ -50,7 +50,8 @@ namespace TruthCardGame.Tests
 
             Assert.IsTrue(Resolve(request, out var plan, out var failure), failure);
             Assert.AreEqual(1, plan.OperationClips.Count);
-            Assert.AreEqual("Sit", plan.OperationClips[0].name, "the sit operation's bound clip");
+            Assert.AreEqual("Sitting_Enter", plan.OperationClips[0].name, "the sit operation's bound clip");
+            Assert.AreEqual(PresentationOperationKinds.Sit, plan.OperationKinds[0], "the sit operation's kind");
             Assert.AreEqual("Sitting_Idle_Loop", plan.FoundationClip.name, "the destination posture's foundation");
             Assert.AreEqual("Talking", plan.OverlayClip.name);
             Assert.AreEqual("ST Mika 8 Natural Smile", plan.FaceControl);

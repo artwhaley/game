@@ -1,9 +1,9 @@
 {
   "catalogVersion": 1,
-  "generatedAtUtc": "2026-09-14T02:32:33.9726183Z",
+  "generatedAtUtc": "2026-09-14T03:12:43.7909934Z",
   "ingredients": [
     {
-      "id": "e233a87b513d41678af2d2a2344f3ca1",
+      "id": "5b9f50394b6f4520bd96016905b5e019",
       "displayName": "V1 Standing Idle",
       "kind": "foundation",
       "enabled": true,
@@ -13,7 +13,7 @@
       "ownsHead": false
     },
     {
-      "id": "ec34fc1517c5461e9d6563b20974fe42",
+      "id": "1f07cd4abba14cf4aa70ee721d285cdf",
       "displayName": "V1 Sitting Idle",
       "kind": "foundation",
       "enabled": true,
@@ -23,7 +23,7 @@
       "ownsHead": false
     },
     {
-      "id": "b44dc817901742dfa332ae87318947e4",
+      "id": "23c580dcdb6349da999722d6db434cb7",
       "displayName": "V1 Talking Idle",
       "kind": "body",
       "enabled": true,
@@ -33,7 +33,7 @@
       "ownsHead": false
     },
     {
-      "id": "60fd62cbbb644245a6578deaf56b87a2",
+      "id": "c890a60918a6430884433557828a0b5e",
       "displayName": "V1 Interact",
       "kind": "body",
       "enabled": true,
@@ -43,7 +43,7 @@
       "ownsHead": false
     },
     {
-      "id": "07f4dee902e4453596b0d7a825a68a2b",
+      "id": "90589fe72d594c1ca8c7a0dcecd0dd60",
       "displayName": "V1 Dance (later variety)",
       "kind": "body",
       "enabled": false,
@@ -53,7 +53,7 @@
       "ownsHead": false
     },
     {
-      "id": "47acebbfe0b848b5a42cc2ab12554304",
+      "id": "311f9ab5b4c44cd9abbb5d7c275200f3",
       "displayName": "V1 Smile",
       "kind": "face",
       "enabled": true,
@@ -63,7 +63,7 @@
       "ownsHead": false
     },
     {
-      "id": "ebc962238b914aa89879ef60ca4921ab",
+      "id": "022e6a89124a4ed681a99370860b5f42",
       "displayName": "V1 Frown",
       "kind": "face",
       "enabled": true,

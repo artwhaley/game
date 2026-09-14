@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: TruthCardGame::TruthCardGame.Performance.PerformanceRegistry
   standardGestureMask: {fileID: 31900000, guid: a26a47c689074ae468f93aa1fc165b2d, type: 2}
   ingredients:
-  - ingredientId: e233a87b513d41678af2d2a2344f3ca1
+  - ingredientId: 5b9f50394b6f4520bd96016905b5e019
     displayName: V1 Standing Idle
     kind: foundation
     enabled: 1
@@ -26,7 +26,7 @@ MonoBehaviour:
     clip: {fileID: 7994627924475153551, guid: 797fbbf2129998d4dbd54b4ab76ff206, type: 3}
     faceControlName: 
     faceWeight: 100
-  - ingredientId: ec34fc1517c5461e9d6563b20974fe42
+  - ingredientId: 1f07cd4abba14cf4aa70ee721d285cdf
     displayName: V1 Sitting Idle
     kind: foundation
     enabled: 1
@@ -38,7 +38,7 @@ MonoBehaviour:
     clip: {fileID: -6676812269523803463, guid: 797fbbf2129998d4dbd54b4ab76ff206, type: 3}
     faceControlName: 
     faceWeight: 100
-  - ingredientId: b44dc817901742dfa332ae87318947e4
+  - ingredientId: 23c580dcdb6349da999722d6db434cb7
     displayName: V1 Talking Idle
     kind: body
     enabled: 1
@@ -53,7 +53,7 @@ MonoBehaviour:
     clip: {fileID: 6476497563760123848, guid: 797fbbf2129998d4dbd54b4ab76ff206, type: 3}
     faceControlName: 
     faceWeight: 100
-  - ingredientId: 60fd62cbbb644245a6578deaf56b87a2
+  - ingredientId: c890a60918a6430884433557828a0b5e
     displayName: V1 Interact
     kind: body
     enabled: 1
@@ -66,7 +66,7 @@ MonoBehaviour:
     clip: {fileID: -2328835098782832033, guid: 797fbbf2129998d4dbd54b4ab76ff206, type: 3}
     faceControlName: 
     faceWeight: 100
-  - ingredientId: 07f4dee902e4453596b0d7a825a68a2b
+  - ingredientId: 90589fe72d594c1ca8c7a0dcecd0dd60
     displayName: V1 Dance (later variety)
     kind: body
     enabled: 0
@@ -79,7 +79,7 @@ MonoBehaviour:
     clip: {fileID: 8800687838965813479, guid: 797fbbf2129998d4dbd54b4ab76ff206, type: 3}
     faceControlName: 
     faceWeight: 100
-  - ingredientId: 47acebbfe0b848b5a42cc2ab12554304
+  - ingredientId: 311f9ab5b4c44cd9abbb5d7c275200f3
     displayName: V1 Smile
     kind: face
     enabled: 1
@@ -94,7 +94,7 @@ MonoBehaviour:
     clip: {fileID: 0}
     faceControlName: ST Mika 8 Natural Smile
     faceWeight: 100
-  - ingredientId: ebc962238b914aa89879ef60ca4921ab
+  - ingredientId: 022e6a89124a4ed681a99370860b5f42
     displayName: V1 Frown
     kind: face
     enabled: 1
@@ -130,13 +130,16 @@ MonoBehaviour:
     kind: stand
     cost: 10
     applicableAnchorIds: []
+    clip: {fileID: 497093190674883199, guid: 797fbbf2129998d4dbd54b4ab76ff206, type: 3}
   - operationId: op-sit
     displayName: Sit
     kind: sit
     cost: 10
     applicableAnchorIds: []
+    clip: {fileID: 7860179187555574969, guid: 797fbbf2129998d4dbd54b4ab76ff206, type: 3}
   - operationId: op-move-standing
     displayName: Move While Standing
     kind: move_while_standing
     cost: 10
     applicableAnchorIds: []
+    clip: {fileID: -7003542030617561338, guid: 797fbbf2129998d4dbd54b4ab76ff206, type: 3}
