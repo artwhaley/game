@@ -171,6 +171,12 @@ namespace TruthCardGame.Performance
         [Tooltip("Optional exceptional anchor restriction; empty means shared by all compatible anchors.")]
         [SerializeField] private List<string> applicableAnchorIds = new List<string>();
 
+        [Header("Unity binding (not exported)")]
+        [Tooltip("Transition clip this operation plays. Required: a Perform whose plan composes this operation is refused without it.")]
+        [SerializeField] private AnimationClip clip;
+
+        public AnimationClip Clip => clip;
+
         public string OperationId => operationId;
         public string DisplayName => string.IsNullOrEmpty(displayName) ? kind : displayName;
         public string Kind => kind;
@@ -186,13 +192,14 @@ namespace TruthCardGame.Performance
         }
 
         public void Configure(string id, string name, string operationKind, int operationCost,
-            IEnumerable<string> anchorIds = null)
+            IEnumerable<string> anchorIds = null, AnimationClip animationClip = null)
         {
             if (!string.IsNullOrEmpty(id)) operationId = id;
             displayName = name ?? "";
             kind = operationKind;
             cost = operationCost < 1 ? 1 : operationCost;
             applicableAnchorIds = new List<string>(anchorIds ?? Array.Empty<string>());
+            clip = animationClip;
             EnsureId();
         }
     }

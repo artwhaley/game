@@ -152,11 +152,15 @@ namespace TruthCardGame.EditorTools
                     Anchor("anchor-chair", "Chair", "chair", bothPostures, "anchor-room-center"),
                 };
 
+                // Reusable operations carry their Unity transition clip here. The
+                // host refuses a composed path whose operations are unbound, so a
+                // fixture without these cannot stage anyone anywhere.
                 var operationEntries = new List<PerformanceOperationEntry>
                 {
-                    Operation("op-stand", "Stand", PresentationOperationKinds.Stand),
-                    Operation("op-sit", "Sit", PresentationOperationKinds.Sit),
-                    Operation("op-move-standing", "Move While Standing", PresentationOperationKinds.MoveWhileStanding),
+                    Operation("op-stand", "Stand", PresentationOperationKinds.Stand, clips, "Sitting_Exit"),
+                    Operation("op-sit", "Sit", PresentationOperationKinds.Sit, clips, "Sitting_Enter"),
+                    Operation("op-move-standing", "Move While Standing",
+                        PresentationOperationKinds.MoveWhileStanding, clips, "Walk_Loop"),
                 };
 
                 registry.ReplaceContents(new PerformanceRegistryView(
@@ -382,10 +386,11 @@ namespace TruthCardGame.EditorTools
             return entry;
         }
 
-        private static PerformanceOperationEntry Operation(string id, string name, string kind)
+        private static PerformanceOperationEntry Operation(
+            string id, string name, string kind, Dictionary<string, AnimationClip> clips, string clipRole)
         {
             var entry = new PerformanceOperationEntry();
-            entry.Configure(id, name, kind, 10);
+            entry.Configure(id, name, kind, 10, anchorIds: null, animationClip: RequireClip(clips, clipRole));
             return entry;
         }
     }
