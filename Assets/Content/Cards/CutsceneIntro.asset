@@ -18,3 +18,5 @@ MonoBehaviour:
   - cutscene
   actions:
   - {fileID: 11400000, guid: fd41889fc8f0dc044b48e7fefa5f1c99, type: 2}
+  - {fileID: 11400000, guid: 077f2176c881ce744b2c89a4ea4e42b5, type: 2}
+  - {fileID: 11400000, guid: 2364b272e2872fc40ad5ca584f3dbf6c, type: 2}

@@ -298,11 +298,23 @@ ending phases, ending card ("The End"), `Cutscene_Intro` action asset.
 
 ## 6. Open items / immediate next steps
 
-1. **Finish ticket 2**: assign the hand-authored timeline (user created
-   `testtime.playable`) to `Cutscene_Intro.asset`'s timeline field; verify the
-   cutscene plays in Play mode. Then flip ticket 2 status to Done.
-2. **PlayMode test** covering scene-glue: boot Game scene, exercise one choice
-   card end-to-end. Would have caught both playtest bugs.
+1. **Finish ticket 2**: assign a hand-authored timeline to
+   `Cutscene_Intro.asset`'s timeline field and verify the cutscene plays in Play
+   mode. The card is finally *drawable* (2026-09: `SampleContentBuilder` authors
+   `Phase_Cutscene`, so `Relaxing` runs `Warm Up → Teasing → Cutscene →
+   Wind Down`), and the draw path, playback, cancellation and the
+   unregistered-resource no-op are covered by `GameSceneUiTests` — the card-level
+   playback test uses a stand-in timeline today and switches to the authored one,
+   asserting against its real duration, the moment it is assigned. Note
+   `testtime.playable` is an empty placeholder (0 s, no tracks): assigning it
+   proves the wiring and silences the missing-cutscene log without showing
+   anything, so a real cutscene still has to be authored in the Timeline window.
+2. ~~**PlayMode test** covering scene-glue~~ **Done (2026-09)** — the real `Game`
+   scene now boots under test and the authored choice card is answered through
+   its prompt overlay (`Assets/Tests/PlayMode/GameSceneUiTests.cs`). It caught
+   two shipped bugs on its first run: the deck's un-authored cutscene reference
+   blocked engine construction in `GameManager.Awake` for every session, and
+   the waiting panel overwrote the drawn card's name with "Continue".
 3. **Authoring tools** — explicitly flagged as "very important, coming soon."
    With ~1000 cards planned, manual SO creation won't scale. Needs: create
    actions, duplicate-and-mutate an action, create cards, duplicate-and-mutate

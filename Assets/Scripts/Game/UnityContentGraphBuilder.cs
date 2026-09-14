@@ -120,21 +120,33 @@ namespace TruthCardGame
         public void CollectCutscene(CutsceneAction action)
         {
             if (action == null) return;
-            if (!action.HasTimeline) return;
 
-            action.EnsureResourceId();
-            _registry.Register(action.ResourceId, action.Timeline);
-
-            if (!_resourceIds.ContainsKey(action.ResourceId))
+            // A timeline can only bind under a stable id; mint one if the
+            // author left it empty.
+            if (action.HasTimeline)
             {
-                _resourceIds[action.ResourceId] = action.ResourceId;
-                Resources.Add(new ResourceDefinition
-                {
-                    Id = action.ResourceId,
-                    Kind = "cutscene",
-                    Name = action.name
-                });
+                action.EnsureResourceId();
+                _registry.Register(action.ResourceId, action.Timeline);
             }
+
+            // Declare the resource whenever the converted instance carries an
+            // id, even with no timeline assigned yet. Sample content ships its
+            // authored id ('cs:intro') before the TimelineAsset is authored by
+            // hand, and ToDefinition still emits an instance referencing it —
+            // an undeclared reference fails ContentReferenceValidator at
+            // engine construction, which blocks *every* session rather than
+            // the one card. Unbound, playback logs the missing-cutscene error
+            // at the card's authored moment instead (DirectorPlayer).
+            if (string.IsNullOrEmpty(action.ResourceId)) return;
+            if (_resourceIds.ContainsKey(action.ResourceId)) return;
+
+            _resourceIds[action.ResourceId] = action.ResourceId;
+            Resources.Add(new ResourceDefinition
+            {
+                Id = action.ResourceId,
+                Kind = "cutscene",
+                Name = action.name
+            });
         }
     }
 }

@@ -4,6 +4,7 @@
     "references": [
         "Game.Content",
         "Game.Core",
+        "Game.Content.Sqlite",
         "Unity.Timeline",
         "Unity.Cinemachine"
     ],

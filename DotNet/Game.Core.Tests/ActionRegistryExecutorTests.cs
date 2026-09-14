@@ -113,6 +113,48 @@ namespace TruthCardGame.Core.Tests
         }
 
         [Test]
+        public void ExecutionKind_SeparatesControlOrYield_FromBlockingActivities()
+        {
+            var controlOrYield = ActionTypeRegistry.All
+                .Where(info => info.ExecutionKind == ActionExecutionKind.ControlOrYield)
+                .Select(info => info.TypeKey)
+                .OrderBy(key => key, StringComparer.Ordinal)
+                .ToArray();
+            var expected = new[]
+                {
+                    ActionTypeKeys.PhaseGoto,
+                    ActionTypeKeys.SessionGoto,
+                    ActionTypeKeys.WaitForContinue,
+                    ActionTypeKeys.Return,
+                    ActionTypeKeys.EndSession,
+                }
+                .OrderBy(key => key, StringComparer.Ordinal)
+                .ToArray();
+
+            CollectionAssert.AreEqual(expected, controlOrYield,
+                "only the transfer/yield types are ControlOrYield");
+
+            // WaitForAll and PromptChoice block, but they are activities: the
+            // executor runs them inline instead of reducing them to a transfer.
+            foreach (var key in new[] { ActionTypeKeys.WaitForAll, ActionTypeKeys.PromptChoice })
+            {
+                var info = ActionTypeRegistry.ByTypeKey(key);
+                Assert.AreEqual(ActionExecutionKind.Activity, info.ExecutionKind, key + " is an activity");
+                Assert.IsTrue(info.IsAlwaysBlocking, key + " stays always blocking");
+                Assert.IsFalse(info.BlockingConfigurable, key + " stays non-configurable");
+            }
+
+            // Registry invariant: control/yield is always blocking, so it can
+            // never be started as background work that drops its request.
+            foreach (var info in ActionTypeRegistry.All)
+            {
+                if (info.ExecutionKind != ActionExecutionKind.ControlOrYield) continue;
+                Assert.IsTrue(info.IsAlwaysBlocking, info.TypeKey + " control/yield must be always blocking");
+                Assert.IsFalse(info.BlockingConfigurable, info.TypeKey + " control/yield must not be configurable");
+            }
+        }
+
+        [Test]
         public void NonblockingPromptChoice_IsRejectedAtRegistryValidationBoundary()
         {
             var choice = new PromptChoiceInstanceDefinition { Id = "choice", IsBlocking = false };
@@ -479,6 +521,87 @@ namespace TruthCardGame.Core.Tests
         }
 
         // ---------- flow reduction ----------
+
+        [Test]
+        public async Task EveryControlOrYieldType_ReducesToItsRequest_AfterEarlierActivitiesRun()
+        {
+            var cases = new[]
+            {
+                (Instance: (ActionInstanceDefinition)new PhaseGotoInstanceDefinition { Id = "pg", PhaseExitId = "px-fail" },
+                    Scope: ActionOwnerScope.PhaseActionSequence, Expected: ActionTransfer.PhaseGoto),
+                (Instance: (ActionInstanceDefinition)new SessionGotoInstanceDefinition { Id = "sg", Label = "Call it a night" },
+                    Scope: ActionOwnerScope.SessionDecisionOptionSequence, Expected: ActionTransfer.SessionGoto),
+                (Instance: (ActionInstanceDefinition)new WaitForContinueInstanceDefinition { Id = "wc" },
+                    Scope: ActionOwnerScope.CardSequence, Expected: ActionTransfer.WaitForContinue),
+                (Instance: (ActionInstanceDefinition)new ReturnInstanceDefinition { Id = "ret" },
+                    Scope: ActionOwnerScope.CardSequence, Expected: ActionTransfer.Return),
+                (Instance: (ActionInstanceDefinition)new EndSessionInstanceDefinition { Id = "end" },
+                    Scope: ActionOwnerScope.CardSequence, Expected: ActionTransfer.EndSession),
+            };
+
+            foreach (var testCase in cases)
+            {
+                var info = ActionTypeRegistry.ForInstance(testCase.Instance);
+                Assert.AreEqual(ActionExecutionKind.ControlOrYield, info.ExecutionKind, info.TypeKey);
+
+                _player = new Player("Tester");
+                var context = Context(testCase.Scope);
+                var result = await Run(_executor, context,
+                    new StatIncreaseInstanceDefinition { Id = "before-" + info.TypeKey, StatKey = "reached", Amount = 1f },
+                    testCase.Instance);
+
+                Assert.AreEqual(testCase.Expected, result.Transfer, info.TypeKey);
+                Assert.AreEqual(1, _player.Stats.Get("reached"),
+                    info.TypeKey + " ran the preceding activity before transferring");
+            }
+        }
+
+        [Test]
+        public async Task BlockingActivities_AreNotReducedToTransfers()
+        {
+            var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _tracker.Start(gate.Task);
+            var prompts = new FakePromptService(0);
+            _services = new CoreServices(new FakeDelayService(), _log, prompts);
+            var context = Context(ActionOwnerScope.CardSequence);
+
+            Assert.AreEqual(ActionExecutionKind.Activity, ActionTypeRegistry.ByTypeKey(ActionTypeKeys.WaitForAll).ExecutionKind);
+            Assert.AreEqual(ActionExecutionKind.Activity, ActionTypeRegistry.ByTypeKey(ActionTypeKeys.PromptChoice).ExecutionKind);
+
+            var run = Run(_executor, context,
+                new WaitForAllInstanceDefinition { Id = "barrier" },
+                new PromptChoiceInstanceDefinition
+                {
+                    Id = "choice",
+                    Prompt = "Continue?",
+                    Options =
+                    {
+                        new PromptChoiceOptionDefinition
+                        {
+                            Id = "yes",
+                            Label = "Yes",
+                            Sequence = new ActionSequenceDefinition
+                            {
+                                Id = "yes-seq",
+                                Instances =
+                                {
+                                    new StatIncreaseInstanceDefinition { Id = "chosen", StatKey = "chose", Amount = 1f },
+                                },
+                            },
+                        },
+                    },
+                });
+
+            await Task.Yield();
+            Assert.IsFalse(run.IsCompleted, "the Wait For All barrier still blocks the sequence");
+
+            gate.SetResult(true);
+            await run;
+
+            Assert.AreEqual(1, prompts.Requests.Count, "PromptChoice still ran inline after the barrier");
+            Assert.AreEqual(1, _player.Stats.Get("chose"), "the chosen option sequence still executed");
+            Assert.AreEqual(0, _tracker.ActiveCount);
+        }
 
         [Test]
         public async Task PhaseGoto_ReducesToTransferRequest()

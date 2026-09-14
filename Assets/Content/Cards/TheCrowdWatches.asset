@@ -19,3 +19,5 @@ MonoBehaviour:
   - dare
   actions:
   - {fileID: 11400000, guid: 27e00229829b21647a21c896cf0700df, type: 2}
+  - {fileID: 11400000, guid: 077f2176c881ce744b2c89a4ea4e42b5, type: 2}
+  - {fileID: 11400000, guid: 6d5cc52a066f63f46a46384a974439c1, type: 2}

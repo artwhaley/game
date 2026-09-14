@@ -2,29 +2,40 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.1</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <RootNamespace>TruthCardGame.Content.Sqlite</RootNamespace>
     <AssemblyName>Game.Content.Sqlite</AssemblyName>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
   </PropertyGroup>
 
+  <!--
+    Shared source. The mapping lives under Assets/Scripts/Portable so the pinned
+    Unity editor compiles the exact same files (Game.Content.Sqlite.asmdef).
+    Keeping the project here and linking its sources mirrors Game.Content /
+    Game.Core, and is what guarantees one CLR identity per portable type: Unity
+    never imports a compiled Game.Content*.dll alongside these sources.
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\Assets\Scripts\Portable\Game.Content.Sqlite\**\*.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Game.Content\Game.Content.csproj" />
     <ProjectReference Include="..\Game.Core\Game.Core.csproj" />
   </ItemGroup>
 
+  <!--
+    Schema scripts. Assets/StreamingAssets is the only location Unity can read
+    raw non-source files from (verbatim, at edit time and in a build), so it is
+    the single physical copy. The DotNet build embeds the same files under the
+    names CoreMigrations expects. Adding a migration therefore means adding the
+    .sql file in one place and registering it in CoreMigrations, so there is no
+    second copy to keep in step.
+  -->
   <ItemGroup>
-    <EmbeddedResource Include="SQLITE-SCHEMA-V1.sql" />
-    <EmbeddedResource Include="SQLITE-SCHEMA-V2.sql" />
-    <EmbeddedResource Include="SQLITE-SCHEMA-V3-WPF-AUTHORING.sql" />
-    <EmbeddedResource Include="SQLITE-SCHEMA-V4-PHASE-GOTO-NULL.sql" />
-    <EmbeddedResource Include="SQLITE-SCHEMA-V5-MILESTONE-B.sql" />
-    <EmbeddedResource Include="SQLITE-SCHEMA-V6-ACTIONS.sql" />
-    <EmbeddedResource Include="SQLITE-SCHEMA-V7-CARD-FOLDERS.sql" />
-    <EmbeddedResource Include="SQLITE-SCHEMA-V8-TOY-DIALOG.sql" />
-    <EmbeddedResource Include="SQLITE-SCHEMA-V9-CARD-FOLDER-HIERARCHY.sql" />
-    <EmbeddedResource Include="SQLITE-SCHEMA-V10-ACTION-BLOCKS.sql" />
-    <EmbeddedResource Include="SQLITE-SCHEMA-V11-WPF-GRAPH-PORTALS.sql" />
+    <EmbeddedResource Include="..\..\Assets\StreamingAssets\GameContentSchema\*.sql"
+                      LogicalName="TruthCardGame.Content.Sqlite.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

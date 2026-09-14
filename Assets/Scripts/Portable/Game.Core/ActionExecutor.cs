@@ -109,9 +109,12 @@ namespace TruthCardGame.Core
             ActionTypeRegistry.ValidateScope(instance, context.ActiveScope);
             context.Services.Log.Info($"ACTION START {info.DisplayLabel} [{instance.Id}]");
 
-            if (info.IsAlwaysBlocking &&
-                !(instance is WaitForAllInstanceDefinition) &&
-                !(instance is PromptChoiceInstanceDefinition))
+            // ControlOrYield types never run as activities: the graph VM
+            // performs the transfer or gameplay yield. This is the registry's
+            // declared execution kind, not a blocking-flag heuristic with
+            // per-type exceptions — blocking activities (WaitForAll,
+            // PromptChoice) run inline below like any other sequence step.
+            if (info.ExecutionKind == ActionExecutionKind.ControlOrYield)
             {
                 // Transfer mechanics land with the graph VM; reduce to the request now.
                 var flow = ReduceFlow(instance, info.TypeKey);

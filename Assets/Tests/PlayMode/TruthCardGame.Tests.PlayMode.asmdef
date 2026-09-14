@@ -5,6 +5,8 @@
         "TruthCardGame",
         "Game.Content",
         "Game.Core",
+        "UnityEngine.UI",
+        "Unity.Timeline",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

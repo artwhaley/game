@@ -207,6 +207,31 @@ namespace TruthCardGame.Tests
         }
 
         [Test]
+        public void CutsceneAction_AuthoredIdWithoutTimeline_DeclaresResourceButBindsNothing()
+        {
+            // Regression: the sample content carries the authored id 'cs:intro'
+            // before its hand-authored timeline exists. The converted instance
+            // still references that id, so the resource must be declared or
+            // content validation fails at engine construction and *no* session
+            // can boot. Nothing binds until a timeline is assigned; drawing the
+            // card logs the missing-playback error instead.
+            var action = ScriptableObject.CreateInstance<CutsceneAction>();
+            Set(action, "isBlocking", true);
+            Set(action, "resourceId", "cs:intro");
+
+            var registry = new CutsceneBindingRegistry();
+            var builder = new UnityContentGraphBuilder(registry);
+            var definition = (Content.CutsceneInstanceDefinition)action.ToDefinition(builder);
+
+            Assert.AreEqual("cs:intro", definition.ResourceId);
+            Assert.AreEqual(1, builder.Resources.Count);
+            Assert.AreEqual("cs:intro", builder.Resources[0].Id);
+            Assert.AreEqual("cutscene", builder.Resources[0].Kind);
+            Assert.IsFalse(registry.TryResolve("cs:intro", out var bound));
+            Assert.IsNull(bound);
+        }
+
+        [Test]
         public void CutsceneAction_AuthoredResourceId_RegistersResolves_AndCollectsResource()
         {
             var action = ScriptableObject.CreateInstance<CutsceneAction>();

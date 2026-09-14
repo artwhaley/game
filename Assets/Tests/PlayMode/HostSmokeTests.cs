@@ -167,8 +167,10 @@ namespace TruthCardGame.Tests
             {
                 var so = new SerializedObject(phaseAsset);
                 so.FindProperty("title").stringValue = "Ending";
-                so.FindProperty("minCards").intValue = 1;
-                so.FindProperty("maxCards").intValue = 1;
+                // minCards/maxCards are legacy asset fields: the v2 converter
+                // ignores them and the phase template checks PhaseProgress
+                // against a fixed target, so this card has to carry its own
+                // progress instance (see below).
                 var tags = so.FindProperty("mustIncludeTags");
                 tags.arraySize = 1;
                 tags.GetArrayElementAtIndex(0).stringValue = "ending";
@@ -183,6 +185,18 @@ namespace TruthCardGame.Tests
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
 
+            // Conversion never injects pacing or progress: Card.ToDefinition
+            // copies exactly the authored actions, and SampleContentBuilder
+            // likewise gives every ordinary card an explicit increment. Without
+            // one the phase's fixed 100-point check can never be satisfied and
+            // the draw loop correctly trips the graph execution budget.
+            var progressAsset = ScriptableObject.CreateInstance<IncrementProgressAction>();
+            {
+                var so = new SerializedObject(progressAsset);
+                so.FindProperty("amount").floatValue = 100f;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+
             var cardAsset = ScriptableObject.CreateInstance<Card>();
             {
                 var so = new SerializedObject(cardAsset);
@@ -191,8 +205,9 @@ namespace TruthCardGame.Tests
                 tags.arraySize = 1;
                 tags.GetArrayElementAtIndex(0).stringValue = "ending";
                 var actions = so.FindProperty("actions");
-                actions.arraySize = 1;
+                actions.arraySize = 2;
                 actions.GetArrayElementAtIndex(0).objectReferenceValue = statAsset;
+                actions.GetArrayElementAtIndex(1).objectReferenceValue = progressAsset;
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
 
@@ -230,8 +245,8 @@ namespace TruthCardGame.Tests
             }
 
             Assert.IsTrue(engine.IsComplete, "converted session completed through the graph VM");
-            // minCards=1/maxCards=1 -> progress target 10 -> the +10 default
-            // progress instance completes the phase on the first card.
+            // The card's authored +100 progress satisfies the phase template's
+            // fixed 100-point check on its single draw, so exactly one card ran.
             Assert.AreEqual(1, engine.Player.Stats.Get("courage"),
                 "the ending card's +1 stat ran on its single draw");
             Assert.IsFalse(engine.IsBusy);

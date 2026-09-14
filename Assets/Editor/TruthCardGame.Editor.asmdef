@@ -5,7 +5,9 @@
         "TruthCardGame",
         "Unity.Timeline",
         "Unity.Cinemachine",
-        "Unity.Timeline.Editor"
+        "Unity.Timeline.Editor",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.HighDefinition.Runtime"
     ],
     "includePlatforms": [
         "Editor"

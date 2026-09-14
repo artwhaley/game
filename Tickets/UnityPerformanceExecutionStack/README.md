@@ -1,8 +1,12 @@
 # Conversation Performance V1 packet
 
+**Foundation cleanup applied:** [Character presentation foundation patch](../../Docs/UnityPerformance/FOUNDATION-PATCH-SPEC.md) and its [results](../../Docs/UnityPerformance/FOUNDATION-PATCH-RESULTS.md) define the reusable rig/attachments, conversion of the current hair/bra/panties, and animation/face/gaze ownership now in the working tree. The [execution-agent handoff prompt](FOUNDATION-HANDOFF-PROMPT.md) records the verified foundation state before the approved V1 tickets resume. This does not redesign V1.
+
+**September 13 foundation state:** the Lara asset kit, external Humanoid motion source, reusable CharacterRig/attachment foundation and disposable showcase visual pass are verified. Read [Phase 00 — setup and content acquisition](PHASE-00-SETUP-AND-CONTENT.md) only for a concrete missing prerequisite; do not reacquire or destructively rebuild assets that are present. Ticket 00 and the real-rig portion of Ticket 01 are complete. Start at Ticket 01's remaining ingredient registry, factored anchor/operation bindings and generated PresentationCatalog, then continue through Tickets 02–05 while preserving the approved architecture.
+
 Source-audited September 11, 2026 revision. This replaces the preceding eleven-ticket design with six tickets proving an ordinary Card through WPF → SQLite → GameContentDefinition → Core → Unity.
 
-Read the [build plan and source audit](../../Docs/UnityPerformance/BUILD-PLAN.md), [architecture contract](ARCHITECTURE-CONTRACT.md), [tickets](TICKET-STACK.md) and [orchestrator prompt](ORCHESTRATION-PROMPT.md). This is a review packet, not implemented functionality.
+Read the [build plan and source audit](../../Docs/UnityPerformance/BUILD-PLAN.md), [architecture contract](ARCHITECTURE-CONTRACT.md), [tickets](TICKET-STACK.md) and [orchestrator prompt](ORCHESTRATION-PROMPT.md). The V1 packet remains an execution specification; the foundation prerequisite is the implemented portion documented above.
 
 ## What gets built
 
@@ -24,7 +28,7 @@ Perform references a small reusable Conversation Event. Core plans legal staging
 | 04 | First real authored Card playing in Unity |
 | 05 | Measured workflow/visual correction and V1 acceptance |
 
-Provider compatibility and rig assets are explicit early dependencies. The inspected project has neither a configured Unity SQLite provider nor character/animation assets. These are feasibility tasks, not permission to replace canonical content or claim a simulated proof.
+Provider compatibility, canonical SQLite loading, character assets and external Humanoid motion are verified prerequisites for the ticket executor. These are feasibility gates, not permission to replace canonical content or claim a simulated proof.
 
 ## Change log
 

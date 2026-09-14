@@ -65,7 +65,8 @@ namespace TruthCardGame.EditorTools
             // Timeline window (this builder cannot). Assign it on this action
             // asset once authored — until then, drawing the card logs an error.
             // The stable resource id is set now so portable content can
-            // reference the cutscene before the timeline exists.
+            // reference the cutscene before the timeline exists. Its card is
+            // drawable because a phase queries this tag (CutscenePhase).
             var cutscene = GetOrCreateAction<CutsceneAction>(ActionsFolder + "/Cutscene_Intro.asset", action =>
             {
                 SetBool(action, "isBlocking", true);
@@ -97,7 +98,19 @@ namespace TruthCardGame.EditorTools
             var twinWhispers = GetOrCreateCard(CardsFolder + "/TwinWhispers.asset", "Twin Whispers", new[] { "solo" }, continuous, continuous, waitForContinue, incrementProgress);
             var cutsceneIntro = GetOrCreateCard(CardsFolder + "/CutsceneIntro.asset", "A Familiar Face", new[] { "cutscene" }, cutscene, waitForContinue, incrementProgress);
             var crowdChoice = GetOrCreateCard(CardsFolder + "/FaceTheCrowd.asset", "Face the Crowd", new[] { "party", "dare" }, choice, waitForContinue, incrementProgress);
-            EnsureSamplePacing(new[] { courageBoost, crowdWatches, ambientWhispers, dareCelebrate, twinWhispers, cutsceneIntro, crowdChoice }, waitForContinue, incrementProgress);
+            EnsureSamplePacing(new[] { courageBoost, crowdWatches, ambientWhispers, dareCelebrate, twinWhispers, crowdChoice }, waitForContinue, incrementProgress);
+
+            // The cutscene card is drawn by the cutscene phase, which exists so a
+            // session plays its cutscene once as it reaches that point. A full
+            // increment ends the phase on that single draw instead of repeating
+            // the same card ten times: the phase template's progress target is
+            // 100, and every other sample card contributes the shared +10.
+            var fullProgress = GetOrCreateAction<IncrementProgressAction>(ActionsFolder + "/Increment_Progress100.asset", action =>
+            {
+                SetFloat(action, "amount", 100f);
+                SetBool(action, "isBlocking", false);
+            });
+            SetCardActions(cutsceneIntro, cutscene, waitForContinue, fullProgress);
 
             var deck = AssetDatabase.LoadAssetAtPath<CardDeck>(StarterDeckPath);
             if (deck == null)
@@ -107,7 +120,21 @@ namespace TruthCardGame.EditorTools
             }
             deck.EnsureId();
             EditorUtility.SetDirty(deck);
-            var cards = new[] { courageBoost, crowdWatches, ambientWhispers, dareCelebrate, twinWhispers, cutsceneIntro, crowdChoice };
+            // Sessions are authored first so the deck can carry the ending card:
+            // every session finishes in an `ending` phase, and a phase whose
+            // query matches no card in the deck throws instead of completing,
+            // which killed both sample runs at their last phase.
+            var endingCard = EnsureSampleSessions();
+
+            // The ending card is authored with the sessions, so it missed the
+            // pacing pass above. It needs it for the same reasons as every other
+            // card: with no wait the run never yields to the player, and with no
+            // progress increment the ending phase can never complete — it redraws
+            // the same card until the graph's safety budget stops it, which is
+            // how both sample sessions died at their last phase.
+            EnsureSamplePacing(new[] { endingCard }, waitForContinue, incrementProgress);
+
+            var cards = new[] { courageBoost, crowdWatches, ambientWhispers, dareCelebrate, twinWhispers, cutsceneIntro, crowdChoice, endingCard };
             var so = new SerializedObject(deck);
             var cardsProp = so.FindProperty("cards");
             cardsProp.arraySize = cards.Length;
@@ -117,15 +144,16 @@ namespace TruthCardGame.EditorTools
             }
             so.ApplyModifiedPropertiesWithoutUndo();
 
-            EnsureSampleSessions();
-
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log("[TruthCardGame] Sample content ready: 5 actions, 7 cards, starter deck, 2 sessions.");
+            Debug.Log("[TruthCardGame] Sample content ready: cards, actions, starter deck, sessions and phases.");
         }
 
-        /// <summary>Creates a session library with two sessions, each ending in an authored ending phase.</summary>
-        private static void EnsureSampleSessions()
+        /// <summary>
+        /// Creates a session library with two sessions, each ending in an authored
+        /// ending phase. Returns the ending card, which the deck must include.
+        /// </summary>
+        private static Card EnsureSampleSessions()
         {
             var endingCard = GetOrCreateCard(CardsFolder + "/TheEnd.asset", "The End", new[] { "ending" }, courageForSessions(),
                 GetOrCreateAction<WaitForContinueAction>(ActionsFolder + "/Wait_ForContinue.asset", action => SetBool(action, "isBlocking", true)),
@@ -138,6 +166,7 @@ namespace TruthCardGame.EditorTools
             var relaxing = GetOrCreateSession(SessionsFolder + "/Relaxing.asset", "Relaxing", new[] { "relaxing" },
                 CreatePhase(SessionsFolder + "/Phase_WarmUp.asset", "Warm Up", new[] { "solo" }, 2, 3),
                 CreatePhase(SessionsFolder + "/Phase_Teasing.asset", "Teasing", new[] { "solo", "truth" }, 3, 4),
+                CutscenePhase(),
                 CreatePhase(SessionsFolder + "/Phase_WindDown.asset", "Wind Down", new[] { "ending" }, 1, 2));
 
             var intense = GetOrCreateSession(SessionsFolder + "/Intense.asset", "Intense", new[] { "intense" },
@@ -157,6 +186,20 @@ namespace TruthCardGame.EditorTools
             sessionsProp.GetArrayElementAtIndex(0).objectReferenceValue = relaxing;
             sessionsProp.GetArrayElementAtIndex(1).objectReferenceValue = intense;
             so.ApplyModifiedPropertiesWithoutUndo();
+
+            return endingCard;
+        }
+
+        /// <summary>
+        /// The phase that makes the cutscene card drawable. Phases select cards
+        /// by tag and a phase accepts a card only when the card carries every
+        /// tag the phase asks for, so a cutscene card can only ever be drawn by
+        /// a phase whose query is the `cutscene` tag itself. It sits before the
+        /// ending phase, which stays last.
+        /// </summary>
+        private static Phase CutscenePhase()
+        {
+            return CreatePhase(SessionsFolder + "/Phase_Cutscene.asset", "Cutscene", new[] { "cutscene" }, 1, 1);
         }
 
         /// <summary>A stat action used by the ending card (fresh instance so phases don't share it).</summary>
@@ -298,6 +341,20 @@ namespace TruthCardGame.EditorTools
             card.EnsureId();
             EditorUtility.SetDirty(card);
             return card;
+        }
+
+        /// <summary>Writes a card's action list wholesale — used where the shared sample pacing is not what the card wants.</summary>
+        private static void SetCardActions(Card card, params CardAction[] actions)
+        {
+            var so = new SerializedObject(card);
+            var actionsProp = so.FindProperty("actions");
+            actionsProp.arraySize = actions.Length;
+            for (var i = 0; i < actions.Length; i++)
+            {
+                actionsProp.GetArrayElementAtIndex(i).objectReferenceValue = actions[i];
+            }
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(card);
         }
 
         private static void SetChoiceOption(UnityEngine.Object target, int index, string label, CardAction action)

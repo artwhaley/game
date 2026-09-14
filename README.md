@@ -5,7 +5,7 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
 ## Status
 
 - **SQLite is the canonical source of content truth** at `Content/GameContent.db`
-  (schema v10), owned by the provider-neutral `Game.Content.Sqlite` project.
+  (schema v11), owned by the provider-neutral `Game.Content.Sqlite` project.
   Sessions compose **reusable Phases through a Session/Phase graph model**
   (nodes + edges + Action Instances) — the PhaseSlot/slot-candidate era is
   gone except as migration history. The **Nodify WPF Graph Workbench**
@@ -126,12 +126,22 @@ A Unity 6 single-player "truth or dare" card game, built incrementally.
   bridge remains deferred. See
   [`Docs/FinalPreMilestoneC/FINAL-REPORT.md`](Docs/FinalPreMilestoneC/FINAL-REPORT.md)
   and do not infer human acceptance from older milestone reports.
-- Latest automated .NET gates: **174 Core tests passed**, **154 SQLite tests
-  passed**, **11 profile tests passed**, and **45 WPF tests passed** (**384
-  total**). The canonical DB is schema v10, passes integrity and foreign-key
-  checks, and is content-empty after the starter fixture was removed (the
-  hand-authored shakedown session in `TESTING-METHODOLOGY.md` is the next
-  content milestone; the workbench migrates the file to v11 on next open).
+- Latest automated .NET gates: **178 Core tests passed**, **165 SQLite tests
+  passed**, **11 profile tests passed**, and **47 WPF tests passed** (**401
+  total**). The canonical DB is schema v11, passes integrity and foreign-key
+  checks, and contains the typed Phase 00 setup fixture. Unity's vendored
+  SQLite provider and shared-source/type-identity arrangement are verified by
+  the full EditMode suite (37/37); the editor-hosted PlayMode suite is also
+  green (11/11).
+- **Conversation Performance V1 is ready to execute from its first unmet
+  ticket.** Ticket 00's provider, shared mapping, type-identity and action
+  classification work is complete. Phase 00 has the Lara material prefab,
+  reusable hair/bra/panties attachments, external Quaternius Humanoid motion,
+  the disposable showcase scene, and the verified CharacterRig foundation.
+  Start at Ticket 01's remaining ingredient registry, factored anchor/
+  operation bindings and generated PresentationCatalog, then proceed through
+  Tickets 02–05. The approved procedural Card, WPF/SQLite/Core/Unity boundary,
+  blocking-dialogue refresh rule and Phase 2 deferrals remain unchanged.
   A disposable 20-Card/two-Phase authoring-to-execution canary passes through
   the production SQLite loader and Core engine. The WPF host was built and
   launched for the remaining human canary.
@@ -368,17 +378,20 @@ creates the ScriptableObject shell converted at session start.
 
 ## Tests
 
-- Portable suite: `dotnet test Game.Workbench.sln` — 279 tests: 135 Core
+- Portable suite: `dotnet test Game.Workbench.sln` — 401 tests: 178 Core
   (graph VMs, continuation stack, decisions, spawn seam, debugger traces,
-  eligibility/weighting/selection pipeline, session-type eligibility),
-  123 SQLite (schema constraints, v1→v5 migration, snapshot round-trip,
-  authoring repositories + undo snapshots, canonical-DB integrity,
-  user-profile boundary, end-to-end DB→snapshot→Core playback,
-  host-extension safety, Milestone B integration gates), 11 profile
-  (separate UserProfile.db persistence/independence), 10 WPF (layout
-  bindings, reason mapping, play-by-type flow, card editor host).
-- Unity EditMode (`Assets/Tests/EditMode`) — ScriptableObject→definition conversion fidelity via `UnityContentGraphBuilder` (24 tests). Not run this milestone (informational only).
-- Unity PlayMode smoke (`Assets/Tests/PlayMode`) — Core running through real Unity adapters inside live play mode (2 tests). Not run this milestone (informational only).
+  eligibility/weighting/selection pipeline, session-type eligibility,
+  action execution classification), 165 SQLite (schema constraints, migration,
+  snapshot round-trip, authoring repositories + undo snapshots, canonical-DB
+  integrity, schema-script source arrangement, user-profile boundary,
+  end-to-end DB→snapshot→Core playback, host-extension safety, Milestone B
+  integration gates), 11 profile (separate UserProfile.db
+  persistence/independence), 47 WPF (layout bindings, reason mapping,
+  play-by-type flow, card editor host).
+- Unity EditMode (`Assets/Tests/EditMode`) — ScriptableObject→definition conversion fidelity via `UnityContentGraphBuilder`, the vendored SQLite provider (`SqliteProviderSmokeTests`), the shared loader plus Content/Core type-identity checks (`SqliteContentIntegrationTests`), and the prepared character foundation checks — 37 tests, all green headlessly.
+- Unity PlayMode (`Assets/Tests/PlayMode`) — Core running through real Unity adapters inside live play mode, converted ScriptableObjects feeding the engine through the real graph VM, and the authored `Game` scene booting through `GameManager` + `GamePanel` with a card played via the real Continue button, a choice card answered through the real prompt overlay, and cutscene playback driven through the scene's own `DirectorPlayer`: registered-timeline play to completion, mid-playback cancellation, the unregistered-resource no-op, the wiring itself, and the authored cutscene card played end to end through the session (11 tests, green headlessly). The card-level cutscene tests stand in a runtime `TimelineAsset` for the timeline sample content does not author yet — `Cutscene_Intro` still has no hand-authored timeline; see [`Docs/UnityPerformance/TICKET-00-BASELINE.md`](Docs/UnityPerformance/TICKET-00-BASELINE.md). Editor-hosted play mode only: no player build. Both Unity suites run headlessly via [`scripts/run-unity-tests.sh`](scripts/run-unity-tests.sh) — see [`unity-cli.md`](unity-cli.md). Results XML and the full editor log land in `Logs/`.
+- Character foundation (`Assets/Daz3D/lara` and `Assets/Characters/LaraAttachments`) — Lara imports as a valid Genesis 8 Female Humanoid with imported facial controls and HDRP/Lit materials. The prepared prefab owns `CharacterRig`, face, gaze, presentation and persistent animation-player components; hair, bra and panties are reusable `RiggedAttachment` prefabs. External Quaternius Humanoid clips drive standing, walking, sitting, masked overlays and the fixture's face/gaze checks. Luna remains a diagnostic comparison asset, not the V1 target.
+- Shared portable source lives under `Assets/Scripts/Portable/` and is linked into its DotNet project — `Game.Content`, `Game.Core`, `Game.Profile` and now `Game.Content.Sqlite`. Keep it that way: importing compiled copies alongside the sources creates competing CLR type identities. Canonical core schema scripts live once, under `Assets/StreamingAssets/GameContentSchema/`, and are read by the DotNet build as embedded resources and by Unity through `UnitySchemaScripts` (see [`Docs/UnityPerformance/SQLITE-PROVIDER-VENDORING.md`](Docs/UnityPerformance/SQLITE-PROVIDER-VENDORING.md)).
 - **com.unity.test-framework** and **com.unity.ugui** are pinned in `Packages/manifest.json` (the fresh-import default manifest lacks uGUI, which broke all UI scripts until added — don't remove it).
 
 ## Requirements & how to open

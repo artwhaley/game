@@ -273,12 +273,18 @@ namespace TruthCardGame.EditorTools
             return go;
         }
 
-        /// <summary>The cutscene driver object: a PlayableDirector + DirectorPlayer.</summary>
+        /// <summary>The cutscene driver object: a PlayableDirector + DirectorPlayer, wired together.</summary>
         private static GameObject CreateDirector()
         {
             var go = new GameObject("CutsceneDirector");
-            go.AddComponent<PlayableDirector>();
-            go.AddComponent<DirectorPlayer>();
+            var playableDirector = go.AddComponent<PlayableDirector>();
+            var player = go.AddComponent<DirectorPlayer>();
+
+            // Both components share this GameObject, but DirectorPlayer is
+            // handed its director explicitly. An unwired field turns every
+            // cutscene into a silent no-op that only says so at play time, so
+            // the wiring is asserted by the PlayMode scene fixture.
+            SetField(player, "director", playableDirector);
             return go;
         }
 
@@ -336,8 +342,9 @@ namespace TruthCardGame.EditorTools
             var controller = controllerGo.AddComponent<SettingsDialog>();
             SetField(controller, "root", overlay.gameObject);
             SetField(controller, "closeButton", close);
-            SetField(controller, "lengthSlider", slider);
-            SetField(controller, "lengthValue", valueText);
+            // SettingsDialog dropped its session-length modifier when phase
+            // cadence became authored graph control; wiring those fields again
+            // throws in SetField and aborts the rest of Build Scenes.
 
             overlay.gameObject.SetActive(false);
             return controller;
@@ -454,7 +461,25 @@ namespace TruthCardGame.EditorTools
         private static void SetField(UnityEngine.Object target, string fieldName, UnityEngine.Object value)
         {
             var so = new SerializedObject(target);
-            so.FindProperty(fieldName).objectReferenceValue = value;
+            var property = so.FindProperty(fieldName);
+            if (property == null)
+            {
+                // Naming both sides matters: an unexplained NullReference here
+                // aborts the rest of Build Scenes (the scenes after this one are
+                // never written), and a silent skip would ship a scene with the
+                // wiring missing — which is exactly how DirectorPlayer.director
+                // went unassigned.
+                Debug.LogError($"[TruthCardGame] {target.GetType().Name} has no serialized field '{fieldName}'; " +
+                               "SceneBuilder and that component disagree. Skipping this wiring.");
+                return;
+            }
+            if (value == null)
+            {
+                Debug.LogError($"[TruthCardGame] Refusing to wire {target.GetType().Name}.{fieldName} to null — " +
+                               "the asset or component it names is missing. Run TruthCardGame → Create Sample Content.");
+                return;
+            }
+            property.objectReferenceValue = value;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 

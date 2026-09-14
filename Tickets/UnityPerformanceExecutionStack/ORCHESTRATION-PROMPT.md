@@ -1,5 +1,7 @@
 # Orchestrator prompt — Conversation Performance V1
 
+For the September 13 working tree, the character foundation prerequisite and its Unity visual pass are complete. Read [FOUNDATION-PATCH-RESULTS.md](../../Docs/UnityPerformance/FOUNDATION-PATCH-RESULTS.md) and [FOUNDATION-HANDOFF-PROMPT.md](FOUNDATION-HANDOFF-PROMPT.md) first. Do not reacquire assets, rerun SQLite integration, or rebuild the foundation unless a concrete regression is found. Do not launch Unity in batch mode or touch the licensing client. The only scene replacement allowed for foundation diagnostics is `Rebuild Disposable Rig Test Scene`, which targets the disposable Phase 00 fixture. The Luna import probes are under `TruthCardGame > Diagnostics > Rig Spike` and are read-only measurements. Ticket 00 and the real-rig portion of Ticket 01 are complete; begin at Ticket 01's remaining ingredient registry, factored anchor/operation bindings and generated PresentationCatalog, then execute Tickets 02–05 in order without redesigning V1.
+
 Execute only after the user authorizes implementation. This packet revision itself is documentation only. Read agents.md, root README, current GraphWorkbench documentation and Docs/CONTENT-DATABASE-VERSIONING.md, then this packet's README, ARCHITECTURE-CONTRACT, TICKET-STACK and Docs/UnityPerformance/BUILD-PLAN.md.
 
 Current packet text supersedes previous packet commits. Do not revive the prior eleven-ticket scope.
@@ -14,7 +16,7 @@ Finish this editor-playable slice before driven motion, voice, player posing, co
 
 Use Content/GameContent.db → existing Game.Content.Sqlite → GameContentDefinition → Game.Core → host services. No game-content JSON, closure exporter, duplicate action/graph transport or stale publication protocol.
 
-Ticket 00 must prove a compatible Unity SQLite provider and consistent read-only snapshot loading. New dependencies require approval. A real incompatibility requires a precise reproduction and review before changing architecture; do not quietly substitute a different pipeline. Continue independent work around blockers, but never mark the visual milestone complete without the real content path.
+Ticket 00's compatible Unity SQLite provider, consistent read-only snapshot loading and one-CLR-type-identity arrangement are already verified in the checked-in working tree. Preserve that arrangement; do not re-open or replace it. New dependencies still require approval. A regression or real incompatibility requires a precise reproduction and review before changing architecture. Continue independent work around blockers, but never mark the visual milestone complete without the real content path.
 
 Physical portable source lives under Assets/Scripts/Portable and is linked into DotNet. Do not duplicate it. Current source overrides historical milestone counts and obsolete action descriptions.
 

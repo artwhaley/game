@@ -51,9 +51,15 @@ namespace TruthCardGame
             drawNextButton.interactable = true;
         }
 
+        /// <summary>
+        /// An authored Continue is pending: keep the drawn card on screen and
+        /// signal the wait through the status line. A missing title (a
+        /// wait authored outside a card) leaves the current title untouched
+        /// rather than blanking it.
+        /// </summary>
         public void ShowWaitingForContinue(string cardTitle)
         {
-            this.cardTitle.text = cardTitle;
+            if (!string.IsNullOrEmpty(cardTitle)) this.cardTitle.text = cardTitle;
             status.text = "Waiting for Continue.";
             drawNextButton.interactable = true;
         }

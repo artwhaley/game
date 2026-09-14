@@ -2116,7 +2116,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1e8cc5b39b862fb48bd78dbe42e16cbd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: TruthCardGame::TruthCardGame.DirectorPlayer
-  director: {fileID: 0}
+  director: {fileID: 1976166492}
 --- !u!320 &1976166492
 PlayableDirector:
   m_ObjectHideFlags: 0

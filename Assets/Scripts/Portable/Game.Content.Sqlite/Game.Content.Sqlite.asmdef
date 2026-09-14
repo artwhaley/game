@@ -1,0 +1,17 @@
+{
+    "name": "Game.Content.Sqlite",
+    "rootNamespace": "TruthCardGame.Content.Sqlite",
+    "references": [
+        "Game.Content",
+        "Game.Core"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}

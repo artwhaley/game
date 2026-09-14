@@ -5,7 +5,10 @@
         "TruthCardGame",
         "Game.Content",
         "Game.Core",
+        "Game.Content.Sqlite",
         "Unity.Timeline",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.HighDefinition.Runtime",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
@@ -16,7 +19,11 @@
     "allowUnsafeCode": false,
     "overrideReferences": true,
     "precompiledReferences": [
-        "nunit.framework.dll"
+        "nunit.framework.dll",
+        "Microsoft.Data.Sqlite.dll",
+        "SQLitePCLRaw.core.dll",
+        "SQLitePCLRaw.batteries_v2.dll",
+        "SQLitePCLRaw.provider.e_sqlite3.dll"
     ],
     "autoReferenced": false,
     "defineConstraints": [

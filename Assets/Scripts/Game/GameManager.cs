@@ -26,6 +26,7 @@ namespace TruthCardGame
         private GameSessionEngine _engine;
         private CancellationTokenSource _lifetimeCts;
         private bool _waitingForContinue;
+        private string _currentCardTitle;
 
         private void Awake()
         {
@@ -64,8 +65,16 @@ namespace TruthCardGame
             // (Happiness 50) unless a host override is supplied.
             _engine = new GameSessionEngine(content, SessionConfig.SelectedSession.Id, services);
 
-            _engine.CardStarted += card => panel.ShowDrawing(card.Title);
-            _engine.CardFinished += card => panel.ShowDone(card.Title);
+            _engine.CardStarted += card =>
+            {
+                _currentCardTitle = card.Title;
+                panel.ShowDrawing(card.Title);
+            };
+            _engine.CardFinished += card =>
+            {
+                _currentCardTitle = card.Title;
+                panel.ShowDone(card.Title);
+            };
         }
 
         private void Start()
@@ -94,7 +103,9 @@ namespace TruthCardGame
                 _waitingForContinue = result.Kind == AdvanceResultKind.WaitForContinue;
                 if (result.Kind == AdvanceResultKind.WaitForContinue)
                 {
-                    panel.ShowWaitingForContinue("Continue");
+                    // The card stays on screen while the player decides; the
+                    // status line is what signals the wait.
+                    panel.ShowWaitingForContinue(_currentCardTitle);
                 }
                 else if (result.Kind == AdvanceResultKind.SessionCompleted)
                 {
