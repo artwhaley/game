@@ -61,10 +61,53 @@ namespace TruthCardGame.EditorTools
             }
 
             // Only build the fixture body when the registry is empty; otherwise
-            // preserve the author's edits.
+            // preserve the author's edits. Rebuild replaces content deliberately.
             if (registry.Ingredients.Count == 0 && registry.Anchors.Count == 0 && registry.Operations.Count == 0)
             {
-                var clips = LoadQuaterniusClips();
+                ApplyFixtureBody(registry);
+            }
+            else
+            {
+                Debug.Log("[PERFORMANCE] Registry at " + RegistryPath +
+                          " already has content, so it was left alone. Use " +
+                          "TruthCardGame/Performance/Rebuild V1 Performance Fixture to replace it.");
+            }
+
+            Debug.Log("[PERFORMANCE] Registry ready at " + RegistryPath +
+                      (created ? " (created)." : " (existing)."));
+            ValidateRegistryInternal(registry);
+        }
+
+        /// <summary>
+        /// Development fixture only: replaces the registry contents outright.
+        /// Kept apart from the idempotent Ensure so that discarding authored
+        /// content is always a deliberate act.
+        /// </summary>
+        [MenuItem("TruthCardGame/Performance/Rebuild V1 Performance Fixture (replaces contents)")]
+        public static void RebuildV1Fixture()
+        {
+            Directory.CreateDirectory(RegistryFolder);
+            var registry = AssetDatabase.LoadAssetAtPath<PerformanceRegistry>(RegistryPath);
+            if (registry == null)
+            {
+                EnsureV1Fixture();
+                return;
+            }
+
+            ApplyFixtureBody(registry);
+            Debug.Log("[PERFORMANCE] Fixture rebuilt, replacing the previous contents at " + RegistryPath + ".");
+            ValidateRegistryInternal(registry);
+        }
+
+        /// <summary>
+        /// Installs the V1 fixture body, resolving Performance Tag membership from
+        /// the content database so the registry stores the real WPF-owned stable
+        /// IDs and copies none of them. Called by Ensure (empty registry only) and
+        /// by Rebuild (always).
+        /// </summary>
+        private static void ApplyFixtureBody(PerformanceRegistry registry)
+        {
+            var clips = LoadQuaterniusClips();
                 var mask = AssetDatabase.LoadAssetAtPath<AvatarMask>(Phase00RigSetup.MaskPath);
 
                 var standing = new[] { PresentationPostures.Standing };
@@ -122,12 +165,7 @@ namespace TruthCardGame.EditorTools
                 AssetDatabase.SaveAssets();
                 AssetDatabase.Refresh();
 
-                ReportVocabulary(vocabulary);
-            }
-
-            Debug.Log("[PERFORMANCE] Registry ready at " + RegistryPath +
-                      (created ? " (created)." : " (existing)."));
-            ValidateRegistryInternal(registry);
+            ReportVocabulary(vocabulary);
         }
 
         [MenuItem("TruthCardGame/Performance/Validate Presentation Registry")]
