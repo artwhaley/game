@@ -4,6 +4,7 @@
     "references": [
         "TruthCardGame",
         "Game.Content",
+        "Game.Content.Sqlite",
         "Unity.Timeline",
         "Unity.Cinemachine",
         "Unity.Timeline.Editor",

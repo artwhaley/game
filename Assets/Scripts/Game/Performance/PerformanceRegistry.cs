@@ -70,6 +70,29 @@ namespace TruthCardGame.Performance
             }
         }
 
+        /// <summary>
+        /// Replaces the semantic tag membership. Unity owns membership, but the
+        /// vocabulary itself is WPF/SQLite-owned, so callers pass stable tag IDs
+        /// read from the content database — never copied titles.
+        /// </summary>
+        public void SetPerformanceTagIds(IEnumerable<string> tagIds)
+        {
+            performanceTagIds = new List<string>(tagIds ?? Array.Empty<string>());
+        }
+
+        /// <summary>Adds or removes one stable Performance Tag ID; returns the new membership state.</summary>
+        public bool TogglePerformanceTag(string tagId)
+        {
+            if (string.IsNullOrEmpty(tagId)) return false;
+            if (performanceTagIds.Contains(tagId))
+            {
+                performanceTagIds.Remove(tagId);
+                return false;
+            }
+            performanceTagIds.Add(tagId);
+            return true;
+        }
+
         /// <summary>Authoring/fixture configuration; the inspector remains the ordinary intake path.</summary>
         public void Configure(string id, string name, string ingredientKind, bool isEnabled,
             IEnumerable<string> tagIds, IEnumerable<string> postureIds, bool headOwner,

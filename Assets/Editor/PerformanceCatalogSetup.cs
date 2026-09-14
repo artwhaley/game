@@ -171,6 +171,14 @@ namespace TruthCardGame.EditorTools
                               $"{catalog.Operations.Count} operations.");
             foreach (var warning in warnings) report.AppendLine("  WARNING: " + warning);
             if (warnings.Count == 0) report.AppendLine("  No warnings.");
+
+            // The tag vocabulary belongs to WPF/SQLite. Validation therefore
+            // checks the registry's stable IDs against the content database
+            // rather than against any copy kept in Unity.
+            var tagProblems = PerformanceTagPickerWindow.CurrentProblems();
+            foreach (var problem in tagProblems) report.AppendLine("  TAG: " + problem);
+            if (tagProblems.Count == 0) report.AppendLine("  All Performance Tags resolve.");
+
             Debug.Log(report.ToString());
         }
 
