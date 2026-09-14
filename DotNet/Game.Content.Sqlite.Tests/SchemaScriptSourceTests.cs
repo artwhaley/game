@@ -21,8 +21,21 @@ namespace TruthCardGame.Content.Sqlite.Tests
         [Test]
         public void EveryRegisteredMigration_ResolvesANonEmptyScript()
         {
-            Assert.AreEqual(12, CoreMigrations.All.Count, "registered migrations");
-            Assert.AreEqual(12, CoreMigrations.MaxVersion, "highest schema version");
+            Assert.That(CoreMigrations.All.Count, Is.GreaterThan(0), "at least one registered migration");
+
+            // Derived, never hardcoded: registering a migration must not require
+            // editing this test. Versions are contiguous from 1, so the count and
+            // the highest version agree, while a gap or a duplicate still fails.
+            Assert.AreEqual(CoreMigrations.MaxVersion, CoreMigrations.All.Count,
+                "registered migration versions are contiguous from 1");
+
+            var previousVersion = 0;
+            foreach (var migration in CoreMigrations.All)
+            {
+                Assert.Greater(migration.Version, previousVersion,
+                    "migration versions increase in registration order");
+                previousVersion = migration.Version;
+            }
 
             foreach (var migration in CoreMigrations.All)
             {

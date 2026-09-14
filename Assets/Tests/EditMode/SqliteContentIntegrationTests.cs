@@ -421,8 +421,22 @@ namespace TruthCardGame.Tests
             Assert.That(Directory.Exists(SchemaScriptDirectory), Is.True,
                 "schema script folder missing at " + SchemaScriptDirectory);
 
-            Assert.AreEqual(11, CoreMigrations.All.Count, "registered migrations");
-            Assert.AreEqual(11, CoreMigrations.MaxVersion, "highest registered schema version");
+            Assert.That(CoreMigrations.All.Count, Is.GreaterThan(0), "at least one registered migration");
+
+            // Derived rather than hardcoded: this test is about the script path,
+            // so registering a migration must not require editing it. Versions
+            // are contiguous from 1, which makes the count and the highest
+            // version agree while still catching a gap or a duplicate.
+            Assert.AreEqual(CoreMigrations.MaxVersion, CoreMigrations.All.Count,
+                "registered migration versions are contiguous from 1");
+
+            var previousVersion = 0;
+            foreach (var migration in CoreMigrations.All)
+            {
+                Assert.Greater(migration.Version, previousVersion,
+                    "migration versions increase in registration order");
+                previousVersion = migration.Version;
+            }
 
             foreach (var migration in CoreMigrations.All)
             {
@@ -457,7 +471,11 @@ namespace TruthCardGame.Tests
             {
                 var unused = probe.Script;
             });
-            Assert.AreEqual(11, CoreMigrations.MaxVersion, "version inspection needs no script text");
+            // Version inspection must not depend on script text, so with the
+            // scripts uninstalled the registered maximum is still readable — and
+            // registering a migration must not require editing this line.
+            Assert.Greater(CoreMigrations.MaxVersion, 0,
+                "version inspection never needs a script");
         }
 
         // ---------- helpers ----------
