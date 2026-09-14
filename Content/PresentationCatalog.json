@@ -1,0 +1,115 @@
+{
+  "catalogVersion": 1,
+  "generatedAtUtc": "2026-09-14T02:32:33.9726183Z",
+  "ingredients": [
+    {
+      "id": "e233a87b513d41678af2d2a2344f3ca1",
+      "displayName": "V1 Standing Idle",
+      "kind": "foundation",
+      "enabled": true,
+      "performanceTagIds": [],
+      "supportedPostureIds": ["standing"],
+      "supportedAnchorIds": [],
+      "ownsHead": false
+    },
+    {
+      "id": "ec34fc1517c5461e9d6563b20974fe42",
+      "displayName": "V1 Sitting Idle",
+      "kind": "foundation",
+      "enabled": true,
+      "performanceTagIds": [],
+      "supportedPostureIds": ["sitting"],
+      "supportedAnchorIds": [],
+      "ownsHead": false
+    },
+    {
+      "id": "b44dc817901742dfa332ae87318947e4",
+      "displayName": "V1 Talking Idle",
+      "kind": "body",
+      "enabled": true,
+      "performanceTagIds": ["10080f71a1b147368610b5f83deff85b", "804055ead95c4b398ff68adad7a88617"],
+      "supportedPostureIds": ["standing", "sitting"],
+      "supportedAnchorIds": [],
+      "ownsHead": false
+    },
+    {
+      "id": "60fd62cbbb644245a6578deaf56b87a2",
+      "displayName": "V1 Interact",
+      "kind": "body",
+      "enabled": true,
+      "performanceTagIds": ["804055ead95c4b398ff68adad7a88617"],
+      "supportedPostureIds": ["standing"],
+      "supportedAnchorIds": [],
+      "ownsHead": false
+    },
+    {
+      "id": "07f4dee902e4453596b0d7a825a68a2b",
+      "displayName": "V1 Dance (later variety)",
+      "kind": "body",
+      "enabled": false,
+      "performanceTagIds": ["10080f71a1b147368610b5f83deff85b"],
+      "supportedPostureIds": ["standing"],
+      "supportedAnchorIds": [],
+      "ownsHead": false
+    },
+    {
+      "id": "47acebbfe0b848b5a42cc2ab12554304",
+      "displayName": "V1 Smile",
+      "kind": "face",
+      "enabled": true,
+      "performanceTagIds": ["10080f71a1b147368610b5f83deff85b", "804055ead95c4b398ff68adad7a88617"],
+      "supportedPostureIds": ["standing", "sitting"],
+      "supportedAnchorIds": [],
+      "ownsHead": false
+    },
+    {
+      "id": "ebc962238b914aa89879ef60ca4921ab",
+      "displayName": "V1 Frown",
+      "kind": "face",
+      "enabled": true,
+      "performanceTagIds": ["a16ad6da10a9426baabcd0b37c6d2636"],
+      "supportedPostureIds": ["standing", "sitting"],
+      "supportedAnchorIds": [],
+      "ownsHead": false
+    }
+  ],
+  "anchors": [
+    {
+      "id": "anchor-room-center",
+      "displayName": "Room Center",
+      "locationGroup": "center",
+      "supportedPostureIds": ["standing"],
+      "connectedAnchorIds": ["anchor-chair"]
+    },
+    {
+      "id": "anchor-chair",
+      "displayName": "Chair",
+      "locationGroup": "chair",
+      "supportedPostureIds": ["standing", "sitting"],
+      "connectedAnchorIds": ["anchor-room-center"]
+    }
+  ],
+  "operations": [
+    {
+      "id": "op-stand",
+      "displayName": "Stand",
+      "kind": "stand",
+      "cost": 10,
+      "applicableAnchorIds": []
+    },
+    {
+      "id": "op-sit",
+      "displayName": "Sit",
+      "kind": "sit",
+      "cost": 10,
+      "applicableAnchorIds": []
+    },
+    {
+      "id": "op-move-standing",
+      "displayName": "Move While Standing",
+      "kind": "move_while_standing",
+      "cost": 10,
+      "applicableAnchorIds": []
+    }
+  ]
+}

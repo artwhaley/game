@@ -1,0 +1,142 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 33e84c4c105b127a5ba06c8d366a472a, type: 3}
+  m_Name: V1PerformanceRegistry
+  m_EditorClassIdentifier: TruthCardGame::TruthCardGame.Performance.PerformanceRegistry
+  standardGestureMask: {fileID: 31900000, guid: a26a47c689074ae468f93aa1fc165b2d, type: 2}
+  ingredients:
+  - ingredientId: e233a87b513d41678af2d2a2344f3ca1
+    displayName: V1 Standing Idle
+    kind: foundation
+    enabled: 1
+    performanceTagIds: []
+    supportedPostureIds:
+    - standing
+    supportedAnchorIds: []
+    ownsHead: 0
+    clip: {fileID: 7994627924475153551, guid: 797fbbf2129998d4dbd54b4ab76ff206, type: 3}
+    faceControlName: 
+    faceWeight: 100
+  - ingredientId: ec34fc1517c5461e9d6563b20974fe42
+    displayName: V1 Sitting Idle
+    kind: foundation
+    enabled: 1
+    performanceTagIds: []
+    supportedPostureIds:
+    - sitting
+    supportedAnchorIds: []
+    ownsHead: 0
+    clip: {fileID: -6676812269523803463, guid: 797fbbf2129998d4dbd54b4ab76ff206, type: 3}
+    faceControlName: 
+    faceWeight: 100
+  - ingredientId: b44dc817901742dfa332ae87318947e4
+    displayName: V1 Talking Idle
+    kind: body
+    enabled: 1
+    performanceTagIds:
+    - 10080f71a1b147368610b5f83deff85b
+    - 804055ead95c4b398ff68adad7a88617
+    supportedPostureIds:
+    - standing
+    - sitting
+    supportedAnchorIds: []
+    ownsHead: 0
+    clip: {fileID: 6476497563760123848, guid: 797fbbf2129998d4dbd54b4ab76ff206, type: 3}
+    faceControlName: 
+    faceWeight: 100
+  - ingredientId: 60fd62cbbb644245a6578deaf56b87a2
+    displayName: V1 Interact
+    kind: body
+    enabled: 1
+    performanceTagIds:
+    - 804055ead95c4b398ff68adad7a88617
+    supportedPostureIds:
+    - standing
+    supportedAnchorIds: []
+    ownsHead: 0
+    clip: {fileID: -2328835098782832033, guid: 797fbbf2129998d4dbd54b4ab76ff206, type: 3}
+    faceControlName: 
+    faceWeight: 100
+  - ingredientId: 07f4dee902e4453596b0d7a825a68a2b
+    displayName: V1 Dance (later variety)
+    kind: body
+    enabled: 0
+    performanceTagIds:
+    - 10080f71a1b147368610b5f83deff85b
+    supportedPostureIds:
+    - standing
+    supportedAnchorIds: []
+    ownsHead: 0
+    clip: {fileID: 8800687838965813479, guid: 797fbbf2129998d4dbd54b4ab76ff206, type: 3}
+    faceControlName: 
+    faceWeight: 100
+  - ingredientId: 47acebbfe0b848b5a42cc2ab12554304
+    displayName: V1 Smile
+    kind: face
+    enabled: 1
+    performanceTagIds:
+    - 10080f71a1b147368610b5f83deff85b
+    - 804055ead95c4b398ff68adad7a88617
+    supportedPostureIds:
+    - standing
+    - sitting
+    supportedAnchorIds: []
+    ownsHead: 0
+    clip: {fileID: 0}
+    faceControlName: ST Mika 8 Natural Smile
+    faceWeight: 100
+  - ingredientId: ebc962238b914aa89879ef60ca4921ab
+    displayName: V1 Frown
+    kind: face
+    enabled: 1
+    performanceTagIds:
+    - a16ad6da10a9426baabcd0b37c6d2636
+    supportedPostureIds:
+    - standing
+    - sitting
+    supportedAnchorIds: []
+    ownsHead: 0
+    clip: {fileID: 0}
+    faceControlName: eCTRLFrown_HD
+    faceWeight: 100
+  anchors:
+  - anchorId: anchor-room-center
+    displayName: Room Center
+    locationGroup: center
+    supportedPostureIds:
+    - standing
+    connectedAnchorIds:
+    - anchor-chair
+  - anchorId: anchor-chair
+    displayName: Chair
+    locationGroup: chair
+    supportedPostureIds:
+    - standing
+    - sitting
+    connectedAnchorIds:
+    - anchor-room-center
+  operations:
+  - operationId: op-stand
+    displayName: Stand
+    kind: stand
+    cost: 10
+    applicableAnchorIds: []
+  - operationId: op-sit
+    displayName: Sit
+    kind: sit
+    cost: 10
+    applicableAnchorIds: []
+  - operationId: op-move-standing
+    displayName: Move While Standing
+    kind: move_while_standing
+    cost: 10
+    applicableAnchorIds: []
