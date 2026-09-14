@@ -1,5 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using NUnit.Framework;
 using TruthCardGame.Content;
@@ -211,9 +215,14 @@ namespace TruthCardGame.Content.Sqlite.Tests
                 connection.Open();
                 var content = GameContentSnapshotLoader.Load(connection, ensureSchema: false);
 
+                // A Perform action suspends the run until a host acknowledges it,
+                // so a session that reaches one needs a real host rather than a
+                // null performance service.
+                var catalog = LoadPresentationCatalog();
                 foreach (var session in content.Sessions)
                 {
-                    var services = new Core.CoreServices(new NoOpDelay());
+                    var host = new RecordingPerformanceHost(catalog, InitialStateFor(catalog));
+                    var services = new Core.CoreServices(new NoOpDelay(), performance: host);
                     var engine = new Core.GameSessionEngine(content, session.Id, services);
                     var guard = 0;
                     var waitingForContinue = false;
@@ -231,6 +240,162 @@ namespace TruthCardGame.Content.Sqlite.Tests
                             Core.AdvanceResultKind.SessionCompleted), $"session '{session.Id}' advanced cleanly");
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// Ticket 03 acceptance: one Perform action selects legal procedural
+        /// ingredients. The canonical card opens with a Perform whose event
+        /// queries tags with ANY semantics, so the planner must choose among
+        /// several ingredients — and every destination, operation and ingredient
+        /// it chooses has to be declared and enabled in the generated catalog.
+        /// </summary>
+        [Test]
+        public void CanonicalDatabase_PerformSelectsLegalProceduralIngredients()
+        {
+            var catalog = LoadPresentationCatalog();
+            // Validating the catalog is what the engine does before it will plan.
+            Assert.DoesNotThrow(() => PresentationCatalogValidator.Validate(catalog));
+
+            var host = new RecordingPerformanceHost(catalog, InitialStateFor(catalog));
+            using (var connection = new SqliteConnection("Data Source=" + CanonicalPath() + ";Mode=ReadOnly"))
+            {
+                connection.Open();
+                var content = GameContentSnapshotLoader.Load(connection, ensureSchema: false);
+
+                var performanceEvent = content.PerformanceEvents.Find(
+                    candidate => candidate.Id == "perf-event-playful-tease");
+                Assert.IsNotNull(performanceEvent, "the canonical store holds the V1 performance event");
+                Assert.Greater(performanceEvent.PerformanceTagIds.Count, 0, "the event queries Performance Tags");
+                Assert.IsFalse(performanceEvent.RequireAllTags, "the fixture uses ANY-of semantics");
+
+                var card = content.Cards.Find(candidate => candidate.Id == "phase00-card");
+                Assert.IsNotNull(card, "the canonical store holds the V1 card");
+                Assert.IsInstanceOf<PerformInstanceDefinition>(card.Sequence.Instances[0],
+                    "the card opens with the Perform action");
+                Assert.AreEqual(performanceEvent.Id, ((PerformInstanceDefinition)card.Sequence.Instances[0]).EventId,
+                    "the Perform action plays the authored event");
+
+                var services = new Core.CoreServices(new NoOpDelay(), performance: host);
+                var engine = new Core.GameSessionEngine(content, "phase00-session", services);
+                var guard = 0;
+                var waitingForContinue = false;
+                while (!engine.IsComplete)
+                {
+                    guard++;
+                    Assert.Less(guard, 500, "the session did not complete (loop guard)");
+                    var result = (waitingForContinue
+                            ? engine.ContinueAsync(default)
+                            : engine.RunUntilYieldAsync(default))
+                        .GetAwaiter().GetResult();
+                    waitingForContinue = result.Kind == Core.AdvanceResultKind.WaitForContinue;
+                }
+
+                Assert.Greater(host.Requests.Count, 0, "the Perform reached the host");
+                Assert.Greater(host.Requests.Count(r => r.Kind == Core.PerformanceRequestKind.Stage), 0,
+                    "the Perform staged the actor");
+
+                foreach (var request in host.Requests)
+                {
+                    if (request.Kind == Core.PerformanceRequestKind.Stop) continue;
+
+                    var anchor = catalog.Anchors.Find(candidate => candidate.Id == request.AnchorId);
+                    Assert.IsNotNull(anchor, "requested anchor '" + request.AnchorId + "' is declared by the catalog");
+                    Assert.Contains(request.PostureId, anchor.SupportedPostureIds,
+                        "requested posture '" + request.PostureId + "' is declared by anchor '" + anchor.Id + "'");
+
+                    AssertRequestedIngredient(catalog, request.FoundationIngredientId,
+                        PresentationIngredientKinds.Foundation, request.PostureId, performanceEvent, requireTagMatch: false);
+                    AssertRequestedIngredient(catalog, request.FaceIngredientId,
+                        PresentationIngredientKinds.Face, request.PostureId, performanceEvent, requireTagMatch: true);
+                    if (!request.UseBodyRest)
+                    {
+                        AssertRequestedIngredient(catalog, request.BodyIngredientId,
+                            PresentationIngredientKinds.Body, request.PostureId, performanceEvent, requireTagMatch: true);
+                    }
+                }
+            }
+        }
+
+        private static void AssertRequestedIngredient(
+            PresentationCatalogDefinition catalog, string ingredientId, string kind, string postureId,
+            ConversationPerformanceEventDefinition performanceEvent, bool requireTagMatch)
+        {
+            var ingredient = catalog.Ingredients.Find(candidate => candidate.Id == ingredientId);
+            Assert.IsNotNull(ingredient, kind + " ingredient '" + ingredientId + "' is declared by the catalog");
+            Assert.IsTrue(ingredient.Enabled, "ingredient '" + ingredientId + "' is enabled");
+            Assert.AreEqual(kind, ingredient.Kind, "ingredient '" + ingredientId + "' is a " + kind);
+            Assert.Contains(postureId, ingredient.SupportedPostureIds,
+                "ingredient '" + ingredientId + "' supports posture '" + postureId + "'");
+            if (requireTagMatch)
+            {
+                Assert.IsTrue(performanceEvent.PerformanceTagIds.Any(ingredient.PerformanceTagIds.Contains),
+                    "ingredient '" + ingredientId + "' satisfies the event's Performance Tag query");
+            }
+        }
+
+        /// <summary>
+        /// The Unity-generated catalog the engine plans against. Its absence is a
+        /// setup gap, so the failure names the menu command that produces it.
+        /// </summary>
+        private static PresentationCatalogDefinition LoadPresentationCatalog()
+        {
+            var path = Path.Combine(Path.GetDirectoryName(CanonicalPath()) ?? ".", "PresentationCatalog.json");
+            Assert.That(File.Exists(path), Is.True,
+                "generated presentation catalog missing at " + path +
+                "; run TruthCardGame/Performance/Generate Presentation Catalog in the Unity editor.");
+            return PresentationCatalogJson.FromJson(File.ReadAllText(path));
+        }
+
+        /// <summary>The run's declared starting state: the first anchor and the first posture it supports.</summary>
+        private static Core.PerformanceActorState InitialStateFor(PresentationCatalogDefinition catalog)
+        {
+            Assert.Greater(catalog.Anchors.Count, 0, "the presentation catalog declares at least one anchor");
+            var anchor = catalog.Anchors[0];
+            Assert.Greater(anchor.SupportedPostureIds.Count, 0, "anchor '" + anchor.Id + "' supports a posture");
+            return new Core.PerformanceActorState(anchor.Id, anchor.SupportedPostureIds[0]);
+        }
+
+        /// <summary>
+        /// A host that records every correlated request and refuses staging the
+        /// catalog cannot realise. The refusal is what makes the recording a
+        /// meaningful check: a merely permissive host would accept anything.
+        /// </summary>
+        private sealed class RecordingPerformanceHost : Core.IPerformanceHost
+        {
+            private readonly List<Core.PerformanceExecutionRequest> _requests =
+                new List<Core.PerformanceExecutionRequest>();
+
+            public RecordingPerformanceHost(PresentationCatalogDefinition catalog, Core.PerformanceActorState initialState)
+            {
+                Catalog = catalog;
+                InitialState = initialState;
+            }
+
+            public PresentationCatalogDefinition Catalog { get; }
+
+            public Core.PerformanceActorState InitialState { get; }
+
+            public IReadOnlyList<Core.PerformanceExecutionRequest> Requests => _requests;
+
+            public Task<Core.PerformanceExecutionResult> ExecuteAsync(
+                Core.PerformanceExecutionRequest request, CancellationToken cancellationToken)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _requests.Add(request);
+
+                if (request.Kind == Core.PerformanceRequestKind.Stage)
+                {
+                    var anchor = Catalog.Anchors.Find(candidate => candidate.Id == request.AnchorId);
+                    if (anchor == null)
+                        return Task.FromResult(Core.PerformanceExecutionResult.Reject(
+                            request.CorrelationId, "unknown anchor '" + request.AnchorId + "'"));
+                    if (!anchor.SupportedPostureIds.Contains(request.PostureId))
+                        return Task.FromResult(Core.PerformanceExecutionResult.Reject(
+                            request.CorrelationId, "anchor '" + anchor.Id + "' cannot hold posture '" + request.PostureId + "'"));
+                }
+
+                return Task.FromResult(Core.PerformanceExecutionResult.Accept(request.CorrelationId));
             }
         }
 
