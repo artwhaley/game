@@ -61,6 +61,27 @@ namespace TruthCardGame.Performance
                 ? new PerformanceActorState("", "")
                 : stageAnchors.InitialState();
 
+        /// <summary>
+        /// Runtime wiring for hosts assembled by the editor scene setup: binds
+        /// the character's presentation controllers and the stage anchors. The
+        /// registry stays project-owned (the same asset the performance fixture
+        /// maintains) and is passed in rather than loaded by path, so a scene in
+        /// a build can be wired with any registry the host chooses to supply.
+        /// </summary>
+        public void Configure(
+            PerformanceRegistry sourceRegistry,
+            PerformanceStageAnchors sourceStageAnchors,
+            CharacterAnimationPlayer sourceAnimationPlayer,
+            CharacterFaceController sourceFace,
+            CharacterGazeController sourceGaze)
+        {
+            registry = sourceRegistry;
+            stageAnchors = sourceStageAnchors;
+            animationPlayer = sourceAnimationPlayer;
+            face = sourceFace;
+            gaze = sourceGaze;
+        }
+
         /// <summary>Reloads the catalog from disk; used by Repeat so a regenerate is picked up.</summary>
         public void InvalidateCatalog()
         {
